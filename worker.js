@@ -1,0 +1,7801 @@
+const WORKER_URL = "https://cmo-razbory.oxion-ezhkov.workers.dev";
+const PAYMENT_LINK = "https://edsofa.ai/sb/JIx";
+const ADMIN_PASSWORD = "12345678";
+const ADMIN_PATH = "/admin";
+
+// ─── ROUTING ────────────────────────────────────────────────
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+
+    if (url.pathname === "/webhook") return handleWebhook(request, env);
+    if (url.pathname === "/setup-webhook") return setupWebhook(env);
+    
+    if (url.pathname.startsWith(ADMIN_PATH)) return handleAdmin(request, env, url);
+    if (url.pathname === "/api/auth") return apiAuth(request, env);
+    if (url.pathname === "/api/user") return apiUser(request, env);
+    if (url.pathname === "/api/program") return apiProgram(request, env);
+    if (url.pathname === "/api/tasks") return apiTasks(request, env);
+    if (url.pathname === "/api/progress") return apiProgress(request, env);
+    if (url.pathname === "/api/questions") return apiQuestions(request, env);
+    if (url.pathname === "/api/admin/login") return apiAdminLogin(request, env);
+    if (url.pathname.startsWith('/api/admin/coffee')) return apiAdminCoffee(request, env, url);
+    if (url.pathname.startsWith("/api/admin/")) return apiAdminAction(request, env, url);
+    if (url.pathname === "/" || url.pathname === "/app") return serveApp(env);
+    if (url.pathname === "/api/task-progress") return apiTaskProgress(request, env);
+    if (url.pathname === "/api/auth-email") return apiAuthEmail(request, env);
+    if (url.pathname === "/api/events") return apiEvents(request, env);
+    if (url.pathname === '/api/request-access') return apiRequestAccess(request, env);
+    if (url.pathname === '/api/kb') return apiKB(request, env);
+    if (url.pathname === '/api/coffee/join') return apiCoffeeJoin(request, env);
+if (url.pathname === '/api/coffee/profile') return apiCoffeeProfile(request, env);
+if (url.pathname === '/api/coffee/toggle') return apiCoffeeToggle(request, env);
+if (url.pathname === '/api/coffee/status') return apiCoffeeStatus(request, env);
+if (url.pathname === '/api/coffee/rate') return apiCoffeeRate(request, env);
+if (url.pathname === '/api/admin/coffee/send-now') {
+  const auth = request.headers.get('Authorization') || '';
+  if (!auth.includes('admin_session_' + ADMIN_PASSWORD))
+    return jsonResp({ error: 'Unauthorized' }, 401);
+  const weekId = COFFEE_WEEK();
+  const round = await env.KV.get(`coffee:round:${weekId}`, 'json');
+  if (!round) return jsonResp({ ok: false, error: `Нет раунда для ${weekId}` });
+  if (round.sentAt) return jsonResp({ ok: false, error: `Уже отправлено в ${new Date(round.sentAt).toISOString()}` });
+  await coffeeSendPairs(env);
+  return jsonResp({ ok: true, weekId, pairs: round.pairs.length });
+}
+    if (url.pathname === '/api/event-ics') {
+  const id = Number(url.searchParams.get('id'));
+  const events = await env.KV.get('events:list', 'json') || [];
+  const ev = events.find(e => e.id === id);
+  if (!ev) return new Response('Not found', { status: 404 });
+  const CRLF = '\r\n';
+  const ics = ['BEGIN:VCALENDAR','VERSION:2.0','BEGIN:VEVENT',
+    'DTSTART;TZID=Europe/Moscow:' + icsStartFromDatetime(ev.datetime),
+    'DTEND;TZID=Europe/Moscow:' + icsEndFromDatetime(ev.datetime, ev.duration || 90),
+    'SUMMARY:' + ev.title,
+    'LOCATION:' + (ev.actionUrl || ''),
+    'END:VEVENT','END:VCALENDAR'].join(CRLF);
+  return new Response(ics, { headers: {
+  'Content-Type': 'text/calendar; charset=utf-8',
+  'Content-Disposition': 'attachment; filename="event.ics"'
+}});
+}
+    return new Response("Not found", { status: 404 });
+  },
+  async scheduled(event, env, ctx) {
+  const now = new Date();
+  const day = now.getUTCDay(); // 1=пн, 5=пт
+  const hour = now.getUTCHours(); // ✅ Fixed: was getUTCHour()
+  // 9 = 12:00 МСК
+  if (day === 1) await coffeeSendPairs(env);   // понедельник — рассылка назначенных пар
+  if (day === 5) await coffeeSendReminder(env); // пятница — напоминание + оценка
+    await coffeeSendNewbieReminders(env); // ← добавь эту строку
+
+}
+};
+
+async function coffeeSendNewbieReminders(env) {
+  const THREE_HOURS = 3 * 60 * 60 * 1000;
+  const keys = await env.KV.list({ prefix: 'coffee:remind:' });
+  
+  for (const key of keys.keys) {
+    const userId = key.name.replace('coffee:remind:', '');
+    const startedAtStr = await env.KV.get(key.name);
+    if (!startedAtStr) continue;
+    
+    const startedAt = Number(startedAtStr);
+    const elapsed = Date.now() - startedAt;
+    
+    // Только если прошло от 3 до 4 часов (чтобы не слать повторно)
+    if (elapsed >= THREE_HOURS && elapsed < THREE_HOURS + 3600000) {
+      // Проверить, не зарегистрировался ли уже
+      const coffeeProfile = await env.KV.get(`coffee:user:${userId}`, 'json');
+      if (!coffeeProfile) {
+        await tgSend(env, Number(userId),
+          `☕ *Рандом Кофе ждёт тебя!*\n\nКаждую неделю мы подбираем участникам CMO нового собеседника для 30-минутной встречи. Это самый быстрый способ решить свой запрос, получить рекомендацию или просто поговорить с близким по духу человеком.\n\n👉 Зарегистрируйся прямо сейчас — это займёт 2 минуты:`,
+          { inline_keyboard: [[{ text: '☕ Рандом Кофе', web_app: { url: `${WORKER_URL}/app` } }]] }
+        );
+      }
+      // Удаляем ключ в любом случае, чтобы не слать снова
+      await env.KV.delete(key.name);
+    }
+  }
+}
+
+// ─── WEBHOOK SETUP ───────────────────────────────────────────
+async function setupWebhook(env) {
+  const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/setWebhook`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: `${WORKER_URL}/webhook` })
+  });
+  const data = await res.json();
+  return jsonResp(data);
+}
+
+async function apiAuthEmail(request, env) {
+  if (request.method !== "POST") return jsonResp({ error: "Method not allowed" }, 405);
+  const { email, initData } = await request.json();
+  if (!email) return jsonResp({ ok: false, error: "No email" }, 400);
+  const emailLower = email.toLowerCase().trim();
+
+  const emails = await env.KV.get("emails:approved", "json") || [];
+  const found = emails.some(e => e.toLowerCase() === emailLower);
+  if (!found) return jsonResp({ ok: false, error: "Email не найден в списке участников" });
+
+  // Try to get existing mapping
+  let userId = await env.KV.get(`email_to_user:${emailLower}`);
+
+  // If no mapping yet but we have initData — create it now
+  if (!userId && initData) {
+    const parsed = parseTgInitData(initData);
+    if (parsed?.user) {
+      const tgId = String(parsed.user.id);
+      await env.KV.put(`email_to_user:${emailLower}`, tgId);
+      const existing = await env.KV.get(`user:${tgId}`, "json");
+      const newData = {
+        ...(existing || {}),
+        tgId: Number(tgId),
+        email: emailLower,
+        approved: true,
+        enrolledAt: existing?.enrolledAt || Date.now(),
+        name: existing?.name || parsed.user.first_name || emailLower.split('@')[0],
+        username: existing?.username || parsed.user.username || '',
+      };
+      await env.KV.put(`user:${tgId}`, JSON.stringify(newData));
+      userId = tgId;
+    }
+  }
+
+  const userData = userId ? await env.KV.get(`user:${userId}`, "json") : null;
+  return jsonResp({
+    ok: true,
+    email: emailLower,
+    user: userData || { email: emailLower, approved: true, first_name: emailLower.split('@')[0] }
+  });
+}
+
+// ─── TELEGRAM WEBHOOK ────────────────────────────────────────
+async function handleWebhook(request, env) {
+  const update = await request.json();
+  if (update.message) await handleMessage(update.message, env);
+  if (update.callback_query) await handleCallback(update.callback_query, env);
+  return new Response("OK");
+}
+
+async function apiRequestAccess(request, env) {
+  if (request.method !== 'POST') return jsonResp({ error: 'Method not allowed' }, 405);
+  const { email, initData } = await request.json();
+  if (!email) return jsonResp({ ok: false });
+
+  // Получить tgId если есть
+  let tgId = null;
+  let name = email.split('@')[0];
+  if (initData) {
+    const parsed = parseTgInitData(initData);
+    if (parsed?.user) {
+      tgId = parsed.user.id;
+      name = parsed.user.first_name || name;
+    }
+  }
+
+  // Добавить в pending:list если ещё нет
+  const pending = await env.KV.get('pending:list', 'json') || [];
+  const already = pending.some(p => p.email === email.toLowerCase());
+  if (!already) {
+    pending.unshift({ email: email.toLowerCase(), tgId, name, date: Date.now() });
+    await env.KV.put('pending:list', JSON.stringify(pending));
+  }
+
+  // Уведомить админа
+  if (env.ADMIN_ID) {
+    const text = `🔔 *Заявка на доступ*\n\nEmail: \`${email}\`\nИмя: ${name}${tgId ? `\nTG ID: ${tgId}` : ''}`;
+    const keyboard = tgId ? { inline_keyboard: [[
+      { text: '✅ Одобрить', callback_data: `approve_${tgId}_${email}` },
+      { text: '❌ Отклонить', callback_data: `reject_${tgId}` }
+    ]] } : null;
+    await tgSend(env, env.ADMIN_ID, text, keyboard);
+  }
+
+  return jsonResp({ ok: true });
+}
+
+async function handleMessage(msg, env) {
+  const chatId = msg.chat.id;
+  const text = msg.text || "";
+  const userId = msg.from.id;
+
+  // Сохраняем пользователя
+  await env.KV.put(`botuser:${userId}`, JSON.stringify({
+    tgId: userId,
+    name: msg.from.first_name,
+    lastName: msg.from.last_name || '',
+    username: msg.from.username || '',
+    startedAt: Date.now()
+  }));
+
+  // ★★★ ОБРАБОТКА /start circle (deep link) ★★★
+  if (text === "/start circle" || text === "/start circle" || (text === "/start" && msg.text?.includes("circle"))) {
+    await env.KV.put(`coffee:pending_circle:${userId}`, '1', { expirationTtl: 3600 });
+    await tgSend(env, userId,
+      '🎥 Запиши кружочек — короткое приветствие для твоего будущего партнёра по нетворку.\n\nПросто запиши и отправь сюда. Кружочек будет отправляться каждому новому партнёру автоматически.',
+      { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'coffee_circle_skip' }]] }
+    );
+    return;
+  }
+
+  // В handleMessage, добавить обработку
+if (text === "/start circle_onboarding" || text === "/start?start=circle_onboarding") {
+  await env.KV.put(`coffee:pending_circle:${userId}`, '1', { expirationTtl: 3600 });
+  // Сохраняем флаг, что это онбординг
+  await env.KV.put(`coffee:onboarding_mode:${userId}`, 'true', { expirationTtl: 3600 });
+  await tgSend(env, userId,
+    '🎥 Запиши приветственный кружочек для Рандом Кофе\n\nПросто запиши и отправь сюда. Кружочек будет отправляться каждому новому партнёру автоматически.\n\nПосле записи вернись в приложение и заверши регистрацию.',
+    { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'coffee_circle_skip_onboarding' }]] }
+  );
+  return;
+}
+
+  if (text === "/start circle_edit" || text === "/start?start=circle_edit") {
+  await env.KV.put(`coffee:pending_circle:${userId}`, '1', { expirationTtl: 3600 });
+  await tgSend(env, userId,
+    '🎥 Перезапись кружочка\n\nЗапиши новый кружочек — он заменит старый. Партнёры будут видеть его при знакомстве.\n\nПросто запиши и отправь сюда.',
+    { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'coffee_circle_skip' }]] }
+  );
+  return;
+}
+
+  if (text === "/start") {
+    const userData = await env.KV.get(`user:${userId}`, "json");
+    const name = msg.from.first_name || "участник";
+
+    const keyboard = {
+      inline_keyboard: [
+        [{ text: "👤 Мой профиль", web_app: { url: `${WORKER_URL}/app` } }],
+        [{ text: "🆘 Поддержка", callback_data: "support_request" }]
+      ]
+    };
+
+    // Напоминание о Рандом Кофе через 3 часа
+    const alreadyInCoffee = await env.KV.get(`coffee:user:${userId}`, 'json');
+    if (!alreadyInCoffee) {
+      const existingReminder = await env.KV.get(`coffee:remind:${userId}`);
+      if (!existingReminder) {
+        await env.KV.put(`coffee:remind:${userId}`, String(Date.now()), { expirationTtl: 86400 });
+      }
+    }
+
+    if (userData && userData.approved) {
+      await tgSend(env, chatId, `*Привет, ${name}! 👋*\nCMO — это сообщество маркетологов и предпринимателей. Заходи в мини-приложение, чтобы воспользоваться нашими инструментами.\n\n☕ *Рандом Кофе* — каждую неделю ты получаешь нового собеседника для короткой встречи. Обменяйся опытом, реши свой запрос или просто познакомься с близким по духу человеком. Зарегистрируйся в разделе «Нетворк».\n\n🌟 *Ядро* — воркшопы по ИИ-маркетингу в контенте и воронках.\n\n📅 *Мероприятия* — анонсы событий, зумов и эфиров.\n\nЗапускай мини-ап 👇`, keyboard);
+    } else {
+      await tgSend(env, chatId, `Привет, ${name}! 👋\n\n*CMO* — сообщество маркетологов и предпринимателей.\n\n☕ *Рандом Кофе* — нетворкинг с новым собеседником каждую неделю. Регистрируйся в разделе «Нетворк».\n\n🌟 *Ядро* — закрытые воркшопы по ИИ-маркетингу.\n\n📅 *Мероприятия* — субботние разборы и события сообщества.\n\nЕсли уже вступил в Ядро — введи свой email прямо в мини-ап 👇`, keyboard);
+    }
+  } 
+  else if (text.includes("@") && text.includes(".")) {
+    await handleEmailCheck(msg, env, text.trim().toLowerCase());
+  } 
+  else if (text === 'circle') {
+    await env.KV.put(`coffee:pending_circle:${userId}`, '1', { expirationTtl: 3600 });
+    await tgSend(env, userId,
+      '🎥 Запиши кружочек — короткое приветствие для твоего будущего партнёра по нетворку.\n\nПросто запиши и отправь сюда. Кружочек будет отправляться каждому новому партнёру автоматически.',
+      { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'coffee_circle_skip' }]] }
+    );
+    return;
+  } else if (msg.video_note) {
+  const pending = await env.KV.get(`coffee:pending_circle:${userId}`);
+  const isOnboarding = await env.KV.get(`coffee:onboarding_mode:${userId}`);
+  
+  if (pending) {
+    let profile = await env.KV.get(`coffee:user:${userId}`, 'json');
+    if (!profile) {
+      profile = {
+        tgId: userId,
+        circleFileId: msg.video_note.file_id,
+        name: msg.from.first_name || '',
+        active: false,
+        joinedAt: Date.now(),
+        updatedAt: Date.now()
+      };
+    } else {
+      profile.circleFileId = msg.video_note.file_id;
+      profile.updatedAt = Date.now();
+    }
+    await env.KV.put(`coffee:user:${userId}`, JSON.stringify(profile));
+    await env.KV.delete(`coffee:pending_circle:${userId}`);
+    
+    if (isOnboarding) {
+      await env.KV.delete(`coffee:onboarding_mode:${userId}`);
+      // Возвращаемся в приложение
+      await tgSend(env, userId,
+        '✅ Кружочек сохранён!\n\nВернись в приложение и заверши регистрацию, заполнив профиль.',
+        { 
+          inline_keyboard: [[{ 
+            text: '☕ Продолжить регистрацию', 
+            web_app: { url: `${WORKER_URL}/app` }
+          }]] 
+        }
+      );
+    } else {
+      // Обычное сохранение кружочка (редактирование)
+      const hasProfile = profile.name && profile.bio && profile.request;
+      if (!hasProfile) {
+        await tgSend(env, userId, '🎉 Кружочек сохранён!\n\nТеперь заполни профиль в приложении, чтобы начать участвовать в Рандом Кофе 👇',
+          { inline_keyboard: [[{ text: '☕ Заполнить профиль', web_app: { url: `${WORKER_URL}/app` } }]] }
+        );
+      } else {
+        await tgSend(env, userId, '🎉 Кружочек сохранён! Партнёры по нетворку увидят его при знакомстве.',
+          { inline_keyboard: [[{ text: '↩️ Вернуться в приложение', web_app: { url: `${WORKER_URL}/app` } }]] }
+        );
+      }
+    }
+  } else {
+    await tgSend(env, userId, '🎥 Отправь команду /circle, чтобы записать приветственный кружочек.');
+  }
+}
+  else {
+    // любое другое сообщение — считается вопросом
+    const questions = await env.KV.get("questions:list", "json") || [];
+    const q = {
+      id: Date.now(),
+      userId,
+      name: msg.from.first_name,
+      text,
+      date: Date.now(),
+      program: '',
+      source: 'bot'
+    };
+    questions.unshift(q);
+    await env.KV.put("questions:list", JSON.stringify(questions));
+    await notifyAdmin(env, `❓ Вопрос от ${msg.from.first_name} (@${msg.from.username || '—'})\n\n${text}`);
+    await tgSend(env, chatId, `Твой вопрос принят! Мы ответим в ближайшее время.`);
+  }
+}
+
+async function handleEmailCheck(msg, env, email) {
+  const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  const emails = await env.KV.get("emails:approved", "json") || [];
+  const found = emails.some(e => e.toLowerCase() === email);
+
+  if (found) {
+    const userData = {
+      tgId: userId,
+      email,
+      approved: true,
+      name: msg.from.first_name,
+      lastName: msg.from.last_name || "",
+      username: msg.from.username || "",
+      enrolledAt: Date.now()
+    };
+    await env.KV.put(`user:${userId}`, JSON.stringify(userData));
+    await env.KV.put(`email_to_user:${email}`, String(userId));
+    const keyboard = {
+      inline_keyboard: [[
+        { text: "📚 Открыть приложение", web_app: { url: `${WORKER_URL}/app` } }
+      ]]
+    };
+    await tgSend(env, chatId, `✅ *Доступ подтверждён!*\n\nТвой email \`${email}\` найден в базе участников.\n\nНажми кнопку ниже, чтобы войти в приложение.`, keyboard);
+  } else {
+    const pending = await env.KV.get("pending:list", "json") || [];
+    const exists = pending.find(p => p.email === email);
+    if (!exists) {
+      pending.push({ email, tgId: userId, name: msg.from.first_name, date: Date.now() });
+      await env.KV.put("pending:list", JSON.stringify(pending));
+      const keyboard = {
+  inline_keyboard: [[
+    { text: "✅ Одобрить", callback_data: `approve_${userId}_${email}` },
+    { text: "❌ Отклонить", callback_data: `reject_${userId}` }
+  ]]
+};
+await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    chat_id: env.ADMIN_ID,
+    text: `🔔 Запрос на доступ\n\nEmail: ${email}\nИмя: ${msg.from.first_name}\n@${msg.from.username || '—'}\nID: ${userId}`,
+    reply_markup: keyboard
+  })
+});
+    }
+    await tgSend(env, chatId, `❌ Email \`${email}\` не найден в списке участников.\n\n💳 Чтобы присоединиться, оплати участие по ссылке:\n${PAYMENT_LINK}\n\nЕсли ты уже оплатил — администратор проверит и добавит тебя в ближайшее время.`);
+  }
+}
+
+async function handleCallback(cq, env) {
+  await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/answerCallbackQuery`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ callback_query_id: cq.id })
+  });
+  const data = cq.data || '';
+
+if (data.startsWith('approve_')) {
+  const [, userId, email] = data.split('_');
+  const emails = await env.KV.get("emails:approved", "json") || [];
+  if (!emails.includes(email)) emails.push(email);
+  await env.KV.put("emails:approved", JSON.stringify(emails));
+  
+  const userData = {
+    tgId: Number(userId), email, approved: true,
+    enrolledAt: Date.now()
+  };
+  await env.KV.put(`user:${userId}`, JSON.stringify(userData));
+  await env.KV.put(`email_to_user:${email}`, String(userId));
+  
+  // Убрать кнопки у сообщения
+  await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/editMessageReplyMarkup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [] } })
+  });
+  
+  // Уведомить пользователя
+  const keyboard = { inline_keyboard: [[{ text: "📚 Открыть приложение", web_app: { url: `${WORKER_URL}/app` } }]] };
+  await tgSend(env, Number(userId), `✅ Доступ одобрен!\n\nТвой email \`${email}\` подтверждён администратором.`, keyboard);
+  await tgSend(env, cq.message.chat.id, `✅ Одобрено: ${email}`);
+} else if (data === 'coffee_restore') {
+  const tgId = cq.from.id;  // ← вот так правильно
+  const profile = await env.KV.get(`coffee:user:${tgId}`, 'json');
+  if (profile) {
+    profile.active = true;
+    profile.disabledReason = '';
+    profile.updatedAt = Date.now();
+    await env.KV.put(`coffee:user:${tgId}`, JSON.stringify(profile));
+    await tgSend(env, tgId, '✅ Ты снова в подборе! В следующий понедельник получишь нового партнёра ☕');
+  }
+} else if (data === 'coffee_circle_skip_onboarding') {
+  const userId = cq.from.id;
+  await env.KV.delete(`coffee:pending_circle:${userId}`);
+  await env.KV.delete(`coffee:onboarding_mode:${userId}`);
+  await tgSend(env, userId, 'Окей, кружочек пропустим. Можешь продолжить регистрацию в приложении.',
+    { inline_keyboard: [[{ text: '☕ Продолжить регистрацию', web_app: { url: `${WORKER_URL}/app` } }]] }
+  );
+} else if (data === 'coffee_circle_skip') {
+  // Исправлено: получаем userId из cq.from.id
+  const userId = cq.from.id;
+  await env.KV.delete(`coffee:pending_circle:${userId}`);
+  await tgSend(env, userId, 'Окей, кружочек пропустим. Ты всё равно уже в Рандом Кофе 🎉');
+}
+
+if (data.startsWith('reject_')) {
+  const userId = data.split('_')[1];
+  await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/editMessageReplyMarkup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [] } })
+  });
+  await tgSend(env, Number(userId), `❌ В доступе отказано. Если считаешь что это ошибка — напиши нам.`);
+  await tgSend(env, cq.message.chat.id, `❌ Отклонено`);
+}
+if (data === 'support_request') {
+  const userId = cq.from.id;
+  await env.KV.put(`support:pending:${userId}`, '1', { expirationTtl: 3600 });
+  await tgSend(env, userId, '🆘 *Поддержка*\n\nОпиши свою проблему или вопрос — просто напиши сюда сообщение, и мы разберёмся.');
+}
+}
+
+async function tgSend(env, chatId, text, replyMarkup) {
+  const body = {
+    chat_id: chatId,
+    text,
+    parse_mode: "Markdown",
+    ...(replyMarkup ? { reply_markup: replyMarkup } : {})
+  };
+  const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  return res.json(); // ← добавь return
+}
+
+function icsStartFromDatetime(dtStr) {
+  const d = new Date(dtStr);
+  return d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0') +
+    'T' + String(d.getHours()).padStart(2,'0') + String(d.getMinutes()).padStart(2,'0') + '00';
+}
+
+function icsEndFromDatetime(dtStr, durMin) {
+  const d = new Date(new Date(dtStr).getTime() + durMin * 60000);
+  return d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0') +
+    'T' + String(d.getHours()).padStart(2,'0') + String(d.getMinutes()).padStart(2,'0') + '00';
+}
+
+async function apiTasks(request, env) {
+  const url = new URL(request.url);
+  const programId = url.searchParams.get("id");
+  if (!programId) return jsonResp({ error: "Missing id" }, 400);
+  const tasks = await env.KV.get(`tasks:${programId}`, "json") || [];
+  return jsonResp({ tasks });
+}
+
+async function notifyAdmin(env, text) {
+  if (!env.ADMIN_ID) return;
+  await tgSend(env, env.ADMIN_ID, text);
+}
+
+// ─── API: AUTH ───────────────────────────────────────────────
+async function apiTaskProgress(request, env) {
+  if (request.method === "GET") {
+    const url = new URL(request.url);
+    const userId = url.searchParams.get("userId");
+    const programId = url.searchParams.get("programId");
+    const progress = await env.KV.get(`taskprogress:${userId}:${programId}`, "json") || { completed: [] };
+    return jsonResp(progress);
+  }
+  if (request.method === "POST") {
+    const { initData, programId, taskId, done } = await request.json();
+    const parsed = parseTgInitData(initData);
+    if (!parsed?.user) return jsonResp({ ok: false }, 401);
+    const userId = parsed.user.id;
+    const key = `taskprogress:${userId}:${programId}`;
+    const progress = await env.KV.get(key, "json") || { completed: [] };
+    if (done && !progress.completed.includes(taskId)) progress.completed.push(taskId);
+    else if (!done) progress.completed = progress.completed.filter(id => id !== taskId);
+    await env.KV.put(key, JSON.stringify(progress));
+    return jsonResp({ ok: true, progress });
+  }
+  return jsonResp({ error: "Method not allowed" }, 405);
+}
+
+
+async function apiAuth(request, env) {
+  if (request.method !== "POST") return jsonResp({ error: "Method not allowed" }, 405);
+  const { initData } = await request.json();
+  const parsed = parseTgInitData(initData);
+  if (!parsed || !parsed.user) return jsonResp({ ok: false, error: "Invalid initData" }, 401);
+
+  const userId = parsed.user.id;
+  const userData = await env.KV.get(`user:${userId}`, "json");
+
+  // Сохранить botuser если ещё нет
+  const botUser = await env.KV.get(`botuser:${userId}`, "json");
+  if (!botUser) {
+    await env.KV.put(`botuser:${userId}`, JSON.stringify({
+      tgId: userId,
+      name: parsed.user.first_name,
+      lastName: parsed.user.last_name,
+      username: parsed.user.username,
+      startedAt: Date.now()
+    }));
+  }
+
+  if (userData && userData.approved) {
+    const launches = (await env.KV.get(`userstat:${userId}:launches`, "json") || 0) + 1;
+    await env.KV.put(`userstat:${userId}:launches`, JSON.stringify(launches));
+    return jsonResp({ ok: true, role: 'member', user: { ...parsed.user, ...userData } });
+  }
+
+  // Гость — пускаем, но без доступа к Ядру
+  return jsonResp({ ok: true, role: 'guest', user: parsed.user });
+}
+
+// ─── API: USER ───────────────────────────────────────────────
+async function apiUser(request, env) {
+  if (request.method !== "POST") return jsonResp({ error: "Method not allowed" }, 405);
+  const { initData, action, payload } = await request.json();
+  const parsed = parseTgInitData(initData);
+  if (!parsed?.user) return jsonResp({ ok: false }, 401);
+  const userId = parsed.user.id;
+  const userData = await env.KV.get(`user:${userId}`, "json");
+  if (!userData?.approved) return jsonResp({ ok: false, error: "Not authorized" }, 403);
+
+  if (action === "submitQuestion") {
+    const questions = await env.KV.get("questions:list", "json") || [];
+    const q = { id: Date.now(), userId, name: userData.name, text: payload.text, date: Date.now(), program: payload.program || "" };
+    questions.unshift(q);
+    await env.KV.put("questions:list", JSON.stringify(questions));
+    await notifyAdmin(env, `❓ Новый вопрос от ${userData.name}\n\nПрограмма: ${q.program}\n\n${q.text}`);
+    return jsonResp({ ok: true });
+  }
+  return jsonResp({ ok: false, error: "Unknown action" });
+}
+
+// ─── API: PROGRAM ────────────────────────────────────────────
+async function apiProgram(request, env) {
+  const url = new URL(request.url);
+  const programId = url.searchParams.get("id");
+  if (!programId) return jsonResp({ error: "Missing id" }, 400);
+
+  const program = await env.KV.get(`program:${programId}`, "json");
+  return jsonResp(program);
+}
+
+// ─── API: PROGRESS ───────────────────────────────────────────
+async function apiProgress(request, env) {
+  if (request.method === "GET") {
+    const url = new URL(request.url);
+    const userId = url.searchParams.get("userId");
+    const programId = url.searchParams.get("programId");
+    if (!userId || !programId) return jsonResp({ error: "Missing params" }, 400);
+    const progress = await env.KV.get(`progress:${userId}:${programId}`, "json") || { completed: [] };
+    return jsonResp(progress);
+  }
+  if (request.method === "POST") {
+    const { initData, programId, moduleId, done } = await request.json();
+    const parsed = parseTgInitData(initData);
+    if (!parsed?.user) return jsonResp({ ok: false }, 401);
+    const userId = parsed.user.id;
+    const userData = await env.KV.get(`user:${userId}`, "json");
+    if (!userData?.approved) return jsonResp({ ok: false }, 403);
+
+    const key = `progress:${userId}:${programId}`;
+    const progress = await env.KV.get(key, "json") || { completed: [] };
+    if (done && !progress.completed.includes(moduleId)) {
+      progress.completed.push(moduleId);
+    } else if (!done) {
+      progress.completed = progress.completed.filter(id => id !== moduleId);
+    }
+    await env.KV.put(key, JSON.stringify(progress));
+    return jsonResp({ ok: true, progress });
+  }
+  return jsonResp({ error: "Method not allowed" }, 405);
+}
+
+// ─── API: QUESTIONS ──────────────────────────────────────────
+async function apiQuestions(request, env) {
+  const questions = await env.KV.get("questions:list", "json") || [];
+  return jsonResp({ questions });
+}
+
+// ─── API: ADMIN LOGIN ────────────────────────────────────────
+async function apiAdminLogin(request, env) {
+  if (request.method !== "POST") return jsonResp({ error: "Method" }, 405);
+  const { password } = await request.json();
+  if (password !== ADMIN_PASSWORD) return jsonResp({ ok: false, error: "Неверный пароль" }, 401);
+  return jsonResp({ ok: true, token: "admin_session_" + ADMIN_PASSWORD });
+}
+
+// ─── API: ADMIN ACTIONS ──────────────────────────────────────
+async function apiAdminAction(request, env, url) {
+  // Simple token check
+  const auth = request.headers.get("Authorization") || "";
+  if (!auth.includes("admin_session_" + ADMIN_PASSWORD)) {
+    return jsonResp({ error: "Unauthorized" }, 401);
+  }
+
+  const action = url.pathname.replace("/api/admin/", "");
+
+  if (action === "events" && request.method === "GET") {
+  const events = await env.KV.get("events:list", "json") || [];
+  return jsonResp({ events });
+}
+
+if (action === 'sync-participants' && request.method === 'POST') {
+  const emails = await env.KV.get('emails:approved', 'json') || [];
+  const emailSet = new Set(emails.map(e => e.toLowerCase()));
+  let linked = 0, missing = 0, updated = 0;
+
+  // Build email→tgId map by scanning all user:* records
+  const userKeys = await env.KV.list({ prefix: 'user:' });
+  const emailToTgId = {};
+  for (const key of userKeys.keys) {
+    const record = await env.KV.get(key.name, 'json');
+    if (record?.email) emailToTgId[record.email.toLowerCase()] = { tgId: key.name.replace('user:', ''), record };
+  }
+
+  for (const email of emails) {
+    const emailLower = email.toLowerCase();
+    const existing = await env.KV.get(`email_to_user:${emailLower}`);
+    if (existing) { linked++; continue; }
+
+    const found = emailToTgId[emailLower];
+    if (found) {
+      await env.KV.put(`email_to_user:${emailLower}`, found.tgId);
+      // Ensure approved flag is set
+      if (!found.record.approved) {
+        found.record.approved = true;
+        await env.KV.put(`user:${found.tgId}`, JSON.stringify(found.record));
+        updated++;
+      }
+      linked++;
+    } else {
+      missing++;
+    }
+  }
+
+  return jsonResp({ ok: true, linked, missing, updated });
+}
+
+if (action === "save-event" && request.method === "POST") {
+  const { event } = await request.json();
+  const events = await env.KV.get("events:list", "json") || [];
+  const idx = events.findIndex(e => e.id === event.id);
+  if (idx >= 0) events[idx] = event;
+  else events.push(event);
+  await env.KV.put("events:list", JSON.stringify(events));
+  return jsonResp({ ok: true });
+}
+
+if (action === "delete-event" && request.method === "POST") {
+  const { id } = await request.json();
+  let events = await env.KV.get("events:list", "json") || [];
+  events = events.filter(e => e.id !== id);
+  await env.KV.put("events:list", JSON.stringify(events));
+  return jsonResp({ ok: true });
+}
+
+// ─── KB ADMIN ACTIONS ────────────────────────────────────────
+if (action === "kb-categories" && request.method === "GET") {
+  const categories = await env.KV.get("kb:categories", "json") || [];
+  return jsonResp({ categories });
+}
+
+if (action === "kb-save-category" && request.method === "POST") {
+  const { category } = await request.json();
+  let cats = await env.KV.get("kb:categories", "json") || [];
+  const idx = cats.findIndex(c => c.id === category.id);
+  if (idx >= 0) cats[idx] = category;
+  else cats.push(category);
+  cats.sort((a, b) => (a.order || 0) - (b.order || 0));
+  await env.KV.put("kb:categories", JSON.stringify(cats));
+  return jsonResp({ ok: true });
+}
+
+if (action === "kb-delete-category" && request.method === "POST") {
+  const { id } = await request.json();
+  let cats = await env.KV.get("kb:categories", "json") || [];
+  cats = cats.filter(c => c.id !== id);
+  await env.KV.put("kb:categories", JSON.stringify(cats));
+  await env.KV.delete(`kb:entries:${id}`);
+  return jsonResp({ ok: true });
+}
+
+if (action === "kb-entries" && request.method === "GET") {
+  const { searchParams } = new URL(request.url);
+  const catId = searchParams.get("catId");
+  const entries = await env.KV.get(`kb:entries:${catId}`, "json") || [];
+  return jsonResp({ entries });
+}
+
+if (action === "kb-save-entry" && request.method === "POST") {
+  const { catId, entry } = await request.json();
+  let entries = await env.KV.get(`kb:entries:${catId}`, "json") || [];
+  const idx = entries.findIndex(e => e.id === entry.id);
+  if (idx >= 0) entries[idx] = entry;
+  else entries.push(entry);
+  await env.KV.put(`kb:entries:${catId}`, JSON.stringify(entries));
+  return jsonResp({ ok: true });
+}
+
+if (action === "kb-delete-entry" && request.method === "POST") {
+  const { catId, entryId } = await request.json();
+  let entries = await env.KV.get(`kb:entries:${catId}`, "json") || [];
+  entries = entries.filter(e => e.id !== entryId);
+  await env.KV.put(`kb:entries:${catId}`, JSON.stringify(entries));
+  return jsonResp({ ok: true });
+}
+
+if (action === "kb-init" && request.method === "POST") {
+  await initKBData(env);
+  return jsonResp({ ok: true });
+}
+
+  if (action === "participants" && request.method === "GET") {
+  const emails = await env.KV.get("emails:approved", "json") || [];
+  const pending = await env.KV.get("pending:list", "json") || [];
+  const admins = await env.KV.get("admins:list", "json") || [];
+  const stopped = await env.KV.get("users:stopped", "json") || []; // ← добавь
+  const adminEmails = new Set(admins.map(a => a.email.toLowerCase()));
+  const filteredEmails = emails.filter(e => !adminEmails.has(e.toLowerCase()));
+  return jsonResp({ emails: filteredEmails, pending, stopped }); // ← добавь stopped
+}
+
+  if (action === "dashboard-stats" && request.method === "GET") {
+  const emails = await env.KV.get("emails:approved", "json") || [];
+  const pending = await env.KV.get("pending:list", "json") || [];
+  const questions = await env.KV.get("questions:list", "json") || [];
+  
+const admins = await env.KV.get("admins:list", "json") || [];
+const adminEmails = new Set(admins.map(a => a.email.toLowerCase()));
+const participantEmails = emails.filter(e => !adminEmails.has(e.toLowerCase()));
+
+  // Собрать данные по всем юзерам
+  const userList = await env.KV.list({ prefix: "user:" });
+  let totalLaunches = 0;
+  let paymentsWithDates = [];
+  let topUsers = [];
+  
+  for (const key of userList.keys) {
+  const u = await env.KV.get(key.name, "json");
+  if (!u?.approved) continue;
+  if (adminEmails.has((u.email || '').toLowerCase())) continue;
+    const userId = u.tgId;
+    
+    const launches = await env.KV.get(`userstat:${userId}:launches`, "json") || 0;
+    const payment = await env.KV.get(`userpayment:${userId}`);
+    const progAi = await env.KV.get(`progress:${userId}:ai`, "json") || { completed: [] };
+    const progFun = await env.KV.get(`progress:${userId}:funnels`, "json") || { completed: [] };
+    const totalDone = progAi.completed.length + progFun.completed.length;
+    
+    totalLaunches += launches;
+    if (payment) paymentsWithDates.push({ email: u.email, date: payment });
+    topUsers.push({ email: u.email, username: u.username, launches, done: totalDone });
+  }
+  
+  topUsers.sort((a, b) => b.launches - a.launches);
+  
+  return jsonResp({
+    totalEmails: participantEmails.length,
+    totalPending: pending.length,
+    totalQuestions: questions.length,
+    totalLaunches,
+    paymentsWithDates: paymentsWithDates.slice(0, 20),
+    topUsers: topUsers.slice(0, 5)
+  });
+}
+
+  if (action === "admins" && request.method === "GET") {
+  const admins = await env.KV.get("admins:list", "json") || [];
+  return jsonResp({ admins });
+}
+
+if (action === "add-admin" && request.method === "POST") {
+  const { email, tgId, name } = await request.json();
+  const admins = await env.KV.get("admins:list", "json") || [];
+  if (!admins.find(a => a.email === email)) admins.push({ email, tgId, name });
+  await env.KV.put("admins:list", JSON.stringify(admins));
+  return jsonResp({ ok: true });
+}
+
+if (action === "remove-admin" && request.method === "POST") {
+  const { email } = await request.json();
+  let admins = await env.KV.get("admins:list", "json") || [];
+  admins = admins.filter(a => a.email !== email);
+  await env.KV.put("admins:list", JSON.stringify(admins));
+  return jsonResp({ ok: true });
+}
+
+  if (action === "user-by-id" && request.method === "GET") {
+  const userId = url.searchParams.get("userId");
+  const user = await env.KV.get(`user:${userId}`, "json");
+  return jsonResp(user || {});
+}
+
+  if (action === "userid-by-email" && request.method === "GET") {
+  const email = url.searchParams.get("email");
+  const userId = await env.KV.get(`email_to_user:${email}`);
+  return jsonResp({ userId });
+}
+
+  if (action === "bot-users" && request.method === "GET") {
+  const list = await env.KV.list({ prefix: "botuser:" });
+  const users = [];
+  for (const key of list.keys) {
+    const u = await env.KV.get(key.name, "json");
+    if (u) users.push(u);
+  }
+  return jsonResp({ users });
+}
+
+  if (action === "user-stats" && request.method === "GET") {
+  const userId = url.searchParams.get("userId");
+  const [launches, payment, progAi, progFun, progMini, tpAi, tpFun, tpMini, questions] = await Promise.all([
+    env.KV.get(`userstat:${userId}:launches`, "json"),
+    env.KV.get(`userpayment:${userId}`),
+    env.KV.get(`progress:${userId}:ai`, "json"),
+    env.KV.get(`progress:${userId}:funnels`, "json"),
+    env.KV.get(`progress:${userId}:minicourses`, "json"),
+    env.KV.get(`taskprogress:${userId}:ai`, "json"),
+    env.KV.get(`taskprogress:${userId}:funnels`, "json"),
+    env.KV.get(`taskprogress:${userId}:minicourses`, "json"),
+    env.KV.get("questions:list", "json")
+  ]);
+  const userQuestions = (questions || []).filter(q => String(q.userId) === String(userId)).length;
+  return jsonResp({
+    launches: launches || 0,
+    payment: payment || null,
+    progress: {
+      ai: (progAi?.completed || []).length,
+      funnels: (progFun?.completed || []).length,
+      minicourses: (progMini?.completed || []).length
+    },
+    tasks: {
+      ai: (tpAi?.completed || []).length,
+      funnels: (tpFun?.completed || []).length,
+      minicourses: (tpMini?.completed || []).length
+    },
+    questions: userQuestions
+  });
+}
+
+if (action === "set-payment" && request.method === "POST") {
+  const { userId, date } = await request.json();
+  await env.KV.put(`userpayment:${userId}`, date);
+  return jsonResp({ ok: true });
+}
+
+  if (action === "tasks" && request.method === "GET") {
+  const programId = url.searchParams.get("id");
+  const tasks = await env.KV.get(`tasks:${programId}`, "json") || [];
+  return jsonResp({ tasks });
+}
+
+if (action === "save-task" && request.method === "POST") {
+  const { programId, task } = await request.json();
+  const tasks = await env.KV.get(`tasks:${programId}`, "json") || [];
+  const idx = tasks.findIndex(t => t.id === task.id);
+  if (idx >= 0) tasks[idx] = task;
+  else tasks.push(task);
+  await env.KV.put(`tasks:${programId}`, JSON.stringify(tasks));
+  return jsonResp({ ok: true });
+}
+
+if (action === "delete-task" && request.method === "POST") {
+  const { programId, taskId } = await request.json();
+  let tasks = await env.KV.get(`tasks:${programId}`, "json") || [];
+  tasks = tasks.filter(t => t.id !== taskId);
+  await env.KV.put(`tasks:${programId}`, JSON.stringify(tasks));
+  return jsonResp({ ok: true });
+}
+
+  if (action === "add-email" && request.method === "POST") {
+    const { email } = await request.json();
+    const emailLower = email.toLowerCase().trim();
+    const emails = await env.KV.get("emails:approved", "json") || [];
+    if (!emails.includes(emailLower)) emails.push(emailLower);
+    await env.KV.put("emails:approved", JSON.stringify(emails));
+    // Get tgId from pending before removing
+    let pending = await env.KV.get("pending:list", "json") || [];
+    const pendingEntry = pending.find(p => p.email === emailLower);
+    const tgId = pendingEntry?.tgId;
+    // Remove from pending
+    pending = pending.filter(p => p.email !== emailLower);
+    await env.KV.put("pending:list", JSON.stringify(pending));
+    // If we know tgId — create full mapping, update user record, send notification
+    if (tgId) {
+      await env.KV.put(`email_to_user:${emailLower}`, String(tgId));
+      const existing = await env.KV.get(`user:${tgId}`, "json");
+      const userData = {
+        ...(existing || {}),
+        tgId: Number(tgId),
+        email: emailLower,
+        approved: true,
+        enrolledAt: existing?.enrolledAt || Date.now(),
+        name: existing?.name || pendingEntry?.name || emailLower.split('@')[0],
+      };
+      await env.KV.put(`user:${tgId}`, JSON.stringify(userData));
+      const keyboard = { inline_keyboard: [[{ text: "📚 Открыть CMO Ядро", web_app: { url: WORKER_URL + "/app" } }]] };
+      await tgSend(env, Number(tgId),
+        `✅ *Доступ к CMO Ядро одобрен!*\n\nТвой email \`${emailLower}\` подтверждён администратором.\n\nНажми кнопку ниже, чтобы войти в приложение.`,
+        keyboard
+      );
+    }
+    return jsonResp({ ok: true, tgId });
+  }
+
+  if (action === "remove-email" && request.method === "POST") {
+    const { email } = await request.json();
+    let emails = await env.KV.get("emails:approved", "json") || [];
+    emails = emails.filter(e => e !== email.toLowerCase());
+    await env.KV.put("emails:approved", JSON.stringify(emails));
+    return jsonResp({ ok: true });
+  }
+
+  // ─── STOP USER ───────────────────────────────────────────────
+  if (action === "stop-user" && request.method === "POST") {
+    const { email } = await request.json();
+    
+    // НЕ удаляем из emails:approved — пусть остаётся в списке
+    // Вместо этого помечаем в отдельном KV ключе
+    const stopped = await env.KV.get("users:stopped", "json") || [];
+    if (!stopped.includes(email.toLowerCase())) stopped.push(email.toLowerCase());
+    await env.KV.put("users:stopped", JSON.stringify(stopped));
+    
+    // Помечаем юзера
+    const userId = await env.KV.get(`email_to_user:${email.toLowerCase()}`);
+    if (userId) {
+      const userData = await env.KV.get(`user:${userId}`, "json");
+      if (userData) {
+        userData.approved = false;
+        userData.stoppedAt = Date.now();
+        await env.KV.put(`user:${userId}`, JSON.stringify(userData));
+      }
+      await tgSend(env, Number(userId),
+        `🚫 *Доступ к CMO Ядро закрыт*\n\nМы не получили оплату за следующий месяц, поэтому доступ приостановлен.\n\n⏳ Через 3 дня ты будешь удалён из чата. Вернуться после этого будет невозможно.\n\n_Если это ошибка — напиши Олегу, он разберётся._`,
+        { inline_keyboard: [[{ text: '✍️ Написать Олегу — восстановить доступ', url: 'https://t.me/oleg_ezhkov' }]] }
+      );
+    }
+    return jsonResp({ ok: true, userId });
+}
+
+  // ─── RESTORE USER ────────────────────────────────────────────
+  if (action === "restore-user" && request.method === "POST") {
+    const { email } = await request.json();
+    
+    // Убираем из списка остановленных
+    let stopped = await env.KV.get("users:stopped", "json") || [];
+    stopped = stopped.filter(e => e !== email.toLowerCase());
+    await env.KV.put("users:stopped", JSON.stringify(stopped));
+    
+    const userId = await env.KV.get(`email_to_user:${email.toLowerCase()}`);
+    if (userId) {
+      const userData = await env.KV.get(`user:${userId}`, "json");
+      if (userData) {
+        userData.approved = true;
+        delete userData.stoppedAt;
+        await env.KV.put(`user:${userId}`, JSON.stringify(userData));
+      }
+      await tgSend(env, Number(userId),
+        `✅ *Доступ к CMO Ядро восстановлен!*\n\nТвой доступ к базе знаний снова активен. Добро пожаловать обратно! 🎉\n\nЗаходи в мини-приложение 👇`,
+        { inline_keyboard: [[{ text: "📚 Открыть CMO Ядро", web_app: { url: WORKER_URL + "/app" } }]] }
+      );
+    }
+    return jsonResp({ ok: true, userId });
+}
+
+if (action === "notify" && request.method === "POST") {
+  const { text, program, userIds } = await request.json();
+  let sent = 0;
+  const keyboard = {
+    inline_keyboard: [[
+      { text: "📚 Открыть приложение", web_app: { url: `${WORKER_URL}/app` } }
+    ]]
+  };
+
+  if (userIds && userIds.length > 0) {
+    // Отправить выбранным
+    for (const userId of userIds) {
+      const userData = await env.KV.get(`user:${userId}`, "json");
+      if (userData?.approved) {
+        await tgSend(env, userData.tgId, `📢 *Уведомление от CMO*\n\n${text}`, keyboard);
+        sent++;
+      }
+    }
+  } else {
+    // Отправить всем (или по программе)
+    const listResult = await env.KV.list({ prefix: "user:" });
+    for (const key of listResult.keys) {
+      const userData = await env.KV.get(key.name, "json");
+      if (!userData || !userData.approved) continue;
+      if (program) {
+        const enrollments = await env.KV.get(`enroll:${userData.tgId}`, "json") || [];
+        if (!enrollments.includes(program)) continue;
+      }
+      await tgSend(env, userData.tgId, `📢 *Уведомление от CMO*\n\n${text}`, keyboard);
+      sent++;
+    }
+  }
+
+  return jsonResp({ ok: true, sent });
+}
+
+  if (action === "program" && request.method === "GET") {
+    const programId = url.searchParams.get("id");
+    const program = await env.KV.get(`program:${programId}`, "json");
+    return jsonResp(program);
+  }
+
+  if (action === "program" && request.method === "POST") {
+    const { programId, program } = await request.json();
+    await env.KV.put(`program:${programId}`, JSON.stringify(program));
+    return jsonResp({ ok: true });
+  }
+
+  if (action === "module" && request.method === "POST") {
+    const { programId, module } = await request.json();
+    const program = await env.KV.get(`program:${programId}`, "json");
+    const idx = program.modules.findIndex(m => m.id === module.id);
+    if (idx >= 0) program.modules[idx] = module;
+    else program.modules.push(module);
+    await env.KV.put(`program:${programId}`, JSON.stringify(program));
+    return jsonResp({ ok: true });
+  }
+
+  if (action === "add-module" && request.method === "POST") {
+    const { programId } = await request.json();
+    const program = await env.KV.get(`program:${programId}`, "json");
+    const newId = "m" + (program.modules.length + 1) + "_" + Date.now();
+    program.modules.push({ id: newId, title: "Новый модуль", description: "", embedUrl: "", files: [], available: false });
+    await env.KV.put(`program:${programId}`, JSON.stringify(program));
+    return jsonResp({ ok: true, program });
+  }
+
+  if (action === "questions" && request.method === "GET") {
+    const questions = await env.KV.get("questions:list", "json") || [];
+    return jsonResp({ questions });
+  }
+
+  if (action === "clear-question" && request.method === "POST") {
+    const { id } = await request.json();
+    let questions = await env.KV.get("questions:list", "json") || [];
+    questions = questions.filter(q => q.id !== id);
+    await env.KV.put("questions:list", JSON.stringify(questions));
+    return jsonResp({ ok: true });
+  }
+
+  return jsonResp({ error: "Unknown action" }, 404);
+}
+
+// ─── ADMIN HTML PAGE ─────────────────────────────────────────
+async function handleAdmin(request, env, url) {
+  return new Response(getAdminHTML(), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+async function apiEvents(request, env) {
+  const events = await env.KV.get("events:list", "json") || [];
+  return jsonResp({ events });
+}
+
+// ─── KNOWLEDGE BASE API ──────────────────────────────────────
+async function apiKB(request, env) {
+  const categories = await env.KV.get("kb:categories", "json") || [];
+  const result = [];
+  for (const cat of categories) {
+    const entries = await env.KV.get(`kb:entries:${cat.id}`, "json") || [];
+    result.push({ ...cat, entries });
+  }
+  return jsonResp({ categories: result });
+}
+
+async function initKBData(env) {
+  const categories = [
+    { id: "experts-2026", title: "Встречи с экспертами 2026", icon: "🎤", order: 1 },
+    { id: "community-2026", title: "Встречи сообщества 2026", icon: "👥", order: 2 },
+    { id: "excursions", title: "Экскурсии в проекты и инструменты", icon: "🏗️", order: 3 }
+  ];
+  await env.KV.put("kb:categories", JSON.stringify(categories));
+
+  const experts = [
+    {
+      id: "crm-anna-2026-04-16",
+      title: "Экскурсия в отдел CRM-маркетинга с Анной Ильичевой",
+      subtitle: "Как оценить потенциал выручки с базы по 5 критериям",
+      date: "16.04.2026",
+      videoUrl: "https://youtu.be/Voa2PNtz2GY",
+      materials: [
+        { title: "Шаблон: Аудит состояния базы + расчёт потенциала выручки из базы", url: "https://docs.google.com/spreadsheets/d/1cilSwiXFqlw_QFErHuoJx-HAe6GUUhjIaULied86lLU/edit?gid=1534526639#gid=1534526639" }
+      ],
+      summary: "Основа работы с базой — аналитика. До построения и тестирования гипотез нужно провести анализ поведения пользователей в базе. Ключевые метрики: средняя выручка на регистрацию, структура выручки (новые vs база), доля клиентов в базе (при 12%+ база «выгорела»), конверсия базы в заказ (<1,5% — большой потенциал), доля активных пользователей.\n\nИтоговый потенциал: перемножение всех коэффициентов показывает теоретический рост выручки в 3,7 раза. Пример подтверждённой гипотезы: трафик текущего месяца, прошедший 18-дневную воронку но не купивший, конвертируется повторно без дополнительных скидок — достаточно смысловой обвязки (сезонность, срочность).\n\nРост открываемости писем на 1–2% требует 3–4 месяцев работы. На Чёрную пятницу скидка 80% через бандлы снизила средний чек всего на 2–3 тыс. руб., но дала рекордную выручку."
+    },
+    {
+      id: "petr-derevenskiy-2026-04-18",
+      title: "Встреча с Петром Деревенским",
+      subtitle: "Как создать цифрового двойника для онлайн-школы?",
+      date: "18.04.2026",
+      videoUrl: "https://youtu.be/AEnRncx_qhQ",
+      materials: [
+        { title: "600 нейросетей и их возможности", url: "https://drive.google.com/file/d/1y2FivNdJaDubL7IO4wDYTSryFFBEWz94/view?usp=sharing" },
+        { title: "Промт для нейро-прогрева", url: "https://docs.google.com/document/u/0/d/1z4kS7kjZPoUXVyd46VUmw2-2hjtZyjk0k52f6vnGyy4/mobilebasic" },
+        { title: "Промт для нейро-веба", url: "https://docs.google.com/document/u/0/d/1kgs38WU97akWINMSUB47FFZctzLG4kJ6se229-t0UK4/mobilebasic" }
+      ],
+      summary: "Охваты в Telegram упали на 50% из-за блокировок. Трафик дорожает, команда не дешевеет, база выгорает.\n\nNeiroPeople создаёт цифрового двойника эксперта — ИИ-копию, которая работает в любых онлайн-сервисах 24/7 без VPN. Двойник обучается автоматически на контенте из подключённых соцсетей и мессенджеров.\n\nЧто двойник умеет: персонализированно предлагает продукты под боль конкретного пользователя, заменяет кураторов (отвечает на вопросы студентов в любое время), пуш-уведомления открывают 40–60% подписчиков против 5–15% у рассылок, находит чаты с вакансиями и откликается по скрипту, создаёт контент: анализирует тренды → пишет сценарий → генерирует видео через HeyGen → публикует.\n\nМодель работы: внедрение бесплатно, совместный запуск 50/50 от чистой прибыли. Контакт: @p_derevenskiy"
+    },
+    {
+      id: "dmitry-zubankov-2026-04-30",
+      title: "Встреча с Дмитрием Зубанковым",
+      subtitle: "Как запустить и масштабировать успешный клуб по подписке?",
+      date: "30.04.2026",
+      videoUrl: "https://youtu.be/-4RdjRnI2Dc",
+      materials: [
+        { title: "Матрица масштабирования", url: "https://drive.google.com/file/d/1buVHP54NjxKpmzmhUt9laY2oapc3qe9P/view?usp=sharing" },
+        { title: "Дорожная карта по запуску клуба", url: "https://drive.google.com/file/d/1rxT66dr98Euko14bMC0ztxhlJc830mh5/view?usp=sharing" },
+        { title: "Бесплатная консультация по запуску / масштабированию клуба", url: "https://my-membership.ru/consultation?utm_campaign=cmoveb" }
+      ],
+      summary: "В подписной модели ключевое — удержание: клиент приносит деньги, пока остаётся в системе. Участники приходят за контентом, остаются ради сообщества и результата.\n\nМетодология запуска (6–8 недель): исследовать рынок → определить роль клуба в линейке → описать путь клиента → разбить на дорожную карту → запустить предзапись за 2–4 недели → провести тестовый запуск.\n\nФорматы клубов: контентный, капельный, DHL, коучинговый, комьюнити, престиж, гибридный (самый частый).\n\nМасштабирование по 3 направлениям: маркетинг (аудитория → конверсия → маховик), резиденты (удержание, снижение оттока), менеджмент (команда, система).\n\nЧастые ошибки: каннибализация дорогих продуктов, продажа клубов в холодный трафик, смешение несвязанных аудиторий."
+    },
+    {
+      id: "minikonfа-romi-seo-geo",
+      title: "Мини-конфа: Как получать ROMI 500–700% от SEO и GEO",
+      subtitle: "AI-агентные системы производства контента и стратегия органического трафика",
+      date: "2026",
+      videoUrl: "https://youtu.be/PmDWexr0iXw",
+      materials: [
+        { title: "Исследование: ключевые факторы успеха сайтов в EdTech", url: "https://drive.google.com/file/d/14CDOdnTRaCvngxnZ00VL6UjQMWDtFc_x/view?usp=sharing" },
+        { title: "Фин.модель окупаемости инвестиций в SEO (по запросу)", url: "https://t.me/kasyanovserj" }
+      ],
+      summary: "Три эксперта по SEO и контент-маркетингу:\n\nRuslan (B2B/корпораты): AI-агентная система из 11 фаз производства контента, 9 из которых делают агенты. Юнит-экономика: 4–8 тыс. руб./статья, 70–80 статей/месяц силами 7 человек. За 3 месяца: 78 статей, ~3000 органических переходов/месяц, 10 лидов на входе воронки.\n\nIlya: полуавтоматический пайплайн технического аудита и генерации статей — 5–7 статей в день. Визуал через фирменный код в едином стиле.\n\nSergey (200+ человек в команде, ~200–500 проектов): стратегия ROI 500%+ через органику. Доходность лида с одного канала может различаться в 10 раз между воронками. Средняя конверсия сайтов 2,5%, у топ-5% — >7%. Поисковый мультипликатор: с каждым новым материалом старые получают больше трафика.\n\nGEO-оптимизация: упоминания бренда в Яндекс.Справочнике влияют на переходы из нейросетевой выдачи (Алиса). Несколько тысяч переходов в неделю из GEO уже реальность."
+    },
+    {
+      id: "vasily-alekseev-2026-05-28",
+      title: "Встреча с Василием Алексеевым (CEO Лайк)",
+      subtitle: "",
+      date: "28.05.2026",
+      videoUrl: "",
+      materials: [],
+      summary: ""
+    },
+    {
+      id: "philipp-lorez-2026-05-21",
+      title: "Встреча с Филиппом Лорез (CMO Web3 Academy)",
+      subtitle: "",
+      date: "21.05.2026",
+      videoUrl: "",
+      materials: [],
+      summary: ""
+    },
+    {
+      id: "evgeny-bordunov-2026-06-04",
+      title: "Встреча с Евгением Бордуновым",
+      subtitle: "",
+      date: "04.06.2026",
+      videoUrl: "",
+      materials: [],
+      summary: ""
+    },
+    {
+      id: "alexey-tkachenko-2026-06-25",
+      title: "Встреча с Алексеем Ткаченко",
+      subtitle: "Механики увеличения конверсии вебинаров до 48%",
+      date: "25.06.2026",
+      videoUrl: "",
+      materials: [],
+      summary: ""
+    },
+    {
+      id: "artem-zakharov-puzzlebrain",
+      title: "Встреча с Артемом Захаровым (puzzlebrain.ru)",
+      subtitle: "Как получать регистрации в онлайн-школы от 50 рублей с Яндекс.Директа?",
+      date: "2026",
+      videoUrl: "",
+      materials: [],
+      summary: ""
+    },
+    {
+      id: "vetto-voice",
+      title: "Встреча с Ветто",
+      subtitle: "Голос как инструмент влияния: как вызывать уважение, быть услышанным и вести за собой",
+      date: "2026",
+      videoUrl: "",
+      materials: [],
+      summary: ""
+    }
+  ];
+  await env.KV.put("kb:entries:experts-2026", JSON.stringify(experts));
+
+  const community = [
+    {
+      id: "edtech-tops-2026-04-15",
+      title: "Круглый стол для топов EdTech",
+      subtitle: "",
+      date: "15.04.2026",
+      videoUrl: "",
+      materials: [],
+      summary: ""
+    },
+    {
+      id: "edtech-kids-2026-04-28",
+      title: "Круглый стол по детской нише EdTech",
+      subtitle: "",
+      date: "28.04.2026",
+      videoUrl: "",
+      materials: [],
+      summary: ""
+    }
+  ];
+  await env.KV.put("kb:entries:community-2026", JSON.stringify(community));
+  await env.KV.put("kb:entries:excursions", JSON.stringify([]));
+}
+
+// ─── MINI APP HTML ───────────────────────────────────────────
+async function serveApp(env) {
+  return new Response(getMiniAppHTML(), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+// ══════════════════════════════════════════════
+// РАНДОМ КОФЕ — API
+// ══════════════════════════════════════════════
+
+const COFFEE_WEEK = () => {
+  const now = new Date();
+  const jan1 = new Date(now.getFullYear(), 0, 1);
+  const week = Math.ceil(((now.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7);
+  return `${now.getFullYear()}-W${String(week).padStart(2, '0')}`;
+};
+
+async function apiCoffeeJoin(request, env) {
+  if (request.method !== 'POST') return jsonResp({ error: 'Method not allowed' }, 405);
+  const { tgId, name, city, bio, request: userRequest, skills, circleFileId, active } = await request.json();
+  if (!tgId) return jsonResp({ ok: false, error: 'No tgId' });
+
+  const existing = await env.KV.get(`coffee:user:${tgId}`, 'json') || {};
+// Подтянуть username из botuser если не пришёл явно
+const botuserData = await env.KV.get(`botuser:${tgId}`, 'json');
+const resolvedUsername = botuserData?.username || existing.username || null;
+const profile = {
+  ...existing,
+  tgId, name, city, bio,
+  username: resolvedUsername,  // ← новое поле
+  request: userRequest,
+  skills: skills || [],
+    active: active !== undefined ? active : true, // по умолчанию true
+    circleFileId: circleFileId || existing.circleFileId || null, // сохраняем кружочек
+    joinedAt: existing.joinedAt || Date.now(),
+    updatedAt: Date.now()
+  };
+  await env.KV.put(`coffee:user:${tgId}`, JSON.stringify(profile));
+
+  // Добавить в индекс участников
+  const idx = await env.KV.get('coffee:participants', 'json') || [];
+  if (!idx.includes(tgId)) {
+    idx.push(tgId);
+    await env.KV.put('coffee:participants', JSON.stringify(idx));
+  }
+
+  return jsonResp({ ok: true });
+}
+
+async function apiCoffeeProfile(request, env) {
+  if (request.method !== 'POST') return jsonResp({ error: 'Method not allowed' }, 405);
+  const { tgId, ...fields } = await request.json();
+  if (!tgId) return jsonResp({ ok: false, error: 'No tgId' });
+
+  const profile = await env.KV.get(`coffee:user:${tgId}`, 'json');
+  if (!profile) return jsonResp({ ok: false, error: 'Not found' });
+
+  const updated = { ...profile, ...fields, updatedAt: Date.now() };
+  await env.KV.put(`coffee:user:${tgId}`, JSON.stringify(updated));
+  return jsonResp({ ok: true });
+}
+
+async function apiCoffeeToggle(request, env) {
+  if (request.method !== 'POST') return jsonResp({ error: 'Method not allowed' }, 405);
+  const { tgId } = await request.json();
+  if (!tgId) return jsonResp({ ok: false });
+
+  const profile = await env.KV.get(`coffee:user:${tgId}`, 'json');
+  if (!profile) return jsonResp({ ok: false, error: 'Not found' });
+
+  profile.active = !profile.active;
+  profile.updatedAt = Date.now();
+  await env.KV.put(`coffee:user:${tgId}`, JSON.stringify(profile));
+  return jsonResp({ ok: true, active: profile.active });
+}
+
+async function apiCoffeeStatus(request, env) {
+  const tgId = new URL(request.url).searchParams.get('tgId');
+  if (!tgId) return jsonResp({ ok: false });
+
+  const profile = await env.KV.get(`coffee:user:${tgId}`, 'json');
+  const match = await env.KV.get(`coffee:match:${tgId}`, 'json');
+  const history = await env.KV.get(`coffee:history:${tgId}`, 'json') || [];
+
+  // Для текущего матча подгрузить профиль партнёра
+  let partnerProfile = null;
+if (match?.partnerId) {
+  partnerProfile = await env.KV.get(`coffee:user:${match.partnerId}`, 'json');
+  // Подтянуть username из botuser если не сохранён в профиле кофе
+  if (partnerProfile && !partnerProfile.username) {
+    const partnerBotuser = await env.KV.get(`botuser:${match.partnerId}`, 'json');
+    if (partnerBotuser?.username) {
+      partnerProfile = { ...partnerProfile, username: partnerBotuser.username };
+    }
+  }
+}
+
+  // Для истории подгрузить имена партнёров и взаимные оценки
+  const historyEnriched = await Promise.all(history.map(async (h) => {
+    const partner = await env.KV.get(`coffee:user:${h.partnerId}`, 'json');
+    const myRating = await env.KV.get(`coffee:rating:${tgId}:${h.weekId}`, 'json');
+    const theirRating = await env.KV.get(`coffee:rating:${h.partnerId}:${h.weekId}`, 'json');
+    return {
+      ...h,
+      partnerName: partner?.name || '—',
+      partnerCity: partner?.city || '',
+      myRating: myRating || null,
+      theirRating: myRating ? (theirRating || null) : null // показываем только если сам уже оценил
+    };
+  }));
+
+  // Средний рейтинг пользователя (по оценкам ДРУГИХ о нём)
+  const ratingsAboutMe = await Promise.all(
+    history.map(h => env.KV.get(`coffee:rating:${h.partnerId}:${h.weekId}`, 'json'))
+  );
+  const validRatings = ratingsAboutMe.filter(r => r?.stars);
+  const avgRating = validRatings.length
+    ? (validRatings.reduce((s, r) => s + r.stars, 0) / validRatings.length).toFixed(1)
+    : null;
+
+  return jsonResp({
+    ok: true,
+    profile,
+    match: match ? { ...match, partnerProfile } : null,
+    history: historyEnriched,
+    avgRating,
+    totalMeetings: history.length
+  });
+}
+
+async function apiCoffeeRate(request, env) {
+  if (request.method !== 'POST') return jsonResp({ error: 'Method not allowed' }, 405);
+  const { tgId, weekId, stars, complaint, note } = await request.json();
+  if (!tgId || !weekId) return jsonResp({ ok: false });
+
+  const rating = { stars, complaint: complaint || false, note: note || '', createdAt: Date.now() };
+  await env.KV.put(`coffee:rating:${tgId}:${weekId}`, JSON.stringify(rating));
+
+  // Обновить статус в матче
+  const match = await env.KV.get(`coffee:match:${tgId}`, 'json');
+  if (match) {
+    match.status = complaint ? 'complained' : 'done';
+    await env.KV.put(`coffee:match:${tgId}`, JSON.stringify(match));
+  }
+
+  // Обновить статус в истории
+  const history = await env.KV.get(`coffee:history:${tgId}`, 'json') || [];
+  const entry = history.find(h => h.weekId === weekId);
+  if (entry) {
+    entry.rated = true;
+    entry.stars = stars;
+    entry.complaint = complaint || false;
+    await env.KV.put(`coffee:history:${tgId}`, JSON.stringify(history));
+  }
+
+  // Если жалоба — записать в очередь для админа
+  if (complaint) {
+    const complaints = await env.KV.get('coffee:complaints', 'json') || [];
+    complaints.unshift({
+      fromId: tgId,
+      toId: match?.partnerId,
+      weekId,
+      note,
+      createdAt: Date.now(),
+      resolved: false
+    });
+    await env.KV.put('coffee:complaints', JSON.stringify(complaints));
+  }
+
+  return jsonResp({ ok: true });
+}
+
+// ══════════════════════════════════════════════
+// РАНДОМ КОФЕ — ADMIN API
+// ══════════════════════════════════════════════
+
+async function apiAdminCoffee(request, env, url) {
+  // Простая проверка — тот же пароль что у основной админки
+  const auth = request.headers.get("Authorization") || "";
+if (!auth.includes("admin_session_" + ADMIN_PASSWORD)) {
+  return jsonResp({ error: "Unauthorized" }, 401);
+}
+
+  const sub = url.pathname.replace('/api/admin/coffee', '') || '/';
+
+  // GET /api/admin/coffee — дашборд
+  if (request.method === 'GET' && sub === '/') {
+    const idx = await env.KV.get('coffee:participants', 'json') || [];
+    const participants = await Promise.all(idx.map(async (tgId) => {
+      const profile = await env.KV.get(`coffee:user:${tgId}`, 'json');
+      const match = await env.KV.get(`coffee:match:${tgId}`, 'json');
+      const history = await env.KV.get(`coffee:history:${tgId}`, 'json') || [];
+      return { ...profile, currentMatch: match, totalMeetings: history.length };
+    }));
+    const complaints = await env.KV.get('coffee:complaints', 'json') || [];
+    const weekId = COFFEE_WEEK();
+    const round = await env.KV.get(`coffee:round:${weekId}`, 'json') || null;
+    return jsonResp({ ok: true, participants, complaints, round, weekId });
+  }
+
+  // POST /api/admin/coffee/pairs — сохранить пары на неделю (вручную)
+  // body: { weekId, pairs: [{a: tgId, b: tgId}, ...] }
+  if (request.method === 'POST' && sub === '/pairs') {
+    const { weekId, pairs } = await request.json();
+    await env.KV.put(`coffee:round:${weekId}`, JSON.stringify({ pairs, weekId, createdAt: Date.now(), sentAt: null }));
+    return jsonResp({ ok: true });
+  }
+
+  // POST /api/admin/coffee/reassign — переназначить партнёра вручную
+  // body: { tgId, newPartnerId, weekId }
+  if (request.method === 'POST' && sub === '/reassign') {
+    const { tgId, newPartnerId, weekId, complaintId } = await request.json();
+
+    // Обновить матчи обоим
+    await env.KV.put(`coffee:match:${tgId}`, JSON.stringify({ partnerId: newPartnerId, weekId, status: 'active' }));
+    await env.KV.put(`coffee:match:${newPartnerId}`, JSON.stringify({ partnerId: tgId, weekId, status: 'active' }));
+
+    // Добавить в историю
+    await coffeeAddHistory(env, tgId, newPartnerId, weekId);
+    await coffeeAddHistory(env, newPartnerId, tgId, weekId);
+
+    // Уведомить обоих в боте
+    const p1 = await env.KV.get(`coffee:user:${tgId}`, 'json');
+    const p2 = await env.KV.get(`coffee:user:${newPartnerId}`, 'json');
+    await coffeeSendMatchNotification(env, tgId, p2);
+    await coffeeSendMatchNotification(env, newPartnerId, p1);
+
+    // Отметить жалобу решённой
+    if (complaintId !== undefined) {
+      const complaints = await env.KV.get('coffee:complaints', 'json') || [];
+      if (complaints[complaintId]) complaints[complaintId].resolved = true;
+      await env.KV.put('coffee:complaints', JSON.stringify(complaints));
+    }
+
+    return jsonResp({ ok: true });
+  }
+
+  // POST /api/admin/coffee/disable — отключить участника
+  if (request.method === 'POST' && sub === '/disable') {
+    const { tgId, reason } = await request.json();
+    const profile = await env.KV.get(`coffee:user:${tgId}`, 'json');
+    if (!profile) return jsonResp({ ok: false });
+    profile.active = false;
+    profile.disabledReason = reason || '';
+    profile.updatedAt = Date.now();
+    await env.KV.put(`coffee:user:${tgId}`, JSON.stringify(profile));
+
+    // Уведомление в бот с кнопкой восстановления
+    await tgSend(env, tgId,
+      `☕ Рандом Кофе\n\nТебя временно исключили из подбора партнёров${reason ? ` — ${reason}` : ''}.\n\nЕсли хочешь вернуться, нажми кнопку ниже 👇`,
+      { inline_keyboard: [[{ text: '✅ Восстановить участие', callback_data: 'coffee_restore' }]] }
+    );
+    return jsonResp({ ok: true });
+  }
+
+  // POST /api/admin/coffee/enable — восстановить участника
+  if (request.method === 'POST' && sub === '/enable') {
+    const { tgId } = await request.json();
+    const profile = await env.KV.get(`coffee:user:${tgId}`, 'json');
+    if (!profile) return jsonResp({ ok: false });
+    profile.active = true;
+    profile.disabledReason = '';
+    profile.updatedAt = Date.now();
+    await env.KV.put(`coffee:user:${tgId}`, JSON.stringify(profile));
+    return jsonResp({ ok: true });
+  }
+
+  // POST /api/admin/coffee/send-circle — прислать кружочек участника админу
+  if (request.method === 'POST' && sub === '/send-circle') {
+    const { tgId } = await request.json();
+    const profile = await env.KV.get(`coffee:user:${tgId}`, 'json');
+    if (!profile?.circleFileId) return jsonResp({ ok: false, error: 'Кружочек не найден' });
+
+    // Отправляем имя отдельным сообщением перед кружочком (caption у video_note не поддерживается API)
+    await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: 1326867567,
+        text: `👤 *${profile.name || '—'}*\ntgId: \`${tgId}\`${profile.city ? '\n📍 ' + profile.city : ''}${profile.bio ? '\n\n' + profile.bio : ''}`,
+        parse_mode: 'Markdown'
+      })
+    });
+
+    await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendVideoNote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: 1326867567,
+        video_note: profile.circleFileId
+      })
+    });
+
+    return jsonResp({ ok: true });
+  }
+// POST /api/admin/coffee/send-now — ручная рассылка пар
+if (request.method === 'POST' && sub === '/send-now') {
+  const weekId = COFFEE_WEEK();
+  const round = await env.KV.get(`coffee:round:${weekId}`, 'json');
+  if (!round) return jsonResp({ ok: false, error: `Нет раунда для ${weekId}` });
+  if (round.sentAt) return jsonResp({ ok: false, error: `Уже отправлено в ${new Date(round.sentAt).toISOString()}` });
+  await coffeeSendPairs(env);
+  return jsonResp({ ok: true, weekId, pairs: round.pairs.length });
+}
+  if (request.method === 'POST' && sub === '/resend-username') {
+    const weekId = COFFEE_WEEK();
+    const round = await env.KV.get(`coffee:round:${weekId}`, 'json');
+    if (!round) return jsonResp({ ok: false, error: `Нет раунда для ${weekId}` });
+
+    let sent = 0;
+    for (const pair of round.pairs) {
+      const p1 = await env.KV.get(`coffee:user:${pair.a}`, 'json');
+      const p2 = await env.KV.get(`coffee:user:${pair.b}`, 'json');
+      if (!p1 || !p2) continue;
+
+      // Подтянуть username из botuser если нет в профиле
+      if (!p1.username) {
+        const bu = await env.KV.get(`botuser:${pair.a}`, 'json');
+        if (bu?.username) p1.username = bu.username;
+      }
+      if (!p2.username) {
+        const bu = await env.KV.get(`botuser:${pair.b}`, 'json');
+        if (bu?.username) p2.username = bu.username;
+      }
+
+      const msg1 = p2.username
+        ? `✈️ Контакт твоего партнёра по рандом кофе на этой неделе:\n\n@${p2.username}`
+        : `✈️ У твоего партнёра *${p2.name}* нет username в Telegram — попробуй найти его в общем чате CMO.`;
+      const msg2 = p1.username
+        ? `✈️ Контакт твоего партнёра по рандом кофе на этой неделе:\n\n@${p1.username}`
+        : `✈️ У твоего партнёра *${p1.name}* нет username в Telegram — попробуй найти его в общем чате CMO.`;
+
+      await tgSend(env, pair.a, msg1);
+      await tgSend(env, pair.b, msg2);
+      sent++;
+    }
+    return jsonResp({ ok: true, pairsSent: sent });
+  }
+
+ // POST /api/admin/coffee/sync-usernames — полный синхрон
+if (request.method === 'POST' && sub === '/sync-usernames') {
+  const idx = await env.KV.get('coffee:participants', 'json') || [];
+  let updated = 0, notFound = 0;
+
+  for (const tgId of idx) {
+    const profile = await env.KV.get(`coffee:user:${tgId}`, 'json');
+    if (!profile) continue;
+    if (profile.username) { continue; } // уже есть — пропускаем
+
+    // Источник 1: botuser (писался при /start)
+    const botuser = await env.KV.get(`botuser:${tgId}`, 'json');
+    if (botuser?.username) {
+      profile.username = botuser.username;
+      profile.updatedAt = Date.now();
+      await env.KV.put(`coffee:user:${tgId}`, JSON.stringify(profile));
+      updated++;
+      continue;
+    }
+
+    // Источник 2: user: (писался при вводе email)
+    const userRecord = await env.KV.get(`user:${tgId}`, 'json');
+    if (userRecord?.username) {
+      profile.username = userRecord.username;
+      profile.updatedAt = Date.now();
+      await env.KV.put(`coffee:user:${tgId}`, JSON.stringify(profile));
+      updated++;
+      continue;
+    }
+ 
+    notFound++;
+  }
+
+  return jsonResp({ ok: true, updated, notFound });
+}
+
+  return jsonResp({ error: 'Not found' }, 404);
+}
+
+
+// ══════════════════════════════════════════════
+// РАНДОМ КОФЕ — CRON ФУНКЦИИ
+// ══════════════════════════════════════════════
+
+async function coffeeSendPairs(env) {
+  const weekId = COFFEE_WEEK();
+  const round = await env.KV.get(`coffee:round:${weekId}`, 'json');
+  if (!round || round.sentAt) return; // нет пар или уже отправлено
+
+  for (const pair of round.pairs) {
+    const p1 = await env.KV.get(`coffee:user:${pair.a}`, 'json');
+    const p2 = await env.KV.get(`coffee:user:${pair.b}`, 'json');
+    if (!p1 || !p2) continue;
+
+    // Сохранить матчи
+    await env.KV.put(`coffee:match:${pair.a}`, JSON.stringify({ partnerId: pair.b, weekId, status: 'active' }));
+    await env.KV.put(`coffee:match:${pair.b}`, JSON.stringify({ partnerId: pair.a, weekId, status: 'active' }));
+
+    // Добавить в историю
+    await coffeeAddHistory(env, pair.a, pair.b, weekId);
+    await coffeeAddHistory(env, pair.b, pair.a, weekId);
+
+    // Отправить уведомления с карточкой партнёра
+    await coffeeSendMatchNotification(env, pair.a, p2);
+    await coffeeSendMatchNotification(env, pair.b, p1);
+  }
+
+  round.sentAt = Date.now();
+  await env.KV.put(`coffee:round:${weekId}`, JSON.stringify(round));
+}
+
+async function coffeeSendReminder(env) {
+  const weekId = COFFEE_WEEK();
+  const round = await env.KV.get(`coffee:round:${weekId}`, 'json');
+  if (!round) return;
+
+  for (const pair of round.pairs) {
+    for (const tgId of [pair.a, pair.b]) {
+      const match = await env.KV.get(`coffee:match:${tgId}`, 'json');
+      if (match?.status !== 'active') continue; // уже оценили или пожаловались
+
+      await tgSend(env, tgId,
+        `☕ Рандом Кофе — напоминание\n\nЭта неделя заканчивается. Ты уже успел(а) пообщаться со своим партнёром?\n\nНе забудь оценить встречу 👇`,
+        {
+          inline_keyboard: [
+            [{ text: '⭐ Оценить встречу', callback_data: `coffee_rate_${weekId}` }],
+            [{ text: '🚩 Партнёр не вышел на связь', callback_data: `coffee_complaint_${weekId}` }]
+          ]
+        }
+      );
+
+      // Крючок в Ядро — органично в пятничное сообщение
+      await tgSend(env, tgId,
+        `💡 Кстати, в разделе *Ядро* уже собраны участники, которые готовы к глубокому нетворку — с профилями, запросами и историей встреч. Загляни 👇`,
+        { parse_mode: 'Markdown', inline_keyboard: [[{ text: '🌟 Открыть Ядро', web_app: { url: 'https://cmo-razbory.oxion-ezhkov.workers.dev/app' } }]] }
+      );
+    }
+  }
+}
+
+async function coffeeSendMatchNotification(env, tgId, partnerProfile) {
+  // Если есть кружочек — сначала его
+  if (partnerProfile.circleFileId) {
+    await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendVideoNote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: tgId, video_note: partnerProfile.circleFileId })
+    });
+  }
+
+  const skillsText = partnerProfile.skills?.length
+    ? `\n\n🤝 Готов(а) помочь с:\n${partnerProfile.skills.map(s => `• ${s}`).join('\n')}`
+    : '';
+
+  const requestText = partnerProfile.request
+    ? `\n\n🎯 Его/её запрос: ${partnerProfile.request}`
+    : '';
+
+  const usernameText = partnerProfile.username
+    ? `\n\n✈️ Написать: @${partnerProfile.username}`
+    : '';
+
+  await tgSend(env, tgId,
+    `☕ Рандом Кофе — новая неделя!\n\nТвой партнёр на эту неделю:\n\n👤 *${partnerProfile.name}*${partnerProfile.city ? ` · ${partnerProfile.city}` : ''}\n${partnerProfile.bio || ''}${requestText}${skillsText}${usernameText}\n\nНапиши ему первым — удачной встречи! 🚀`,
+{
+      parse_mode: 'Markdown',
+      inline_keyboard: [[{ text: '✅ Встретились, оценить', callback_data: `coffee_rate_${COFFEE_WEEK()}` }]]
+    }
+  );
+}
+
+// ══════════════════════════════════════════════
+// РАНДОМ КОФЕ — ВСПОМОГАТЕЛЬНЫЕ
+// ══════════════════════════════════════════════
+
+async function coffeeAddHistory(env, tgId, partnerId, weekId) {
+  const history = await env.KV.get(`coffee:history:${tgId}`, 'json') || [];
+  // Не дублировать
+  if (!history.find(h => h.weekId === weekId && h.partnerId === partnerId)) {
+    history.unshift({ partnerId, weekId, rated: false, createdAt: Date.now() });
+    await env.KV.put(`coffee:history:${tgId}`, JSON.stringify(history));
+  }
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────
+function parseTgInitData(initData) {
+  if (!initData) return null;
+  try {
+    const params = new URLSearchParams(initData);
+    const userStr = params.get("user");
+    if (!userStr) return null;
+    return { user: JSON.parse(userStr) };
+  } catch {
+    return null;
+  }
+}
+
+function jsonResp(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*"
+    }
+  });
+}
+
+// ─── MINI APP HTML ───────────────────────────────────────────
+function getMiniAppHTML() {
+  return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>CMO Субботние разборы</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@300;400;600;700&family=Geologica:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #0d0d0d;
+    --bg2: #141414;
+    --bg3: #1a1a1a;
+    --card: #161616;
+    --border: rgba(255,255,255,0.07);
+    --border-hover: rgba(255,255,255,0.15);
+    --text: #ffffff;
+    --text2: rgba(255,255,255,0.5);
+    --text3: rgba(255,255,255,0.25);
+    --accent: #ffffff;
+    --accent-dim: rgba(255,255,255,0.08);
+    --done: rgba(255,255,255,0.12);
+    --radius: 12px;
+    --radius-lg: 20px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Geologica', sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+    overscroll-behavior: none;
+  }
+
+  /* ── SCREENS ── */
+  .screen { display: none; flex-direction: column; min-height: 100vh; }
+  .screen.active { display: flex; }
+
+  .event-card { background:var(--card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px; display:flex; flex-direction:column; align-items:center; gap:12px; margin-bottom:12px; }
+.event-photo-wrap { width:80px; height:80px; border-radius:50%; overflow:hidden; background:var(--bg3); flex-shrink:0; }
+.event-photo { width:100%; height:100%; object-fit:cover; }
+.event-body { width:100%; text-align:center; }
+.event-title { font-family:'Unbounded',sans-serif; font-size:15px; font-weight:600; margin-bottom:4px; }
+.event-author { font-size:12px; color:var(--text2); margin-bottom:8px; }
+.event-datetime { font-size:13px; color:var(--text2); margin-bottom:12px; }
+.event-zoom-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 14px;
+  background: var(--text);
+  color: var(--bg);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+  /* ── AUTH SCREEN ── */
+  #authScreen {
+    align-items: center;
+    justify-content: center;
+    padding: 32px 24px;
+    text-align: center;
+    gap: 0;
+  }
+
+  .auth-logo {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    margin-bottom: 8px;
+  }
+
+  .auth-sub {
+    font-size: 11px;
+    color: var(--text3);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 48px;
+  }
+
+  .auth-icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 32px;
+    font-size: 32px;
+  }
+
+  .auth-title {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    line-height: 1.3;
+  }
+
+  .auth-desc {
+    color: var(--text2);
+    font-size: 13px;
+    margin-bottom: 32px;
+    line-height: 1.6;
+  }
+
+  .input-wrap {
+    width: 100%;
+    max-width: 320px;
+    margin-bottom: 12px;
+  }
+
+  .input-wrap input {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    color: var(--text);
+    font-family: 'Geologica', sans-serif;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .input-wrap input:focus { border-color: rgba(255,255,255,0.3); }
+  .input-wrap input::placeholder { color: var(--text3); }
+
+  .btn-primary {
+    width: 100%;
+    max-width: 320px;
+    background: var(--text);
+    color: var(--bg);
+    border: none;
+    border-radius: var(--radius);
+    padding: 14px 20px;
+    font-family: 'Geologica', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    letter-spacing: 0.3px;
+  }
+
+  .btn-primary:active { opacity: 0.8; }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-ghost {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--radius);
+    padding: 12px 20px;
+    font-family: 'Geologica', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+
+  .btn-ghost:active { border-color: rgba(255,255,255,0.3); }
+
+  .auth-msg {
+    font-size: 12px;
+    margin-top: 12px;
+    max-width: 320px;
+    line-height: 1.5;
+    min-height: 20px;
+  }
+
+  .auth-msg.error { color: #ff6b6b; }
+  .auth-msg.success { color: #6bffb8; }
+
+  /* ── MAIN APP ── */
+  #appScreen { padding-bottom: 80px; }
+
+  /* ── TOP BAR ── */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: rgba(13,13,13,0.9);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    position: relative;
+  }
+
+  .topbar-logo {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    white-space: nowrap;
+  }
+
+  .topbar-user {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .topbar-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .topbar-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .topbar-name { font-size: 13px; color: var(--text2); }
+
+  /* ── PROGRAM TABS ── */
+  .program-tabs {
+    display: flex;
+    gap: 8px;
+    padding: 16px 16px 0;
+  }
+
+  /* ── SECTION TABS ── */
+  .section-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 16px 16px 0;
+  }
+
+  .stab {
+    flex: 1;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 4px;
+    text-align: center;
+    cursor: pointer;
+    font-family: 'Geologica', sans-serif;
+    font-size: 12px;
+    color: var(--text2);
+    transition: all 0.2s;
+  }
+
+  .stab.active {
+    background: var(--accent-dim);
+    border-color: rgba(255,255,255,0.2);
+    color: var(--text);
+  }
+
+  /* ── CONTENT AREA ── */
+  .content { padding: 16px; }
+
+  /* ── SECTION: KNOWLEDGE ── */
+  .section-header {
+    margin-bottom: 16px;
+  }
+
+  .section-title {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .section-desc { color: var(--text2); font-size: 12px; }
+
+  /* ── MODULE CARDS ── */
+  .module-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .module-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+  }
+
+  .module-card:active { background: var(--bg3); }
+  .module-card.available:hover { border-color: var(--border-hover); }
+  .module-card.locked { opacity: 0.4; cursor: default; }
+  .module-card.done { background: var(--done); }
+
+  .module-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .module-num {
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .module-title {
+    font-family: 'Geologica', sans-serif;
+    font-weight: 500;
+    font-size: 14px;
+    line-height: 1.3;
+  }
+
+  .module-desc {
+    font-size: 12px;
+    color: var(--text2);
+    margin-top: 6px;
+    line-height: 1.5;
+  }
+
+  .module-status {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+  }
+
+  .module-status.done {
+    background: var(--text);
+    border-color: var(--text);
+    color: var(--bg);
+  }
+
+  .module-tag {
+    display: inline-block;
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-top: 8px;
+    background: var(--accent-dim);
+    color: var(--text2);
+  }
+
+  .module-tag.locked-tag {
+    background: transparent;
+    border: 1px solid var(--border);
+  }
+
+  /* ── PROGRESS BAR ── */
+  .progress-wrap {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 16px;
+  }
+
+  .progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text2);
+    margin-bottom: 10px;
+  }
+
+  .progress-pct {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .progress-bar-track {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--text);
+    border-radius: 2px;
+    transition: width 0.5s ease;
+  }
+
+  /* ── MODULE DETAIL ── */
+  #detailScreen {
+    padding-bottom: 80px;
+  }
+
+  .detail-back {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(13,13,13,0.95);
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  font-size: 13px;
+  color: var(--text2);
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-back svg { width: 16px; height: 16px; }
+
+  .detail-content { padding: 16px; }
+
+  .detail-num {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-bottom: 8px;
+  }
+
+  .detail-title {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.25;
+    margin-bottom: 12px;
+  }
+
+  .detail-desc {
+    color: var(--text2);
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 24px;
+  }
+
+  .embed-wrap {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 16px;
+    aspect-ratio: 16/9;
+  }
+
+  .embed-wrap iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+  }
+
+  .embed-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--text3);
+    font-size: 12px;
+  }
+
+  .embed-placeholder-icon { font-size: 32px; }
+
+  .files-section { margin-bottom: 24px; }
+.files-title { font-size: 12px; color: var(--text3); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; }
+
+.file-item {
+  display: flex;           /* оставляем flex */
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 8px;      /* отступ снизу */
+  text-decoration: none;
+  color: var(--text);
+  transition: all 0.2s;
+  width: 100%;             /* на всю ширину */
+}
+
+.file-item:hover {
+  border-color: var(--border-h);
+  background: var(--bg2);
+  transform: translateY(-1px);
+}
+
+.file-icon {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.file-icon svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.file-name {
+  font-size: 13px;
+  flex: 1;                 /* занимает всё свободное место */
+}
+
+.file-arrow {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  opacity: 0.5;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.file-arrow svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.file-item:hover .file-arrow {
+  opacity: 1;
+  transform: translate(2px, -2px);
+}
+
+/* Таймкоды */
+.timeline-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+  text-decoration: none;
+  color: var(--text);
+  transition: all 0.2s;
+}
+
+.timeline-item:hover {
+  border-color: var(--border-h);
+  background: var(--bg2);
+  transform: translateX(2px);
+}
+
+.timeline-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  font-size: 12px;
+  color: var(--text2);
+}
+
+/* Формат ММ:СС (например, 05:30) */
+.timeline-time.time-short {
+  min-width: 65px;
+  max-width: 65px;
+}
+
+/* Формат 54:10 (две цифры в часах) */
+.timeline-time.time-medium {
+  min-width: 75px;
+  max-width: 75px;
+}
+
+/* Формат ЧЧ:ММ:СС (например, 01:09:04) */
+.timeline-time.time-long {
+  min-width: 85px;
+  max-width: 85px;
+}
+
+/* Автоматическая ширина (если нужно) */
+.timeline-time.time-auto {
+  min-width: auto;
+  width: auto;
+}
+
+.timeline-time svg {
+  flex-shrink: 0;
+}
+
+.timeline-time span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timeline-label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+  word-break: break-word;  /* перенос длинных слов */
+}
+
+.timeline-arrow {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0.4;
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.timeline-item:hover .timeline-arrow {
+  opacity: 1;
+  transform: translate(2px, -2px);
+}
+
+  .done-btn {
+    width: 100%;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text2);
+    border-radius: var(--radius);
+    padding: 14px;
+    font-family: 'Geologica', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .done-btn.is-done {
+    background: var(--done);
+    border-color: rgba(255,255,255,0.2);
+    color: var(--text);
+  }
+
+  /* ── QUESTION SECTION ── */
+  .question-section {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-top: 24px;
+  }
+
+  .question-label { font-size: 12px; color: var(--text3); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; }
+
+  .question-textarea {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    color: var(--text);
+    font-family: 'Geologica', sans-serif;
+    font-size: 13px;
+    resize: none;
+    outline: none;
+    min-height: 80px;
+    margin-bottom: 8px;
+    transition: border-color 0.2s;
+  }
+
+  .question-textarea:focus { border-color: rgba(255,255,255,0.2); }
+  .question-textarea::placeholder { color: var(--text3); }
+
+  .question-send {
+    width: 100%;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text2);
+    border-radius: 8px;
+    padding: 10px;
+    font-family: 'Geologica', sans-serif;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .question-send:active { border-color: rgba(255,255,255,0.3); color: var(--text); }
+
+  /* ── BOTTOM NAV ── */
+  .bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background: rgba(13,13,13,0.95);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid var(--border);
+    display: flex;
+    padding: 0 8px;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 2px;
+  gap: 3px;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--text3);
+  font-family: 'Geologica', sans-serif;
+  font-size: 9px;
+  font-weight: 400;
+  line-height: 1;
+  white-space: nowrap;
+  transition: color 0.2s;
+}
+
+.nav-item.active { 
+  color: var(--text);
+  font-weight: 400;          /* добавить — явно тот же вес */
+}
+
+.nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;    /* добавить */
+}
+
+  /* ── SPINNER ── */
+  .spinner {
+    width: 20px; height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--text);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    gap: 16px;
+  }
+
+  /* ── TOAST ── */
+  .toast {
+    position: fixed;
+    bottom: 90px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 16px;
+    font-size: 13px;
+    opacity: 0;
+    transition: all 0.3s;
+    pointer-events: none;
+    white-space: nowrap;
+    z-index: 100;
+  }
+
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* ── EMPTY STATE ── */
+  .empty-state {
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--text3);
+  }
+  .empty-state-icon { font-size: 40px; margin-bottom: 12px; }
+  .empty-state-text { font-size: 13px; line-height: 1.6; }
+
+  /* ── ENROLLING ── */
+  .enroll-banner {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    text-align: center;
+    margin-bottom: 16px;
+  }
+  .enroll-banner p { color: var(--text2); font-size: 13px; margin-bottom: 12px; }
+
+  /* Mobile safe area */
+  @supports (padding-bottom: env(safe-area-inset-bottom)) {
+    #appScreen, #detailScreen { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
+  }
+      :root {
+    --gold: #F5C842;
+    --gold-dim: rgba(245,200,66,0.12);
+    --gold-border: rgba(245,200,66,0.3);
+  }
+ 
+  /* Таб-переключатель внутри раздела */
+  .coffee-tabs {
+    display: flex;
+    gap: 6px;
+    padding: 16px 16px 0;
+  }
+  .coffee-tab {
+    flex: 1;
+    height: 36px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text2);
+    font-family: 'Geologica', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .coffee-tab.active {
+    background: var(--bg3);
+    border-color: var(--border-hover);
+    color: var(--text);
+  }
+ 
+  /* Карточка партнёра */
+  .coffee-partner-card {
+    margin: 12px 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .coffee-partner-card.has-match {
+    border-color: var(--border-hover);
+  }
+  .coffee-partner-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+  }
+  .coffee-partner-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .coffee-partner-name {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .coffee-partner-city {
+    font-size: 12px;
+    color: var(--text2);
+  }
+  .coffee-week-badge {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text3);
+    white-space: nowrap;
+  }
+  .coffee-partner-body {
+    padding: 0 16px 16px;
+  }
+  .coffee-partner-bio {
+    font-size: 13px;
+    color: var(--text2);
+    margin-bottom: 10px;
+    line-height: 1.5;
+  }
+  .coffee-skills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .coffee-skill-tag {
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: var(--accent-dim);
+    border: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text2);
+  }
+  .coffee-partner-request {
+    font-size: 12px;
+    color: var(--text3);
+    padding: 10px 12px;
+    background: var(--bg3);
+    border-radius: 8px;
+    margin-bottom: 14px;
+  }
+  .coffee-partner-request strong {
+    color: var(--text2);
+  }
+  .coffee-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .coffee-btn {
+    flex: 1;
+    height: 40px;
+    border-radius: 10px;
+    border: none;
+    font-family: 'Geologica', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity .15s;
+  }
+  .coffee-btn:active { opacity: 0.7; }
+  .coffee-btn-primary {
+    background: #ffffff;
+    color: #0d0d0d;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    border-radius: 999px;
+    box-shadow: 0 2px 12px rgba(255,255,255,0.15);
+  }
+  .coffee-btn-primary:active { opacity: 0.85; }
+  .coffee-btn-secondary {
+    background: var(--bg3);
+    color: var(--text2);
+    border: 1px solid var(--border);
+  }
+  .coffee-btn-danger {
+    background: rgba(255,80,80,0.1);
+    color: #ff6b6b;
+    border: 1px solid rgba(255,80,80,0.2);
+  }
+  
+  .coffee-join-footer {
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 12px 16px max(16px, env(safe-area-inset-bottom));
+    background: linear-gradient(to top, var(--bg) 70%, transparent);
+    z-index: 10;
+  }
+  .coffee-join-btn {
+    width: 100%;
+    height: 52px;
+    border-radius: 14px;
+    border: none;
+    background: #ffffff;
+    color: #0d0d0d;
+    font-family: 'Geologica', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    cursor: pointer;
+        box-shadow: 0 2px 12px rgba(255,255,255,0.15);
+    transition: opacity .15s, transform .1s;
+  }
+  .coffee-join-btn:active { opacity: 0.85; transform: scale(0.98); }
+  .coffee-join-btn:disabled { opacity: 0.5; }
+  
+  .coffee-edit-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(8px);
+    z-index: 500;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .coffee-edit-overlay.open { display: flex; }
+  .coffee-edit-sheet {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 24px 24px 0 0;
+    width: 100%;
+    max-width: 480px;
+    max-height: 88vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+  .coffee-edit-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--bg2);
+    z-index: 1;
+  }
+  .coffee-edit-title {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .coffee-edit-close {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text2);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .coffee-edit-body {
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .coffee-edit-footer {
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+    position: sticky;
+    bottom: 0;
+    background: var(--bg2);
+  }
+
+  /* Статус встречи */
+  .coffee-status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text3);
+  }
+  .coffee-status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--text3);
+    flex-shrink: 0;
+  }
+  .coffee-status-dot.active { background: #6bffb8; box-shadow: 0 0 6px #6bffb8; }
+  .coffee-status-dot.done   { background: #F5C842; }
+  .coffee-status-dot.complained { background: #ff6b6b; }
+ 
+  /* Онбординг-форма */
+  .coffee-form {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .coffee-form-title {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .coffee-form-sub {
+    font-size: 13px;
+    color: var(--text2);
+    margin-bottom: 8px;
+    line-height: 1.5;
+  }
+  .coffee-input {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    color: var(--text);
+    font-family: 'Geologica', sans-serif;
+    font-size: 14px;
+    outline: none;
+    transition: border-color .15s;
+    resize: none;
+  }
+  .coffee-input:focus { border-color: var(--border-hover); }
+  .coffee-input::placeholder { color: var(--text3); }
+  .coffee-input-label {
+    font-size: 11px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+    padding-left: 2px;
+  }
+  .coffee-char-count {
+    text-align: right;
+    font-size: 11px;
+    color: var(--text3);
+    margin-top: -8px;
+  }
+  .coffee-char-count.warn { color: #ff6b6b; }
+ 
+  /* Скилл-поля (3 штуки) */
+  .coffee-skills-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+ 
+  /* Кружочек-блок */
+  .coffee-circle-block {
+    background: var(--bg3);
+    border: 1px dashed var(--border-hover);
+    border-radius: var(--radius);
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    cursor: pointer;
+    transition: border-color .15s;
+  }
+  .coffee-circle-block:active { border-color: var(--text2); }
+  .coffee-circle-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    flex-shrink: 0;
+  }
+  .coffee-circle-block.recorded .coffee-circle-icon { border-color: #6bffb8; }
+  .coffee-circle-block.recorded { border-color: rgba(107,255,184,0.3); }
+  .coffee-circle-text { flex: 1; }
+  .coffee-circle-title { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
+  .coffee-circle-sub { font-size: 12px; color: var(--text3); line-height: 1.4; }
+ 
+  /* История встреч */
+  .coffee-history-item {
+    margin: 0 16px 10px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+  }
+  .coffee-history-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .coffee-history-name {
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .coffee-history-week {
+    font-size: 11px;
+    color: var(--text3);
+  }
+  .coffee-history-city {
+    font-size: 12px;
+    color: var(--text2);
+    margin-bottom: 10px;
+  }
+  .coffee-ratings-row {
+    display: flex;
+    gap: 10px;
+  }
+  .coffee-rating-pill {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+  }
+  .coffee-rating-pill.mine { border-color: var(--gold-border); background: var(--gold-dim); }
+  .coffee-rating-pill.theirs { opacity: 0.6; }
+  .coffee-rating-pill.pending { color: var(--text3); }
+ 
+  /* Профиль-блок (мой статус) */
+  .coffee-profile-card {
+    margin: 12px 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+  }
+  .coffee-profile-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .coffee-profile-name {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .coffee-rating-badge {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: var(--gold-dim);
+    border: 1px solid var(--gold-border);
+    font-size: 12px;
+    color: var(--gold);
+    font-weight: 600;
+  }
+  .coffee-profile-meta {
+    font-size: 12px;
+    color: var(--text2);
+    margin-bottom: 10px;
+  }
+  .coffee-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .coffee-toggle-label {
+    font-size: 13px;
+    color: var(--text2);
+  }
+  .coffee-toggle {
+    position: relative;
+    width: 42px;
+    height: 24px;
+  }
+  .coffee-toggle input { display: none; }
+  .coffee-toggle-slider {
+    position: absolute;
+    inset: 0;
+    border-radius: 12px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: background .2s;
+  }
+  .coffee-toggle-slider::before {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--text3);
+    transition: all .2s;
+  }
+  .coffee-toggle input:checked + .coffee-toggle-slider { background: rgba(107,255,184,0.2); border-color: rgba(107,255,184,0.4); }
+  .coffee-toggle input:checked + .coffee-toggle-slider::before { background: #6bffb8; left: calc(100% - 19px); }
+ 
+  /* Ядро-промо блок */
+  .coffee-nucleus-promo {
+    margin: 0 16px 16px;
+    background: linear-gradient(135deg, rgba(245,200,66,0.08) 0%, rgba(245,200,66,0.03) 100%);
+    border: 1px solid var(--gold-border);
+    border-radius: var(--radius-lg);
+    padding: 18px;
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    cursor: pointer;
+    transition: border-color .15s;
+  }
+  .coffee-nucleus-promo:active { border-color: var(--gold); }
+  .coffee-nucleus-icon {
+    font-size: 28px;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+  .coffee-nucleus-title {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--gold);
+    margin-bottom: 4px;
+  }
+  .coffee-nucleus-text {
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 1.5;
+  }
+  .coffee-nucleus-arrow {
+    margin-left: auto;
+    font-size: 16px;
+    color: var(--gold);
+    flex-shrink: 0;
+    align-self: center;
+  }
+ 
+  /* Секция-заголовок */
+  .coffee-section-title {
+    padding: 16px 16px 8px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text3);
+    font-weight: 500;
+  }
+ 
+  /* Пустые состояния */
+  .coffee-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 32px;
+    text-align: center;
+    gap: 12px;
+  }
+  .coffee-empty-icon { font-size: 40px; }
+  .coffee-empty-title { font-family: 'Unbounded', sans-serif; font-size: 14px; font-weight: 600; }
+  .coffee-empty-sub { font-size: 13px; color: var(--text2); line-height: 1.5; }
+ 
+  /* Модалка оценки */
+  .coffee-rate-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(8px);
+    z-index: 500;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .coffee-rate-overlay.open { display: flex; }
+  .coffee-rate-sheet {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 24px 24px 0 0;
+    padding: 24px;
+    width: 100%;
+    max-width: 480px;
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+  }
+  .coffee-rate-title {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 6px;
+  }
+  .coffee-rate-sub {
+    font-size: 13px;
+    color: var(--text2);
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  .coffee-stars-row {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  .coffee-star {
+    font-size: 32px;
+    cursor: pointer;
+    opacity: 0.3;
+    transition: opacity .1s, transform .1s;
+    user-select: none;
+  }
+  .coffee-star.active { opacity: 1; transform: scale(1.1); }
+  .coffee-rate-complaint {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    border-radius: var(--radius);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    margin-bottom: 14px;
+    cursor: pointer;
+  }
+  .coffee-rate-complaint.checked {
+    border-color: rgba(255,80,80,0.3);
+    background: rgba(255,80,80,0.07);
+  }
+  .coffee-rate-checkbox {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 11px;
+  }
+  .coffee-rate-complaint.checked .coffee-rate-checkbox {
+    background: rgba(255,80,80,0.2);
+    border-color: #ff6b6b;
+    color: #ff6b6b;
+  }
+  .coffee-rate-note-wrap {
+    display: none;
+    margin-bottom: 14px;
+  }
+  .coffee-rate-note-wrap.show { display: block; }
+    /* Исправления для формы Рандом Кофе */
+  .coffee-form {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px; /* Увеличил отступ между полями */
+    padding-bottom: 100px; /* Место для закрепленной кнопки */
+  }
+
+  /* Кнопка "Присоединиться" теперь широкая и закреплена */
+  .coffee-form .coffee-btn-primary {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-width: 100% !important;
+    border-radius: 0;
+    padding: 16px;
+    margin: 0;
+    z-index: 100;
+    font-size: 16px !important;
+    font-weight: 600;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.2);
+  }
+
+  /* Исправление для input и textarea внутри формы */
+  .coffee-form .coffee-input,
+  .coffee-form .coffee-input-label {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  
+  .coffee-form .coffee-input {
+    margin-top: 4px;
+  }
+    /* Модалка редактирования */
+#coffeeEditModal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  background: var(--bg);
+  overflow-y: auto;
+}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loadingScreen" class="loading-screen">
+  <div class="spinner"></div>
+</div>
+
+<!-- AUTH SCREEN -->
+<div id="authScreen" class="screen">
+  <div class="auth-logo">CMO</div>
+  <div class="auth-sub">Субботние разборы</div>
+  <div class="auth-icon">📚</div>
+  <div class="auth-title" id="authTitle">Добро пожаловать</div>
+  <div class="auth-desc" id="authDesc"></div>
+  <div class="input-wrap" id="emailWrap">
+    <input type="email" id="emailInput" placeholder="example@email.com" 
+      autocomplete="email" inputmode="email"/>
+  </div>
+  <button class="btn-primary" id="checkEmailBtn" onclick="checkEmail()">
+    Проверить
+  </button>
+  <div class="auth-msg" id="authMsg"></div>
+</div>
+
+<!-- MAIN APP -->
+<div id="appScreen" class="screen">
+  <div class="topbar">
+    <div class="topbar-logo" onclick="toggleProgramMenu()" style="cursor:pointer;display:flex;align-items:center;gap:6px">
+      <span id="currentProgramName">ИИ-контент</span>
+      <span id="dropdownArrow" style="font-size:10px;transition:transform 0.2s">▼</span>
+    </div>
+    <div class="topbar-user">
+      <span class="topbar-name" id="topbarName"></span>
+      <div class="topbar-avatar" id="topbarAvatar"></div>
+    </div>
+  </div>
+
+  <div id="programMenu" style="display:none;position:absolute;top:52px;left:12px;z-index:100;background:#1a1a1a;border:1px solid rgba(255,255,255,0.1);border-radius:12px;overflow:hidden;min-width:200px">
+    <div onclick="selectProgram('ai')" style="padding:12px 16px;cursor:pointer;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;gap:10px">
+      <span style="font-size:18px;width:24px;text-align:center">☆</span> ИИ-контент
+    </div>
+    <div onclick="selectProgram('funnels')" style="padding:12px 16px;cursor:pointer;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.07);display:flex;align-items:center;gap:10px">
+      <span style="font-size:18px;width:24px;text-align:center">➶</span> Воронки
+    </div>
+  </div>
+
+  <!-- Основной контент -->
+  <div class="content" id="mainContent"></div>
+
+  <!-- Gate для гостей — внутри appScreen, скрыт по умолчанию -->
+  <div id="nucleusGateScreen" style="display:none; overflow-y:auto; position:absolute; top:52px; left:0; right:0; bottom:60px; padding: 20px 16px 20px;">
+
+    <div style="margin-bottom:24px;">
+  <div style="font-size:22px; font-weight:700; margin-bottom:4px;">CMO Ядро</div>
+  <div style="color:#888; font-size:14px;">
+    Комьюнити для маркетологов, фаундеров и CMO, которые внедряют ИИ в бизнес
+  </div>
+</div>
+
+<div style="background:#1a1a1a; border-radius:12px; padding:16px; margin-bottom:10px;">
+  <div style="font-weight:600; margin-bottom:8px;">Формат</div>
+  <div style="color:#ccc; font-size:14px; line-height:1.5;">
+    Каждую субботу в 12:15 (мск) — живой воркшоп с разбором рабочих AI-схем, инструментов и новых маркетинговых механик. После эфира всю неделю помогаем участникам внедрить решение в свой проект и довести до результата.
+  </div>
+</div>
+
+<div style="background:#1a1a1a; border-radius:12px; padding:16px; margin-bottom:10px;">
+  <div style="font-weight:600; margin-bottom:8px;">Что изучаем в июне</div>
+  <div style="color:#ccc; font-size:14px; line-height:1.8;">
+    ☄️ Полностью автоматизированный AI-контент: рилсы, посты, карусели, SEO и трендвотчинг.<br>
+    ☄️ Игровые мини-курсы для прогрева холодного трафика и эвергрин-воронки с высокой конверсией.<br><br>
+    Эксперты направления:<br>
+    — Илья Чумаченков (AI-контент)<br>
+    — Олег Ежков (игровые мини-курсы и воронки)
+  </div>
+</div>
+
+<div style="background:#1a1a1a; border-radius:12px; padding:16px; margin-bottom:10px;">
+  <div style="font-weight:600; margin-bottom:8px;">Что внутри</div>
+  <div style="color:#ccc; font-size:14px; line-height:1.8;">
+    — Закрытое комьюнити маркетологов и предпринимателей<br>
+    — Записи всех воркшопов и база знаний<br>
+    — Практические задания с отслеживанием прогресса<br>
+    — Поддержка и помощь во внедрении<br>
+    — Мастер-группы и нетворкинг<br>
+    — AI-инструменты и рекомендации
+  </div>
+</div>
+
+<div style="background:#1a1a1a; border-radius:12px; padding:16px; margin-bottom:10px;">
+  <div style="font-weight:600; margin-bottom:8px;">Результат</div>
+  <div style="color:#ccc; font-size:14px; line-height:1.5;">
+    Вы внедряете ИИ в маркетинг на практике: автоматизируете контент, воронки, прогрев и процессы продаж вместе с экспертами и комьюнити — без бесконечных курсов и теории.
+  </div>
+</div>
+
+<div style="background:#1a1a1a; border-radius:12px; padding:16px; margin-bottom:20px;">
+  <div style="font-weight:600; margin-bottom:8px;">Условия участия</div>
+  <div style="color:#ccc; font-size:14px; line-height:1.8;">
+    — 5 000 ₽/мес<br>
+    — Практика и выполнение заданий<br>
+    — Активное участие в комьюнити<br>
+    — Подписание NDA
+  </div>
+</div>
+
+    <div style="display:flex; flex-direction:column; gap:12px; padding-bottom:8px;">
+
+  <div id="nucleusEmailForm" style="background:#1a1a1a;border-radius:12px;padding:16px;">
+    <div style="font-weight:600;margin-bottom:4px;">Уже участник Ядра?</div>
+    <div style="color:#888;font-size:13px;margin-bottom:12px;">Введи email, с которым оплатил участие</div>
+    <div class="input-wrap" style="max-width:100%;margin-bottom:10px;">
+      <input type="email" id="nucleusEmailInput" placeholder="example@email.com"
+        autocomplete="email" inputmode="email"
+        onkeydown="if(event.key==='Enter')checkNucleusEmail()"/>
+    </div>
+    <button class="btn-primary"
+      style="width:100%; max-width:100%; box-sizing:border-box;"
+      onclick="checkNucleusEmail()">
+      Войти
+    </button>
+    <div id="nucleusEmailMsg" style="font-size:13px; margin-top:10px; color:#888;"></div>
+  </div>
+
+  <a href="https://t.me/m/R12fmbLzOWJi" target="_blank"
+    style="width:100%; display:block; text-decoration:none;">
+    <button class="btn-primary"
+        style="width:100%; max-width:100%; box-sizing:border-box; background:transparent; border:1px solid #444; color:#ccc; font-size:14px;">
+      Хочу вступить в Ядро →
+    </button>
+  </a>
+</div>
+</div>
+
+  <!-- Bottom Nav -->
+  <nav class="bottom-nav">
+    <button class="nav-item" id="nav-home" onclick="navTo('home')">
+      <span class="nav-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="12" cy="12" r="9"/>
+          <path d="M8 12c0-2.2 1.8-4 4-4s4 1.8 4 4-1.8 4-4 4"/>
+          <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+        </svg>
+      </span>
+      Ядро
+    </button>
+    <button class="nav-item" id="nav-kb" onclick="navTo('kb')">
+      <span class="nav-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+          <line x1="9" y1="7" x2="15" y2="7"/>
+          <line x1="9" y1="11" x2="15" y2="11"/>
+        </svg>
+      </span>
+      База знаний
+    </button>
+    <button class="nav-item active" id="nav-progress" onclick="navTo('progress')">
+      <span class="nav-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M17 8h1a4 4 0 0 1 0 8h-1"/>
+          <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z"/>
+          <line x1="6" y1="2" x2="6" y2="4"/>
+          <line x1="10" y1="2" x2="10" y2="4"/>
+          <line x1="14" y1="2" x2="14" y2="4"/>
+        </svg>
+      </span>
+      Нетворк
+    </button>
+    <button class="nav-item" id="nav-ask" onclick="navTo('ask')">
+      <span class="nav-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="3" y="4" width="18" height="18" rx="2"/>
+          <path d="M16 2v4M8 2v4M3 10h18"/>
+        </svg>
+      </span>
+      Мероприятия
+    </button>
+  </nav>
+
+
+  <!-- COFFEE RATE MODAL -->
+<div class="coffee-rate-overlay" id="coffeeRateOverlay">
+  <div class="coffee-rate-sheet">
+    <div class="coffee-rate-title">Оценить встречу</div>
+    <div class="coffee-rate-sub" id="coffeeRateSub">Как прошла встреча с партнёром?</div>
+    <div class="coffee-stars-row" id="coffeeStarsRow">
+      <span class="coffee-star" data-v="1">★</span>
+      <span class="coffee-star" data-v="2">★</span>
+      <span class="coffee-star" data-v="3">★</span>
+      <span class="coffee-star" data-v="4">★</span>
+      <span class="coffee-star" data-v="5">★</span>
+    </div>
+    <div class="coffee-rate-complaint" id="coffeeComplaintToggle" onclick="toggleCoffeeComplaint()">
+      <div class="coffee-rate-checkbox" id="coffeeCheckbox"></div>
+      <span style="font-size:13px;color:var(--text2)">Партнёр не вышел на связь</span>
+    </div>
+    <div class="coffee-rate-note-wrap" id="coffeeNoteWrap">
+      <textarea class="coffee-input" id="coffeeNoteInput" rows="3" placeholder="Коротко опишите ситуацию (необязательно)"></textarea>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="coffee-btn coffee-btn-secondary" style="flex:0 0 80px" onclick="closeCoffeeRate()">Отмена</button>
+      <button class="coffee-btn coffee-btn-primary" id="coffeeRateSubmitBtn" onclick="submitCoffeeRate()">Отправить</button>
+    </div>
+  </div>
+</div>
+
+<!-- COFFEE EDIT MODAL -->
+<div class="coffee-edit-overlay" id="coffeeEditOverlay">
+  <div class="coffee-edit-sheet">
+    <div class="coffee-edit-header">
+      <div class="coffee-edit-title">Редактировать профиль</div>
+      <button class="coffee-edit-close" onclick="closeCoffeeEdit()">✕</button>
+    </div>
+    <div class="coffee-edit-body">
+ 
+      <div>
+        <div class="coffee-input-label">О себе — как твит</div>
+        <textarea class="coffee-input" id="edit_bio" rows="3" maxlength="280"
+          oninput="updateCoffeeCount(this,'edit_bio_count',280)"
+          placeholder="Кто ты, чем занимаешься, чем живёшь"></textarea>
+        <div class="coffee-char-count" id="edit_bio_count">0 / 280</div>
+      </div>
+ 
+      <div>
+        <div class="coffee-input-label">Мой запрос на эту неделю</div>
+        <textarea class="coffee-input" id="edit_request" rows="2" maxlength="200"
+          oninput="updateCoffeeCount(this,'edit_request_count',200)"
+          placeholder="Что ищу, в чём нужна помощь или мнение"></textarea>
+        <div class="coffee-char-count" id="edit_request_count">0 / 200</div>
+      </div>
+ 
+      <div>
+        <div class="coffee-input-label">Чем готов помочь — 3 пункта</div>
+        <div class="coffee-skills-group">
+          <input class="coffee-input" id="edit_skill0" type="text" placeholder="Навык 1"/>
+          <input class="coffee-input" id="edit_skill1" type="text" placeholder="Навык 2"/>
+          <input class="coffee-input" id="edit_skill2" type="text" placeholder="Навык 3"/>
+        </div>
+      </div>
+ 
+      <div class="coffee-circle-block" onclick="openCoffeeCircle()">
+        <div class="coffee-circle-icon" id="editCircleIcon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M10 8l6 4-6 4V8z"/></svg>
+        </div>
+        <div class="coffee-circle-text">
+          <div class="coffee-circle-title" id="editCircleTitle">Перезаписать кружочек</div>
+          <div class="coffee-circle-sub" id="editCircleSub">Короткое видео — партнёр увидит перед знакомством</div>
+        </div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);flex-shrink:0">
+    <path d="M9 18l6-6-6-6"/>
+   </svg>
+      </div>
+ 
+    </div>
+    <div class="coffee-edit-footer">
+      <button class="coffee-join-btn" id="coffeeEditSaveBtn" onclick="saveCoffeeEdit()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+</div>
+<!-- конец appScreen -->
+
+<!-- DETAIL SCREEN -->
+<div id="detailScreen" class="screen">
+  <div class="detail-back" onclick="closeDetail()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+    Назад
+  </div>
+  <div class="detail-content" id="detailContent"></div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+const WORKER = '';
+let tasksData = { ai: [], funnels: [], minicourses: [] };
+let taskProgressData = { ai: { completed: [] }, funnels: { completed: [] }, minicourses: { completed: [] } };
+let tg = window.Telegram?.WebApp;
+let initData = tg?.initData || '';
+let currentUser = null;
+let currentRole = 'guest';
+let currentProgram = 'ai';
+let currentSection = 'knowledge';
+let programData = { ai: null, funnels: null };
+let progressData = { ai: { completed: [] }, funnels: { completed: [] } };
+let enrollData = { ai: false, funnels: false };
+const BOT_USERNAME = 'cmo_razbory_bot';
+
+// ── INIT ──────────────────────────────────────────────────────
+window.addEventListener('load', async () => {
+  tg?.expand();
+  tg?.setHeaderColor('#0d0d0d');
+  tg?.setBackgroundColor('#0d0d0d');
+
+  const savedEmail = localStorage.getItem('cmo_email');
+  if (savedEmail) {
+    try {
+      const res = await fetch('/api/auth-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: savedEmail, initData: window.Telegram?.WebApp?.initData || '' })
+      }).then(r => r.json());
+
+      if (res.ok) {
+        currentUser = res.user;
+        currentRole = 'member';
+      } else {
+        localStorage.removeItem('cmo_email');
+        currentRole = 'guest';
+        currentUser = {};
+      }
+    } catch(e) {
+      currentRole = 'guest';
+      currentUser = {};
+    }
+  } else if (initData) {
+    try {
+      const res = await api('/api/auth', { initData });
+      if (res.ok) {
+        currentUser = res.user;
+        currentRole = res.role;
+      } else {
+        currentRole = 'guest';
+        currentUser = {};
+      }
+    } catch(e) {
+      currentRole = 'guest';
+      currentUser = {};
+    }
+  } else {
+    currentRole = 'guest';
+    currentUser = {};
+  }
+
+  // Грузим данные для всех
+  await loadUserData();
+
+  // Показываем нужный экран
+  showScreen('appScreen');
+  if (currentRole !== 'member') {
+    // Гость — дефолт нетворк, ядро заблокировано
+    navTo('progress');
+  } else {
+    // Участник — дефолт нетворк
+    navTo('progress');
+  }
+
+  document.getElementById('loadingScreen').style.display = 'none';
+});
+
+function showAuthError(title, text) {
+  document.getElementById('authTitle').textContent = title;
+  document.getElementById('authDesc').textContent = text;
+  document.getElementById('emailWrap').style.display = 'block';
+  document.getElementById('checkEmailBtn').style.display = 'block';
+  showScreen('authScreen');
+}
+
+function formatEventDate(dt) {
+  const d = new Date(dt);
+  const days = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+  return days[d.getDay()] + ', ' + d.toLocaleDateString('ru', {day:'numeric',month:'long'}) + ' · ' + d.toLocaleTimeString('ru', {hour:'2-digit',minute:'2-digit'});
+}
+
+async function loadUserData() {
+  try {
+    [programData.ai, programData.funnels] = await Promise.all([
+      api('/api/program?id=ai'),
+      api('/api/program?id=funnels')
+    ]);
+
+    // Прогресс и задания грузим только для участников
+    const userId = currentUser?.tgId || tg?.initDataUnsafe?.user?.id;
+    if (userId && currentRole === 'member') {
+      const [pAi, pFun] = await Promise.all([
+        fetch('/api/progress?userId=' + userId + '&programId=ai').then(r => r.json()),
+        fetch('/api/progress?userId=' + userId + '&programId=funnels').then(r => r.json())
+      ]);
+      const [tasksAi, tasksFunnels, tasksMini] = await Promise.all([
+        fetch('/api/tasks?id=ai').then(r => r.json()),
+        fetch('/api/tasks?id=funnels').then(r => r.json()),
+        fetch('/api/tasks?id=minicourses').then(r => r.json())
+      ]);
+      tasksData.ai = tasksAi.tasks || [];
+      tasksData.funnels = tasksFunnels.tasks || [];
+      tasksData.minicourses = tasksMini.tasks || [];
+
+      const [tpAi, tpFun, tpMini] = await Promise.all([
+        fetch('/api/task-progress?userId=' + userId + '&programId=ai').then(r => r.json()),
+        fetch('/api/task-progress?userId=' + userId + '&programId=funnels').then(r => r.json()),
+        fetch('/api/task-progress?userId=' + userId + '&programId=minicourses').then(r => r.json())
+      ]);
+      taskProgressData.ai = tpAi;
+      taskProgressData.funnels = tpFun;
+      taskProgressData.minicourses = tpMini;
+
+      progressData.ai = pAi;
+      progressData.funnels = pFun;
+    }
+  } catch(e) {}
+
+  renderUserUI();
+  // конец — больше ничего не вызываем отсюда
+}
+
+function renderUserUI() {
+  if (!currentUser) return;
+  const nameEl = document.getElementById('topbarName');
+  const avatarEl = document.getElementById('topbarAvatar');
+  nameEl.textContent = currentUser.first_name || '';
+  if (currentUser.photo_url) {
+    avatarEl.innerHTML = '<img src="' + currentUser.photo_url + '" alt="avatar"/>';
+  } else {
+    avatarEl.textContent = (currentUser.first_name || '?')[0].toUpperCase();
+  }
+}
+
+// ── SCREENS ──────────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+const PROGRAM_NAMES = {
+  ai: 'ИИ-контент',
+  funnels: 'Воронки',
+};
+
+function toggleProgramMenu() {
+  const menu = document.getElementById('programMenu');
+  const arrow = document.getElementById('dropdownArrow');
+  const open = menu.style.display === 'block';
+  menu.style.display = open ? 'none' : 'block';
+  arrow.style.transform = open ? '' : 'rotate(180deg)';
+}
+
+const PROGRAM_ICONS = { ai: '☆', funnels: '➶'};
+
+function selectProgram(prog) {
+  currentProgram = prog;
+  document.getElementById('currentProgramName').textContent = PROGRAM_ICONS[prog] + ' ' + PROGRAM_NAMES[prog];
+ document.getElementById('programMenu').style.display = 'none';
+  document.getElementById('dropdownArrow').style.transform = '';
+  renderContent();
+}
+
+// Закрывать при клике вне меню
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.topbar-logo')) {
+    document.getElementById('programMenu').style.display = 'none';
+    document.getElementById('dropdownArrow').style.transform = '';
+  }
+});
+
+function showApp() {}
+
+// ── AUTH ─────────────────────────────────────────────────────
+async function checkEmail() {
+  const email = document.getElementById('emailInput').value.trim().toLowerCase();
+  const msg = document.getElementById('authMsg');
+  const btn = document.getElementById('checkEmailBtn');
+
+  if (!email || !email.includes('@')) {
+    msg.className = 'auth-msg error';
+    msg.textContent = 'Введи корректный email';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Проверяем...';
+  msg.textContent = '';
+
+  try {
+    const res = await fetch('/api/auth-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, initData: window.Telegram?.WebApp?.initData || '' })
+    }).then(r => r.json());
+
+    if (res.ok) {
+      // Сохранить email для будущих сессий
+      localStorage.setItem('cmo_email', email);
+      currentUser = res.user;
+      await loadUserData();
+      showApp();
+    } else {
+      msg.className = 'auth-msg error';
+      msg.textContent = res.error || 'Email не найден. Напиши боту — @cmo_razbory_bot';
+    }
+  } catch(e) {
+    msg.className = 'auth-msg error';
+    msg.textContent = 'Ошибка соединения. Попробуй снова.';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Войти';
+  }
+}
+
+function navTo(page) {
+  if ((page === 'home' || page === 'kb') && currentRole !== 'member') {
+    showNucleusGate();
+    return;
+  }
+
+  document.getElementById('nucleusGateScreen').style.display = 'none';
+  document.getElementById('mainContent').style.display = 'block';
+
+  // Переключалка программ — только для ядра
+  const programSwitcher = document.querySelector('.topbar-logo');
+  const dropdownArrow = document.getElementById('dropdownArrow');
+  if (page === 'home') {
+    programSwitcher.style.pointerEvents = 'auto';
+    programSwitcher.style.opacity = '1';
+    if (dropdownArrow) dropdownArrow.style.display = 'inline';
+    document.getElementById('currentProgramName').style.display = 'inline';
+        document.querySelector('.topbar-user').style.display = 'flex';
+
+  } else {
+    programSwitcher.style.pointerEvents = 'none';
+    programSwitcher.style.opacity = '0.3';
+    document.getElementById('currentProgramName').style.display = 'none';
+    if (dropdownArrow) dropdownArrow.style.display = 'none';
+    // Закрыть меню если открыто
+    document.getElementById('programMenu').style.display = 'none';
+        document.querySelector('.topbar-user').style.display = 'none';
+
+  }
+
+  showScreen('appScreen');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('nav-' + page).classList.add('active');
+
+  if (page === 'home') {
+    currentSection = 'knowledge';
+  } else if (page === 'kb') {
+    currentSection = 'kb';
+  } else if (page === 'progress') {
+    currentSection = 'progress';
+  } else if (page === 'ask') {
+    currentSection = 'questions';
+  }
+  renderContent();
+}
+
+function showNucleusGate() {
+  document.getElementById('mainContent').style.display = 'none';
+  document.getElementById('nucleusGateScreen').style.display = 'block';
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('nav-home').classList.add('active');
+  // Скрыть переключалку программ
+  const programSwitcher = document.querySelector('.topbar-logo');
+  if (programSwitcher) {
+    programSwitcher.style.pointerEvents = 'none';
+    programSwitcher.style.opacity = '0.3';
+  }
+  const dropdownArrow = document.getElementById('dropdownArrow');
+  if (dropdownArrow) dropdownArrow.style.display = 'none';
+}
+
+function showNucleusEmailForm() {
+  document.getElementById('nucleusEmailForm').style.display = 'block';
+  document.getElementById('nucleusEmailInput').focus();
+}
+
+async function checkNucleusEmail() {
+  const email = document.getElementById('nucleusEmailInput').value.trim().toLowerCase();
+  const msg = document.getElementById('nucleusEmailMsg');
+
+  if (!email || !email.includes('@')) {
+    msg.style.color = '#ef4444';
+    msg.textContent = 'Введи корректный email';
+    return;
+  }
+
+  msg.style.color = '#888';
+  msg.textContent = 'Проверяем...';
+
+  try {
+    const res = await fetch('/api/auth-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, initData: window.Telegram?.WebApp?.initData || '' })
+    }).then(r => r.json());
+
+    if (res.ok) {
+      localStorage.setItem('cmo_email', email);
+      currentUser = res.user;
+      currentRole = 'member';
+      document.getElementById('nucleusGateScreen').style.display = 'none';
+      document.getElementById('mainContent').style.display = 'block';
+      await loadUserData();
+      navTo('home');
+    } else {
+      // Email не найден — отправить заявку как pending
+      try {
+        await fetch('/api/request-access', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, initData: window.Telegram?.WebApp?.initData || '' })
+        });
+      } catch(e) {}
+
+      msg.style.color = '#f59e0b';
+      msg.textContent = 'Ожидайте подтверждения администратора';
+    }
+  } catch(e) {
+    msg.style.color = '#ef4444';
+    msg.textContent = 'Ошибка соединения. Попробуй снова.';
+  }
+}
+
+// ── RENDER CONTENT ───────────────────────────────────────────
+function renderContent() {
+  const container = document.getElementById('mainContent');
+  const prog = programData[currentProgram];
+
+  if (currentSection === 'knowledge') {
+    renderKnowledge(container, prog);
+  } else if (currentSection === 'kb') {
+    renderKBPage(container);
+  } else if (currentSection === 'progress') {
+    renderCoffeeStub(container);
+  } else if (currentSection === 'questions') {
+    renderEvents(container);
+  }
+}
+
+let coffeeData = null;       // кэш данных с сервера
+let coffeeTab = 'current';   // 'current' | 'history'
+let coffeeRateWeekId = null;
+let coffeeRateStars = 0;
+let coffeeRateComplaint = false;
+ 
+async function renderCoffeeStub(container) {
+  container.innerHTML = '<div class="coffee-empty"><span class="coffee-empty-icon">☕</span><span class="coffee-empty-title">Загружаем...</span></div>';
+ 
+  try {
+    const tgId = currentUser?.tgId || tg?.initDataUnsafe?.user?.id;
+    if (!tgId) {
+      renderCoffeeOnboarding(container, null);
+      return;
+    }
+ 
+    const res = await fetch('/api/coffee/status?tgId=' + tgId).then(r => r.json());
+    coffeeData = res;
+ 
+    if (!res.profile) {
+      renderCoffeeOnboarding(container, tgId);
+    } else {
+      renderCoffeeMain(container, res, tgId);
+    }
+  } catch(e) {
+    container.innerHTML = '<div class="coffee-empty"><span class="coffee-empty-icon">⚠️</span><span class="coffee-empty-title">Ошибка загрузки</span></div>';
+  }
+}
+
+function renderCoffeeOnboarding(container, tgId) {
+  const hasCircle = false;
+  container.innerHTML = \`
+    <div style="padding: 16px 0;">
+      <div class="coffee-form-title" style="padding: 0 16px;">☕ Рандом Кофе</div>
+      <div class="coffee-form-sub" style="padding: 0 16px 16px;">Каждую неделю — новый партнёр для короткой встречи. Обменяйся опытом, помоги или получи помощь.</div>
+    </div>
+ 
+    <div class="coffee-form">
+      <div>
+        <div class="coffee-input-label">Имя</div>
+        <input class="coffee-input" id="cf_name" type="text" placeholder="Как тебя зовут?" value="\${escapeHtml(currentUser?.name || currentUser?.first_name || '')}"/>
+      </div>
+ 
+      <div>
+        <div class="coffee-input-label">О себе <span style="color:var(--text3);font-size:10px">— как твит</span></div>
+        <textarea class="coffee-input" id="cf_bio" rows="3" maxlength="280"
+          oninput="updateCoffeeCount(this,'cf_bio_count',280)"
+          placeholder="Кто ты, чем занимаешься, чем живёшь"></textarea>
+        <div class="coffee-char-count" id="cf_bio_count">0 / 280</div>
+      </div>
+ 
+      <div>
+        <div class="coffee-input-label">Мой запрос на эту неделю</div>
+        <textarea class="coffee-input" id="cf_request" rows="2" maxlength="200"
+          oninput="updateCoffeeCount(this,'cf_request_count',200)"
+          placeholder="Что ищу, в чём нужна помощь или мнение"></textarea>
+        <div class="coffee-char-count" id="cf_request_count">0 / 200</div>
+      </div>
+ 
+      <div>
+        <div class="coffee-input-label">Чем готов помочь — 3 пункта</div>
+        <div class="coffee-skills-group">
+          <input class="coffee-input" id="cf_skill0" type="text" placeholder="Например: маркетинг в b2b"/>
+          <input class="coffee-input" id="cf_skill1" type="text" placeholder="Например: нетворк в недвижимости"/>
+          <input class="coffee-input" id="cf_skill2" type="text" placeholder="Например: найм руководителей"/>
+        </div>
+      </div>
+ 
+ 
+    </div>
+
+    <div style="position: fixed; left: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom)); padding: 0 16px; z-index: 60;">
+      <button class="coffee-btn coffee-btn-primary" id="coffeeSubmitBtn" style="width: 100%; height: 52px;" onclick="submitCoffeeOnboarding('\${tgId}')">
+        Присоединиться к Рандом Кофе
+      </button>
+    </div>
+  \`;
+
+  restoreOnboardingFormData();
+  
+  // Обновляем счетчики, если они есть
+  ['cf_bio', 'cf_request'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) updateCoffeeCount(el, \`\${id}_count\`, id === 'cf_bio' ? 280 : 200);
+  });
+}
+
+function restoreOnboardingFormData() {
+  const savedData = sessionStorage.getItem('coffee_onboarding_form_data');
+  const isOnboardingMode = sessionStorage.getItuserData?.tgIdem('coffee_onboarding_mode');
+  
+  if (savedData && isOnboardingMode === 'true') {
+    const data = JSON.parse(savedData);
+    setTimeout(() => {
+      if (data.name) document.getElementById('cf_name') && (document.getElementById('cf_name').value = data.name);
+      if (data.city) document.getElementById('cf_city') && (document.getElementById('cf_city').value = data.city);
+      if (data.bio) document.getElementById('cf_bio') && (document.getElementById('cf_bio').value = data.bio);
+      if (data.request) document.getElementById('cf_request') && (document.getElementById('cf_request').value = data.request);
+      if (data.skills) {
+        data.skills.forEach((skill, i) => {
+          if (skill && document.getElementById(\`cf_skill\${i}\`)) {
+            document.getElementById(\`cf_skill\${i}\`).value = skill;
+          }
+        });
+      }
+      // Обновляем счетчики
+      ['cf_bio', 'cf_request'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) updateCoffeeCount(el, \`\${id}_count\`, id === 'cf_bio' ? 280 : 200);
+      });
+    }, 100);
+    
+    // Очищаем после восстановления
+    sessionStorage.removeItem('coffee_onboarding_form_data');
+    sessionStorage.removeItem('coffee_onboarding_mode');
+  }
+}
+
+
+function openCoffeeCircleOnboarding() {
+  const tgId = currentUser?.tgId || tg?.initDataUnsafe?.user?.id;
+  if (!tgId) return;
+  
+  // Сохраняем флаг, что мы в процессе онбординга
+  sessionStorage.setItem('coffee_onboarding_mode', 'true');
+  
+  // Сохраняем текущие данные формы перед закрытием
+  const formData = {
+    name: document.getElementById('cf_name')?.value,
+    city: document.getElementById('cf_city')?.value,
+    bio: document.getElementById('cf_bio')?.value,
+    request: document.getElementById('cf_request')?.value,
+    skills: [0,1,2].map(i => document.getElementById(\`cf_skill\${i}\`)?.value)
+  };
+  sessionStorage.setItem('coffee_onboarding_form_data', JSON.stringify(formData));
+  
+  if (window.Telegram?.WebApp) {
+    Telegram.WebApp.openTelegramLink('https://t.me/' + BOT_USERNAME + '?start=circle_onboarding');
+    // Закрываем мини-апп
+    Telegram.WebApp.close();
+  }
+}
+
+function renderCoffeeMain(container, data, tgId) {
+  const { profile, match, history, avgRating, totalMeetings } = data;
+ 
+  const profileHTML = renderCoffeeProfileCard(profile, avgRating, tgId);
+  const bodyHTML = renderCoffeeCurrentTab(match, profile, tgId);
+ 
+  const nucleusPromo = \`
+    <div class="coffee-section-title">Расширенный нетворк</div>
+    <div class="coffee-nucleus-promo" onclick="navTo('home')">
+      <div class="coffee-nucleus-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg>
+      </div>
+      <div>
+        <div class="coffee-nucleus-title">Ядро</div>
+        <div class="coffee-nucleus-text">Участники с профилями, запросами и историей встреч. Глубокий нетворк.</div>
+      </div>
+      <div class="coffee-nucleus-arrow">›</div>
+    </div>
+  \`;
+ 
+  const historyLink = totalMeetings > 0 ? \`
+    <div style="padding: 4px 16px 24px; text-align: center;">
+      <span onclick="openCoffeeHistory()" style="font-size:13px;color:var(--text3);text-decoration:underline;text-underline-offset:3px;cursor:pointer;">
+        История встреч (\${totalMeetings})
+      </span>
+    </div>
+  \` : \`
+    <div style="padding: 4px 16px 24px; text-align: center;">
+      <span style="font-size:13px;color:var(--text3);">
+        Здесь будет история встреч
+      </span>
+    </div>
+  \`;
+ 
+  container.innerHTML = profileHTML + bodyHTML + nucleusPromo + historyLink;
+}
+
+function openCoffeeHistory() {
+  const container = document.getElementById('mainContent');
+  const history = coffeeData?.history || [];
+ 
+  const backBtn = \`
+    <div style="padding:16px 16px 0; display:flex; align-items:center; gap:10px;">
+      <button onclick="renderCoffeeMain(document.getElementById('mainContent'), coffeeData, currentUser?.tgId)"
+        style="background:none;border:none;color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:6px;font-family:'Geologica',sans-serif;font-size:13px;padding:8px 0;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        Назад
+      </button>
+    </div>
+  \`;
+ 
+  container.innerHTML = backBtn + renderCoffeeHistoryTab(history);
+}
+ 
+function renderCoffeeProfileCard(profile, avgRating, tgId) {
+  const ratingHTML = avgRating
+    ? \`<div class="coffee-rating-badge">★ \${avgRating}</div>\`
+    : '';
+ 
+  const editIcon = \`
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+    </svg>
+  \`;
+ 
+  return \`
+    <div class="coffee-profile-card">
+      <div class="coffee-profile-top">
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="coffee-profile-name">\${escapeHtml(profile.name || '')}</div>
+            \${ratingHTML}
+            <button onclick="openCoffeeEdit()" style="margin-left:auto;background:var(--bg3);border:1px solid var(--border);border-radius:8px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;color:var(--text2);cursor:pointer;flex-shrink:0;">
+              \${editIcon}
+            </button>
+          </div>
+          \${profile.bio ? \`<div style="font-size:12px;color:var(--text2);margin-top:5px;line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">\${escapeHtml(profile.bio)}</div>\` : ''}
+        </div>
+      </div>
+      <div class="coffee-toggle-row">
+        <span class="coffee-toggle-label">\${profile.active ? 'Участвую в подборе' : 'Подбор остановлен'}</span>
+        <label class="coffee-toggle">
+          <input type="checkbox" \${profile.active ? 'checked' : ''} onchange="toggleCoffeeActive('\${tgId}', this)"/>
+          <span class="coffee-toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+  \`;
+}
+
+function openCoffeeCircleEdit() {
+  const tgId = currentUser?.tgId || tg?.initDataUnsafe?.user?.id;
+  if (!tgId) return;
+  
+  // Сохраняем флаг, что это редактирование, а не онбординг
+  sessionStorage.setItem('coffee_circle_edit_mode', 'true');
+  
+  if (window.Telegram?.WebApp) {
+    Telegram.WebApp.openTelegramLink('https://t.me/' + BOT_USERNAME + '?start=circle_edit');
+  } else {
+    window.open('https://t.me/' + BOT_USERNAME + '?start=circle_edit', '_blank');
+  }
+  
+  // Закрываем мини-апп
+  if (window.Telegram?.WebApp) {
+    Telegram.WebApp.close();
+  }
+}
+
+function openCoffeeProfileEdit() {
+  if (!coffeeData?.profile) return;
+  const p = coffeeData.profile;
+  
+  // Закрываем предыдущую модалку если есть
+  closeCoffeeProfileEdit();
+  
+  const modalHtml = \`
+    <div id="coffeeEditModal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg); z-index: 1000; overflow-y: auto;">
+      <div style="padding: 20px 16px 100px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; position: sticky; top: 0; background: var(--bg); padding-bottom: 12px;">
+          <div class="coffee-form-title" style="margin-bottom: 0;">Редактировать профиль</div>
+          <button onclick="closeCoffeeProfileEdit()" style="background: none; border: none; color: var(--text2); font-size: 24px; cursor: pointer; padding: 8px;">✕</button>
+        </div>
+        
+        <div class="field-group" style="margin-bottom: 20px;">
+          <div class="coffee-input-label" style="margin-bottom: 6px;">Имя</div>
+          <input class="coffee-input" id="edit_name" type="text" value="\${escapeHtml(p.name || '')}" style="margin-top: 0;"/>
+        </div>
+ 
+        <div class="field-group" style="margin-bottom: 20px;">
+          <div class="coffee-input-label" style="margin-bottom: 6px;">Город</div>
+          <input class="coffee-input" id="edit_city" type="text" value="\${escapeHtml(p.city || '')}" style="margin-top: 0;"/>
+        </div>
+ 
+        <div class="field-group" style="margin-bottom: 20px;">
+          <div class="coffee-input-label" style="margin-bottom: 6px;">О себе</div>
+          <textarea class="coffee-input" id="edit_bio" rows="3" maxlength="280" style="margin-top: 0;">\${escapeHtml(p.bio || '')}</textarea>
+          <div class="coffee-char-count" id="edit_bio_count" style="margin-top: 4px;">\${(p.bio || '').length} / 280</div>
+        </div>
+ 
+        <div class="field-group" style="margin-bottom: 20px;">
+          <div class="coffee-input-label" style="margin-bottom: 6px;">Мой запрос</div>
+          <textarea class="coffee-input" id="edit_request" rows="2" maxlength="200" style="margin-top: 0;">\${escapeHtml(p.request || '')}</textarea>
+          <div class="coffee-char-count" id="edit_request_count" style="margin-top: 4px;">\${(p.request || '').length} / 200</div>
+        </div>
+ 
+        <div class="field-group" style="margin-bottom: 20px;">
+          <div class="coffee-input-label" style="margin-bottom: 6px;">Чем готов помочь (3 пункта)</div>
+          <div class="coffee-skills-group" style="gap: 10px;">
+            <input class="coffee-input" id="edit_skill0" type="text" placeholder="Навык 1" value="\${escapeHtml(p.skills?.[0] || '')}" style="margin-top: 0;"/>
+            <input class="coffee-input" id="edit_skill1" type="text" placeholder="Навык 2" value="\${escapeHtml(p.skills?.[1] || '')}" style="margin-top: 0;"/>
+            <input class="coffee-input" id="edit_skill2" type="text" placeholder="Навык 3" value="\${escapeHtml(p.skills?.[2] || '')}" style="margin-top: 0;"/>
+          </div>
+        </div>
+ 
+        <button class="coffee-btn coffee-btn-primary" id="saveProfileBtn" style="position: fixed; bottom: 20px; left: 16px; right: 16px; width: auto; border-radius: 30px; padding: 16px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.3);" onclick="saveCoffeeProfileEdit()">
+          Сохранить изменения
+        </button>
+      </div>
+    </div>
+  \`;
+  
+  // Добавляем модалку на страницу
+  let modal = document.getElementById('coffeeEditModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'coffeeEditModal';
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = modalHtml;
+  modal.style.display = 'block';
+  
+  // Счетчики символов
+  const bioEl = document.getElementById('edit_bio');
+  const reqEl = document.getElementById('edit_request');
+  if (bioEl) bioEl.addEventListener('input', () => updateCoffeeCount(bioEl, 'edit_bio_count', 280));
+  if (reqEl) reqEl.addEventListener('input', () => updateCoffeeCount(reqEl, 'edit_request_count', 200));
+}
+
+function closeCoffeeProfileEdit() {
+  const modal = document.getElementById('coffeeEditModal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function saveCoffeeProfileEdit() {
+  const tgId = currentUser?.tgId || tg?.initDataUnsafe?.user?.id;
+  if (!tgId) return;
+  
+  const name = document.getElementById('edit_name')?.value.trim();
+  const city = document.getElementById('edit_city')?.value.trim();
+  const bio = document.getElementById('edit_bio')?.value.trim();
+  const request = document.getElementById('edit_request')?.value.trim();
+  const skills = [0,1,2].map(i => document.getElementById(\`edit_skill\${i}\`)?.value.trim()).filter(Boolean);
+  
+  if (!name || !bio || !request) {
+    showToast('Заполни имя, о себе и запрос');
+    return;
+  }
+  
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = 'Сохраняем...';
+  
+  try {
+    const res = await fetch('/api/coffee/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tgId, name, city, bio, request, skills })
+    }).then(r => r.json());
+    
+    if (res.ok) {
+      showToast('✅ Профиль обновлён');
+      closeCoffeeProfileEdit();
+      // Обновляем данные на странице
+      const container = document.getElementById('mainContent');
+      await renderCoffeeStub(container);
+    } else {
+      showToast('Ошибка сохранения');
+    }
+  } catch(e) {
+    showToast('Ошибка подключения');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Сохранить изменения';
+  }
+}
+ 
+function renderCoffeeCurrentTab(match, profile, tgId) {
+  if (!match || !match.partnerProfile) {
+    if (!profile.active) {
+      return \`
+        <div class="coffee-empty">
+<span class="coffee-empty-icon">
+<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.4">
+       <rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>
+     </svg>
+   </span>
+          <span class="coffee-empty-title">Подбор остановлен</span>
+          <span class="coffee-empty-sub">Включи переключатель выше, чтобы снова участвовать в рандом кофе</span>
+        </div>
+      \`;
+    }
+    return \`
+      <div class="coffee-empty">
+        <span class="coffee-empty-icon">
+     <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.4">
+       <path d="M17 8h1a4 4 0 0 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z"/>
+       <line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/>
+     </svg>
+   </span>
+        <span class="coffee-empty-title">Партнёр ещё не назначен</span>
+        <span class="coffee-empty-sub">Каждый понедельник ты получишь нового собеседника. Пока можешь дополнить профиль.</span>
+      </div>
+    \`;
+  }
+ 
+  const p = match.partnerProfile;
+  const weekLabel = match.weekId ? match.weekId.replace('-W', ', неделя ') : '';
+  const skillsHTML = (p.skills || []).filter(Boolean).map(s =>
+    \`<span class="coffee-skill-tag">\${escapeHtml(s)}</span>\`
+  ).join('');
+ 
+  const statusMap = {
+    active: { dot: 'active', text: 'Ждёт вашей встречи' },
+    done: { dot: 'done', text: 'Встреча состоялась' },
+    complained: { dot: 'complained', text: 'Жалоба отправлена' }
+  };
+  const st = statusMap[match.status] || statusMap.active;
+ 
+  const actionsHTML = match.status === 'active' ? \`
+    <div class="coffee-actions">
+      <button class="coffee-btn coffee-btn-primary" onclick="openCoffeeRate('\${match.weekId}', '\${escapeHtml(p.name)}')">✓ Оценить встречу</button>
+      <button class="coffee-btn coffee-btn-danger" style="flex:0 0 auto;padding:0 14px" onclick="openCoffeeComplaint('\${match.weekId}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></button>
+    </div>
+  \` : match.status === 'done' ? \`
+    <div style="text-align:center;font-size:13px;color:var(--text2);padding-top:4px">Встреча оценена ✓</div>
+  \` : \`
+    <div style="text-align:center;font-size:13px;color:#ff6b6b;padding-top:4px">Жалоба на модерации</div>
+  \`;
+ 
+  return \`
+    <div class="coffee-section-title">Твой партнёр на эту неделю</div>
+    <div class="coffee-partner-card has-match">
+      <div class="coffee-partner-header">
+<div>
+  <div style="display:flex;align-items:center;gap:6px;">
+    \${p.username ? \`
+      <a href="https://t.me/\${escapeHtml(p.username)}" target="_blank" style="display:flex;align-items:center;color:#229ED9;flex-shrink:0;" title="@\${escapeHtml(p.username)}">
+        <svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9.417 15.181l-.397 5.584c.568 0 .814-.244 1.109-.537l2.663-2.545 5.518 4.041c1.012.564 1.725.267 1.998-.931L23.93 3.821c.321-1.496-.541-2.081-1.527-1.714L1.084 10.333c-1.452.564-1.429 1.37-.247 1.737l5.443 1.693 12.643-7.911c.595-.394 1.136-.176.691.218z" fill="#229ED9"/>
+        </svg>
+      </a> 
+    \` : ''}
+  </div>
+</div>
+        <div>
+          <div class="coffee-partner-name">\${escapeHtml(p.name || '')}</div>
+          <div class="coffee-partner-city">\${escapeHtml(p.city || '')}</div>
+        </div>
+        <div class="coffee-week-badge">\${weekLabel}</div>
+      </div>
+      <div class="coffee-partner-body">
+        \${p.bio ? \`<div class="coffee-partner-bio">\${escapeHtml(p.bio)}</div>\` : ''}
+        \${p.request ? \`<div class="coffee-partner-request"><strong>Запрос:</strong> \${escapeHtml(p.request)}</div>\` : ''}
+        \${skillsHTML ? \`<div class="coffee-skills">\${skillsHTML}</div>\` : ''}
+        
+\${actionsHTML}
+      </div>
+      <div class="coffee-status-row">
+        <div class="coffee-status-dot \${st.dot}"></div>
+        <span>\${st.text}</span>
+      </div>
+    </div>
+  \`;
+}
+ 
+function renderCoffeeHistoryTab(history) {
+  if (!history || history.length === 0) {
+    return \`
+      <div class="coffee-empty">
+        <span class="coffee-empty-icon">
+     <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.4">
+       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+       <polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+     </svg>
+   </span>
+        <span class="coffee-empty-title">История пуста</span>
+        <span class="coffee-empty-sub">Здесь появятся все твои партнёры по нетворку</span>
+      </div>
+    \`;
+  }
+ 
+  const items = history.map(h => {
+    const weekLabel = h.weekId ? h.weekId.replace('-W', ', нед. ') : '';
+ 
+    let myRatingHTML = '';
+    if (h.myRating) {
+      const stars = '★'.repeat(h.myRating.stars) + '☆'.repeat(5 - h.myRating.stars);
+      myRatingHTML = \`<div class="coffee-rating-pill mine"><span style="color:var(--gold)">\${stars}</span> <span>Моя</span></div>\`;
+    } else {
+      myRatingHTML = \`<div class="coffee-rating-pill pending">☆ Не оценено</div>\`;
+    }
+ 
+    let theirRatingHTML = '';
+    if (h.myRating && h.theirRating) {
+      // Показываем только после того как сам оценил
+      const stars = '★'.repeat(h.theirRating.stars) + '☆'.repeat(5 - h.theirRating.stars);
+      theirRatingHTML = \`<div class="coffee-rating-pill theirs"><span style="color:var(--text2)">\${stars}</span> <span>Его/её</span></div>\`;
+    } else if (h.myRating && !h.theirRating) {
+      theirRatingHTML = \`<div class="coffee-rating-pill pending" style="opacity:0.4">Ещё не оценил(а)</div>\`;
+    }
+ 
+    return \`
+      <div class="coffee-history-item">
+        <div class="coffee-history-top">
+          <div class="coffee-history-name">\${escapeHtml(h.partnerName || '—')}</div>
+          <div class="coffee-history-week">\${weekLabel}</div>
+        </div>
+        \${h.partnerCity ? \`<div class="coffee-history-city">📍 \${escapeHtml(h.partnerCity)}</div>\` : ''}
+        <div class="coffee-ratings-row">
+          \${myRatingHTML}
+          \${theirRatingHTML}
+        </div>
+        \${h.complaint ? \`<div style="font-size:11px;color:#ff6b6b;margin-top:8px">🚩 Жалоба была отправлена</div>\` : ''}
+      </div>
+    \`;
+  }).join('');
+ 
+  return \`<div class="coffee-section-title">Все встречи</div>\` + items;
+}
+
+function renderKnowledge(container, prog) {
+  if (!prog || !prog.modules) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📂</div><div class="empty-state-text">Загрузка материалов...</div></div>';
+    return;
+  }
+
+  const completedModules = progressData[currentProgram]?.completed || [];
+const completedTasks = taskProgressData[currentProgram]?.completed || [];
+const totalModules = (prog?.modules || []).filter(m => m.available).length;
+const totalTasks = (tasksData[currentProgram] || []).length;
+const total = totalModules + totalTasks;
+const doneModules = (prog?.modules || []).filter(m => m.available && completedModules.includes(m.id)).length;
+const doneTasks = completedTasks.length;
+const done = doneModules + doneTasks;
+const completed = completedModules;
+
+  let html = '';
+
+  if (total > 0) {
+    const pct = Math.round((done / total) * 100);
+    html += \`
+      <div class="progress-wrap">
+        <div class="progress-label">
+          <span>Достижение результата</span>
+          <span class="progress-pct">\${pct}%</span>
+        </div>
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" style="width:\${pct}%"></div>
+        </div>
+      </div>\`;
+  }
+
+  html += '<div class="module-list">';
+  prog.modules.forEach((mod, i) => {
+    const isDone = completed.includes(mod.id);
+    const isLocked = !mod.available;
+    let cls = 'module-card';
+    if (isLocked) cls += ' locked';
+    else if (isDone) cls += ' done available';
+    else cls += ' available';
+
+    let tag = '';
+    if (isLocked) tag = '<span class="module-tag locked-tag">🔒 Скоро</span>';
+    else if (isDone) tag = '<span class="module-tag">✓ Пройдено</span>';
+
+    const desc = mod.description ? \`<div class="module-desc">\${mod.description}</div>\` : '';
+
+    html += \`
+      <div class="\${cls}" onclick="\${isLocked ? '' : "openModule('" + mod.id + "')"}">
+        <div class="module-top">
+          <div>
+            <div class="module-num">МОДУЛЬ \${i + 1}</div>
+            <div class="module-title">\${mod.title}</div>
+            \${desc}
+            \${tag}
+          </div>
+          <div class="module-status \${isDone ? 'done' : ''}">\${isDone ? '✓' : ''}</div>
+        </div>
+      </div>\`;
+  });
+  html += '</div>';
+
+  container.innerHTML = html;
+}
+
+// ── KNOWLEDGE BASE RENDER ────────────────────────────────────
+let kbData = null;
+
+async function renderKBPage(container) {
+  container.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
+  try {
+    const res = await fetch('/api/kb').then(r => r.json());
+    kbData = res.categories || [];
+  } catch(e) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">Ошибка загрузки</div></div>';
+    return;
+  }
+  renderKBCategories(container);
+}
+
+function renderKBCategories(container) {
+  if (!kbData || kbData.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📚</div><div class="empty-state-text">База знаний пуста</div></div>';
+    return;
+  }
+  let html = '<div style="padding:16px 0 8px"><div style="font-size:20px;font-weight:700;margin-bottom:4px">База знаний</div><div style="font-size:13px;color:var(--text2)">Записи встреч, материалы и выводы</div></div>';
+  html += '<div class="module-list">';
+  for (const cat of kbData) {
+    const total = cat.entries.length;
+    const withVideo = cat.entries.filter(e => e.videoUrl).length;
+    html += \`
+      <div class="module-card available" onclick="renderKBCategory('\${escKBAttr(cat.id)}')" data-id="\${escKB(cat.id)}">
+        <div class="module-top">
+          <div>
+            <div style="font-size:22px;margin-bottom:6px">\${escKB(cat.icon)}</div>
+            <div class="module-title">\${escKB(cat.title)}</div>
+            <div class="module-desc">\${total} \${plural(total,'запись','записи','записей')}\${withVideo ? ' · ' + withVideo + ' с видео' : ''}</div>
+          </div>
+          <div class="module-status">›</div>
+        </div>
+      </div>\`;
+  }
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function renderKBCategory(catId) {
+  const container = document.getElementById('mainContent');
+  const cat = kbData.find(c => c.id === catId);
+  if (!cat) return;
+
+  const backBtn = \`<button class="stab" onclick="renderKBCategories(document.getElementById('mainContent'))" style="margin-bottom:16px;display:flex;align-items:center;gap:6px">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+    Назад
+  </button>\`;
+
+  let html = backBtn;
+  html += \`<div style="margin-bottom:16px"><div style="font-size:20px;font-weight:700">\${escKB(cat.icon)} \${escKB(cat.title)}</div></div>\`;
+  html += '<div class="module-list">';
+
+  if (cat.entries.length === 0) {
+    html += '<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">Материалы скоро появятся</div></div>';
+  }
+
+  for (const entry of cat.entries) {
+    const hasContent = entry.videoUrl || entry.materials.length > 0 || entry.summary;
+    html += \`
+      <div class="module-card \${hasContent ? 'available' : ''}" onclick="\${hasContent ? "renderKBEntry('" + escKBAttr(catId) + "','" + escKBAttr(entry.id) + "')" : ''}">
+        <div class="module-top">
+          <div style="flex:1">
+            <div class="module-num">\${escKB(entry.date)}</div>
+            <div class="module-title" style="font-size:14px">\${escKB(entry.title)}</div>
+            \${entry.subtitle ? \`<div class="module-desc">\${escKB(entry.subtitle)}</div>\` : ''}
+            <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+              \${entry.videoUrl ? '<span class="module-tag">▶ Запись</span>' : ''}
+              \${entry.materials.length > 0 ? \`<span class="module-tag">📎 \${entry.materials.length} \${plural(entry.materials.length,'материал','материала','материалов')}</span>\` : ''}
+              \${!hasContent ? '<span class="module-tag locked-tag">⏳ Скоро</span>' : ''}
+            </div>
+          </div>
+          \${hasContent ? '<div class="module-status">›</div>' : ''}
+        </div>
+      </div>\`;
+  }
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function renderKBEntry(catId, entryId) {
+  const container = document.getElementById('mainContent');
+  const cat = kbData.find(c => c.id === catId);
+  if (!cat) return;
+  const entry = cat.entries.find(e => e.id === entryId);
+  if (!entry) return;
+
+  const backBtn = \`<button class="stab" onclick="renderKBCategory('\${escKBAttr(catId)}')" style="margin-bottom:16px;display:flex;align-items:center;gap:6px">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+    \${escKB(cat.title)}
+  </button>\`;
+
+  let html = backBtn;
+  html += \`<div style="margin-bottom:4px;font-size:12px;color:var(--text3)">\${escKB(entry.date)}</div>\`;
+  html += \`<div style="font-size:19px;font-weight:700;line-height:1.3;margin-bottom:4px">\${escKB(entry.title)}</div>\`;
+  if (entry.subtitle) html += \`<div style="font-size:13px;color:var(--text2);margin-bottom:16px">\${escKB(entry.subtitle)}</div>\`;
+
+  if (entry.videoUrl) {
+    const ytMatch = entry.videoUrl.match(/(?:youtube\\.com\\/watch\\?v=|youtu\\.be\\/)([^&\\s?]+)/);
+    if (ytMatch) {
+      html += \`<div class="embed-wrap" style="margin-bottom:16px"><iframe src="https://www.youtube.com/embed/\${ytMatch[1]}" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe></div>\`;
+    } else {
+      html += \`<a href="\${escKBAttr(entry.videoUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation();tgOpenLink('\${escKBAttr(entry.videoUrl)}')" style="text-decoration:none">
+        <div class="module-card available" style="background:linear-gradient(135deg,#1a0a0a,#2a0a0a);border-color:rgba(255,60,60,0.3);margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:14px">
+            <div style="width:48px;height:48px;background:rgba(255,0,0,0.8);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M5 3l14 9-14 9V3z"/></svg>
+            </div>
+            <div><div style="font-size:14px;font-weight:600;color:#fff">Смотреть запись</div></div>
+          </div>
+        </div>
+      </a>\`;
+    }
+  }
+
+  if (entry.materials.length > 0) {
+    html += '<div class="files-section"><div class="files-title">Материалы</div>';
+    for (const m of entry.materials) {
+      html += \`<a href="\${escKBAttr(m.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation();tgOpenLink('\${escKBAttr(m.url)}')" style="text-decoration:none">
+        <div class="file-item">
+          <span class="file-icon">📎</span>
+          <span class="file-name">\${escKB(m.title)}</span>
+          <span class="file-arrow">›</span>
+        </div>
+      </a>\`;
+    }
+    html += '</div>';
+  }
+
+  if (entry.summary) {
+    html += '<div class="section-header" style="margin-top:20px"><div class="section-title">Выводы и тезисы</div></div>';
+    html += '<div style="font-size:13px;line-height:1.7;color:var(--text2);white-space:pre-wrap;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:8px">' + escKB(entry.summary) + '</div>';
+  }
+
+  html += '<div style="height:24px"></div>';
+  container.innerHTML = html;
+}
+
+function tgOpenLink(url) {
+  if (window.Telegram?.WebApp?.openLink) {
+    window.Telegram.WebApp.openLink(url);
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
+function escKB(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escKBAttr(s) {
+  if (!s) return '';
+  return String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;');
+}
+function plural(n, one, few, many) {
+  const m = Math.abs(n) % 100;
+  const m1 = m % 10;
+  if (m >= 11 && m <= 19) return many;
+  if (m1 === 1) return one;
+  if (m1 >= 2 && m1 <= 4) return few;
+  return many;
+}
+
+function switchCoffeeTab(tab) {
+  coffeeTab = tab;
+  const container = document.getElementById('mainContent');
+  renderCoffeeMain(container, coffeeData, coffeeData?.profile?.tgId);
+}
+ 
+function updateCoffeeCount(el, countId, max) {
+  const el2 = document.getElementById(countId);
+  if (!el2) return;
+  const len = el.value.length;
+  el2.textContent = len + ' / ' + max;
+  el2.classList.toggle('warn', len > max * 0.9);
+}
+ 
+function openCoffeeCircle() {
+  const tgId = currentUser?.tgId || tg?.initDataUnsafe?.user?.id;
+  if (!tgId) return;
+  // Открываем бота с deep link
+  if (window.Telegram?.WebApp) {
+    Telegram.WebApp.openTelegramLink('https://t.me/' + BOT_USERNAME + '?start=circle');
+  }
+}
+ 
+async function toggleCoffeeActive(tgId, checkbox) {
+  try {
+    const res = await fetch('/api/coffee/toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tgId })
+    }).then(r => r.json());
+ 
+    if (res.ok) {
+      if (coffeeData?.profile) coffeeData.profile.active = res.active;
+      showToast(res.active ? '✅ Подбор включён' : '⏸ Подбор остановлен');
+    } else {
+      checkbox.checked = !checkbox.checked; // откат
+    }
+  } catch(e) {
+    checkbox.checked = !checkbox.checked;
+  }
+}
+
+function openCoffeeEdit() {
+  const p = coffeeData?.profile;
+  if (!p) return;
+  document.getElementById('edit_bio').value = p.bio || '';
+  document.getElementById('edit_request').value = p.request || '';
+  document.getElementById('edit_skill0').value = p.skills?.[0] || '';
+  document.getElementById('edit_skill1').value = p.skills?.[1] || '';
+  document.getElementById('edit_skill2').value = p.skills?.[2] || '';
+  document.getElementById('edit_bio_count').textContent = (p.bio || '').length + ' / 280';
+  document.getElementById('edit_request_count').textContent = (p.request || '').length + ' / 200';
+  // Показать статус кружочка
+  const hasCircle = !!p.circleFileId;
+  document.getElementById('editCircleTitle').textContent = hasCircle ? 'Перезаписать кружочек' : 'Записать кружочек';
+  document.getElementById('editCircleSub').textContent = hasCircle
+    ? 'Кружочек уже записан — нажми чтобы обновить'
+    : 'Короткое видео — партнёр увидит перед знакомством';
+  document.getElementById('coffeeEditOverlay').classList.add('open');
+}
+ 
+function closeCoffeeEdit() {
+  document.getElementById('coffeeEditOverlay').classList.remove('open');
+}
+ 
+async function saveCoffeeEdit() {
+  const tgId = currentUser?.tgId || tg?.initDataUnsafe?.user?.id;
+  if (!tgId) return;
+  const bio = document.getElementById('edit_bio').value.trim();
+  const request = document.getElementById('edit_request').value.trim();
+  const skills = [0,1,2].map(i => document.getElementById('edit_skill'+i)?.value.trim()).filter(Boolean);
+  const btn = document.getElementById('coffeeEditSaveBtn');
+  btn.disabled = true; btn.textContent = 'Сохраняем...';
+  try {
+    const res = await fetch('/api/coffee/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tgId, bio, request, skills })
+    }).then(r => r.json());
+    if (res.ok) {
+      closeCoffeeEdit();
+      showToast('Профиль обновлён');
+      // Обновить кэш
+      if (coffeeData?.profile) {
+        coffeeData.profile.bio = bio;
+        coffeeData.profile.request = request;
+        coffeeData.profile.skills = skills;
+      }
+      renderCoffeeMain(document.getElementById('mainContent'), coffeeData, tgId);
+    } else { showToast('Ошибка, попробуй ещё раз'); }
+  } catch(e) { showToast('Ошибка подключения'); }
+  finally { btn.disabled = false; btn.textContent = 'Сохранить'; }
+}
+ 
+// Закрыть по клику на фон
+document.getElementById('coffeeEditOverlay')?.addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeCoffeeEdit();
+});
+ 
+async function submitCoffeeOnboarding(tgId) {
+  const name = document.getElementById('cf_name')?.value.trim();
+    const city = '';
+
+  const bio = document.getElementById('cf_bio')?.value.trim();
+  const request = document.getElementById('cf_request')?.value.trim();
+  const skills = [0,1,2].map(i => document.getElementById('cf_skill'+i)?.value.trim()).filter(Boolean);
+ 
+  if (!name || !bio || !request) {
+    showToast('Заполни имя, о себе и запрос');
+    return;
+  }
+  if (skills.length < 1) {
+    showToast('Добавь хотя бы один пункт помощи');
+    return;
+  }
+ 
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = 'Сохраняем...';
+ 
+  try {
+    // Проверяем, есть ли уже кружочек
+    let circleFileId = null;
+    const existingProfile = coffeeData?.profile;
+    if (existingProfile?.circleFileId) {
+      circleFileId = existingProfile.circleFileId;
+    }
+    
+    const res = await fetch('/api/coffee/join', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        tgId, name, city, bio, request, skills,
+        circleFileId: circleFileId,  // сохраняем кружочек если был
+        active: true  // ★ активен по умолчанию
+      })
+    }).then(r => r.json());
+ 
+    if (res.ok) {
+      showToast('🎉 Ты в Рандом Кофе!');
+      const container = document.getElementById('mainContent');
+      await renderCoffeeStub(container);
+    } else {
+      showToast('Ошибка, попробуй ещё раз');
+      btn.disabled = false;
+      btn.textContent = 'Присоединиться к Рандом Кофе';
+    }
+  } catch(e) {
+    showToast('Ошибка подключения');
+    btn.disabled = false;
+    btn.textContent = 'Присоединиться к Рандом Кофе';
+  }
+}
+
+function openCoffeeRate(weekId, partnerName) {
+  coffeeRateWeekId = weekId;
+  coffeeRateStars = 0;
+  coffeeRateComplaint = false;
+  document.getElementById('coffeeRateSub').textContent = 'Как прошла встреча с ' + partnerName + '?';
+  document.getElementById('coffeeComplaintToggle').classList.remove('checked');
+  document.getElementById('coffeeCheckbox').textContent = '';
+  document.getElementById('coffeeNoteWrap').classList.remove('show');
+  document.getElementById('coffeeNoteInput').value = '';
+  updateCoffeeStars(0);
+  document.getElementById('coffeeRateOverlay').classList.add('open');
+}
+ 
+function openCoffeeComplaint(weekId) {
+  // Открываем модалку с уже включённой жалобой
+  openCoffeeRate(weekId, 'партнёром');
+  toggleCoffeeComplaint();
+}
+ 
+function closeCoffeeRate() {
+  document.getElementById('coffeeRateOverlay').classList.remove('open');
+}
+ 
+function updateCoffeeStars(n) {
+  coffeeRateStars = n;
+  document.querySelectorAll('.coffee-star').forEach(s => {
+    s.classList.toggle('active', parseInt(s.dataset.v) <= n);
+  });
+}
+ 
+function toggleCoffeeComplaint() {
+  coffeeRateComplaint = !coffeeRateComplaint;
+  const el = document.getElementById('coffeeComplaintToggle');
+  const cb = document.getElementById('coffeeCheckbox');
+  el.classList.toggle('checked', coffeeRateComplaint);
+  cb.textContent = coffeeRateComplaint ? '✓' : '';
+  document.getElementById('coffeeNoteWrap').classList.toggle('show', coffeeRateComplaint);
+}
+ 
+// Назначить звёзды кликом
+document.addEventListener('click', e => {
+  const star = e.target.closest('.coffee-star');
+  if (star) updateCoffeeStars(parseInt(star.dataset.v));
+});
+ 
+// Закрыть по клику на фон
+document.getElementById('coffeeRateOverlay')?.addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeCoffeeRate();
+});
+ 
+async function submitCoffeeRate() {
+  if (!coffeeRateWeekId) return;
+  if (!coffeeRateStars && !coffeeRateComplaint) {
+    showToast('Выбери оценку или отметь жалобу');
+    return;
+  }
+ 
+  const tgId = currentUser?.tgId || tg?.initDataUnsafe?.user?.id;
+  const note = document.getElementById('coffeeNoteInput')?.value.trim() || '';
+  const btn = document.getElementById('coffeeRateSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Отправляем...';
+ 
+  try {
+    const res = await fetch('/api/coffee/rate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tgId, weekId: coffeeRateWeekId, stars: coffeeRateStars, complaint: coffeeRateComplaint, note })
+    }).then(r => r.json());
+ 
+    if (res.ok) {
+      closeCoffeeRate();
+      showToast(coffeeRateComplaint ? '🚩 Жалоба отправлена на модерацию' : '✅ Оценка сохранена');
+      const container = document.getElementById('mainContent');
+      await renderCoffeeStub(container);
+    } else {
+      showToast('Ошибка, попробуй ещё раз');
+    }
+  } catch(e) {
+    showToast('Ошибка подключения');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Отправить';
+  }
+}
+
+function renderProgress(container, prog) {
+  const tasks = tasksData[currentProgram] || [];
+  const completed = taskProgressData[currentProgram]?.completed || [];
+
+  if (!tasks.length) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">✓</div><div class="empty-state-text">Задачи ещё не добавлены</div></div>';
+    return;
+  }
+
+  const totalModules = (prog?.modules || []).filter(m => m.available).length;
+const totalTasks = (tasksData[currentProgram] || []).length;
+const total = totalModules + totalTasks;
+
+const completedModules = progressData[currentProgram]?.completed || [];
+const completedTasks = taskProgressData[currentProgram]?.completed || [];
+const doneModules = (prog?.modules || []).filter(m => m.available && completedModules.includes(m.id)).length;
+const doneTasks = completedTasks.length;
+const done = doneModules + doneTasks;
+const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+  let html = '<div class="progress-wrap"><div class="progress-label"><span>' + done + ' из ' + total + ' материалов</span><span class="progress-pct">' + pct + '%</span></div><div class="progress-bar-track"><div class="progress-bar-fill" style="width:' + pct + '%"></div></div></div><div class="module-list">';
+
+  tasks.forEach(task => {
+    const isDone = completed.includes(task.id);
+    html += '<div class="module-card available' + (isDone ? ' done' : '') + '" onclick="toggleTask(&quot;' + task.id + '&quot;)">';
+    html += '<div class="module-top"><div>';
+    html += '<div class="module-title">' + task.title + '</div>';
+    if (task.description) html += '<div class="module-desc">' + task.description + '</div>';
+    html += '</div><div class="module-status ' + (isDone ? 'done' : '') + '">' + (isDone ? '✓' : '') + '</div></div></div>';
+  });
+
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+async function toggleTask(taskId) {
+  const completed = taskProgressData[currentProgram]?.completed || [];
+  const isDone = completed.includes(taskId);
+  const res = await fetch('/api/task-progress', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ initData, programId: currentProgram, taskId, done: !isDone })
+  }).then(r => r.json());
+  if (res.ok) {
+    taskProgressData[currentProgram] = res.progress;
+    renderContent();
+  }
+}
+
+async function renderEvents(container) {
+  container.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
+  
+  try {
+    const data = await fetch('/api/events').then(r => r.json());
+    const now = Date.now();
+    const events = (data.events || [])
+      .filter(ev => {
+        const endTime = new Date(ev.datetime).getTime() + (ev.duration || 90) * 60 * 1000;
+        return endTime > now;
+      })
+      .sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+    
+    if (!events.length) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📅</div><div class="empty-state-text">Мероприятий пока нет</div></div>';
+      return;
+    }
+
+    var html = '';
+    events.forEach(function(ev) {
+      var dt = new Date(ev.datetime);
+      var days = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+      var formatted = days[dt.getDay()] + ', ' + dt.toLocaleDateString('ru', {day:'numeric', month:'long'}) + ' · ' + dt.toLocaleTimeString('ru', {hour:'2-digit', minute:'2-digit'});
+
+      function fmtCalLocal(dtStr, durMin) {
+        var startMs = new Date(dtStr).getTime();
+        var endMs = startMs + (durMin || 90) * 60000;
+        var sd = new Date(dtStr);
+        var ed = new Date(endMs);
+        var sStr = sd.getFullYear() + String(sd.getMonth()+1).padStart(2,'0') + String(sd.getDate()).padStart(2,'0') + 'T' + String(sd.getHours()).padStart(2,'0') + String(sd.getMinutes()).padStart(2,'0') + '00';
+        var eStr = ed.getFullYear() + String(ed.getMonth()+1).padStart(2,'0') + String(ed.getDate()).padStart(2,'0') + 'T' + String(ed.getHours()).padStart(2,'0') + String(ed.getMinutes()).padStart(2,'0') + '00';
+        return sStr + '/' + eStr;
+      }
+
+      var calDates = fmtCalLocal(ev.datetime, ev.duration);
+      var gCalUrl = 'https://calendar.google.com/calendar/render?action=TEMPLATE&dates=' + calDates + '&ctz=Europe/Moscow&text=' + encodeURIComponent(ev.title) + '&location=' + encodeURIComponent(ev.actionUrl || '');
+
+      var icsStart = calDates.split('/')[0];
+      var icsEnd = calDates.split('/')[1];
+      var icsLines = ['BEGIN:VCALENDAR','VERSION:2.0','BEGIN:VEVENT','DTSTART;TZID=Europe/Moscow:' + icsStart,'DTEND;TZID=Europe/Moscow:' + icsEnd,'SUMMARY:' + ev.title,'LOCATION:' + (ev.actionUrl || ''),'END:VEVENT','END:VCALENDAR'];
+      var icsContent = icsLines.join('\\r\\n');
+      var icsUrl = 'data:text/calendar;charset=utf8,' + encodeURIComponent(icsContent);
+
+      html += '<div class="event-card">';
+
+      if (ev.photo) {
+  html += '<div class="event-photo-wrap"><img src="' + ev.photo + '" class="event-photo"/></div>';
+} else {
+  html += '<div class="event-photo-wrap" style="display:flex;align-items:center;justify-content:center;background:var(--bg3)">';
+html += '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1.5"><path d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.889L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/></svg>';
+  html += '</div>';
+}
+
+      html += '<div class="event-body">';
+      html += '<div class="event-title">' + ev.title + '</div>';
+
+      if (ev.author) {
+        if (ev.authorUrl) {
+          html += '<div class="event-author"><a href="' + ev.authorUrl + '" target="_blank" style="color:inherit;text-decoration:underline">' + ev.author + '</a></div>';
+        } else {
+          html += '<div class="event-author">' + ev.author + '</div>';
+        }
+      }
+      if (ev.tags && ev.tags.length) {
+  html += '<div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;margin-top:4px;margin-bottom:6px">';
+  ev.tags.forEach(function(tag) {
+    html += '<span style="font-size:10px;padding:2px 10px;border-radius:20px;border:1px solid var(--border);color:var(--text3)">' + tag + '</span>';
+  });
+  html += '</div>';
+}
+html += '<div class="event-datetime">' + formatted + '</div>';
+
+      html += '<div style="display:flex;align-items:center;justify-content:center;gap:8px">';
+
+      html += '<a href="' + gCalUrl + '" target="_blank" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:#ffffff;text-decoration:none" title="Google Calendar">';
+      html += '<svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.35-1.04 2.5-2.21 3.29v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.07z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>';
+      html += '</a>';
+html += '<a href="#" data-ics-id="' + ev.id + '" class="ics-btn" style="display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:#ffffff;text-decoration:none" title="Apple Calendar">';
+      html += '<svg width="16" height="16" viewBox="0 0 24 24"><path fill="#000" d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>';
+      html += '</a>';
+
+      var btnText = ev.actionType === 'register' ? 'Записаться →' : 'Zoom →';
+      html += '<a href="' + (ev.actionUrl || '#') + '" target="_blank" class="event-zoom-btn">' + btnText + '</a>';
+
+      html += '</div>';
+      html += '</div>';
+      html += '</div>';
+    });
+
+    container.innerHTML = html;
+  } catch(err) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">Ошибка загрузки</div></div>';
+  }
+}
+
+function openIcs(eventId) {
+  var url = 'webcal://' + location.host + '/api/event-ics?id=' + eventId;
+  if (tg && tg.openLink) {
+    tg.openLink(url);
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
+document.addEventListener('click', function(e) {
+  var btn = e.target.closest('.ics-btn');
+  if (!btn) return;
+  e.preventDefault();
+  var url = 'https://' + location.host + '/api/event-ics?id=' + btn.dataset.icsId;
+  tg.openLink(url);
+});
+
+// ── MODULE DETAIL ─────────────────────────────────────────────
+function openModule(moduleId) {
+  const prog = programData[currentProgram];
+  if (!prog) return;
+  const mod = prog.modules.find(m => m.id === moduleId);
+  if (!mod) return;
+  const moduleTasks = (tasksData[currentProgram] || []).filter(t => t.moduleId === moduleId);
+const moduleTaskProgress = taskProgressData[currentProgram]?.completed || [];
+
+  let moduleTasksHtml = '';
+if (moduleTasks.length > 0) {
+  moduleTasksHtml = '<div class="files-section"><div class="files-title">Задания</div>';
+  moduleTasks.forEach(task => {
+    const done = moduleTaskProgress.includes(task.id);
+    moduleTasksHtml += \`<div class="module-card available \${done ? 'done' : ''}" 
+  data-task-id="\${task.id}" style="margin-bottom:8px;cursor:pointer">
+  <div class="module-top">
+    <div>
+      <div class="module-title" style="font-size:13px">\${task.title}</div>
+      \${task.description ? \`<div class="module-desc">\${task.description}</div>\` : ''}
+    </div>
+    <div class="module-status \${done ? 'done' : ''}">\${done ? '✓' : ''}</div>
+  </div>
+</div>\`;
+  });
+  moduleTasksHtml += '</div>';
+}
+
+  const completed = progressData[currentProgram]?.completed || [];
+  const isDone = completed.includes(moduleId);
+  const idx = prog.modules.indexOf(mod);
+
+  let embedHtml = '';
+  if (mod.embedUrl) {
+    const embedSrc = getEmbedSrc(mod.embedUrl);
+    embedHtml = \`<div class="embed-wrap"><iframe src="\${embedSrc}" allowfullscreen></iframe></div>\`;
+  } else {
+    embedHtml = \`<div class="embed-wrap"><div class="embed-placeholder"><span class="embed-placeholder-icon">▶</span><span>Видео появится здесь</span></div></div>\`;
+  }
+
+  let filesHtml = '';
+  if (mod.files && mod.files.length > 0) {
+    filesHtml = '<div class="files-section"><div class="files-title">Материалы</div>';
+    mod.files.forEach(f => {
+      filesHtml += \`<a class="file-item" href="\${f.url}" target="_blank">
+  <span class="file-icon">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+      <polyline points="13 2 13 9 20 9"/>
+    </svg>
+  </span>
+  <span class="file-name">\${escapeHtml(f.name)}</span>
+  <span class="file-arrow">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <line x1="5" y1="12" x2="19" y2="12"/>
+      <polyline points="12 5 19 12 12 19"/>
+    </svg>
+  </span>
+</a>\`;
+});
+    filesHtml += '</div>';
+  }
+
+  let timecodesHtml = '';
+if (mod.timecodes && mod.timecodes.length > 0 && mod.embedUrl) {
+  // Генерируем уникальный ID для этого модуля
+  const collapseId = \`timecodes-\${moduleId}\`;
+  timecodesHtml = \`
+    <div class="files-section">
+      <div class="files-title" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center" onclick="toggleCollapse('\${collapseId}')">
+        <span>Таймкоды (\${mod.timecodes.length})</span>
+        <span id="\${collapseId}-arrow" style="font-size:12px;transition:transform 0.2s">▼</span>
+      </div>
+      <div id="\${collapseId}" class="collapse-content" style="display:none">
+        \${mod.timecodes.map(tc => {
+          const parts = tc.time.split(':').map(Number);
+          const secs = parts.length === 3 ? parts[0]*3600+parts[1]*60+parts[2] : parts[0]*60+parts[1];
+          const ytMatch = mod.embedUrl.match(/(?:youtube\\.com\\/watch\\?v=|youtu\\.be\\/)([^&\\s]+)/);
+          const ytId = ytMatch ? ytMatch[1] : null;
+          const tcUrl = ytId ? \`https://www.youtube.com/watch?v=\${ytId}&t=\${secs}s\` : mod.embedUrl;
+          return \`<a class="timeline-item" href="\${tcUrl}" target="_blank">
+            <span class="timeline-time \${getTimeFormatClass(tc.time)}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+              <span>\${escapeHtml(tc.time)}</span>
+            </span>
+            <span class="timeline-label">\${escapeHtml(tc.label)}</span>
+            <span class="timeline-arrow">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="5" y1="12" x2="19" y2="12"/>
+                <polyline points="12 5 19 12 12 19"/>
+              </svg>
+            </span>
+          </a>\`;
+        }).join('')}
+      </div>
+    </div>\`;
+}
+
+  const doneBtnClass = isDone ? 'done-btn is-done' : 'done-btn';
+  const doneBtnText = isDone ? '✓ Пройдено' : 'Отметить как пройденное';
+
+  document.getElementById('detailContent').innerHTML = \`
+    <div class="detail-num">МОДУЛЬ \${idx + 1} · \${currentProgram === 'ai' ? 'ИИ-КОНТЕНТ' : 'ВОРОНКИ'}</div>
+    <div class="detail-title">\${mod.title}</div>
+    \${mod.description ? \`<div class="detail-desc">\${mod.description}</div>\` : ''}
+    \${embedHtml}
+    \${timecodesHtml}
+    \${filesHtml}
+    \${moduleTasksHtml}
+    <button class="\${doneBtnClass}" id="doneBtn" onclick="toggleDone('\${moduleId}')">
+      \${isDone ? '✓ Пройдено' : '○ Отметить как пройденное'}
+    </button>
+    <div class="question-section" style="margin-top:24px">
+      <div class="question-label">Вопрос по этому модулю</div>
+      <textarea class="question-textarea" id="detailQuestionText" placeholder="Напиши вопрос..."></textarea>
+      <button class="question-send" onclick="sendDetailQuestion('\${moduleId}', '\${mod.title}')">Отправить →</button>
+    </div>\`;
+
+  showScreen('detailScreen');
+  document.querySelectorAll('[data-task-id]').forEach(el => {
+  el.onclick = () => toggleTaskInModule(el.dataset.taskId, moduleId);
+});
+}
+
+function toggleCollapse(id) {
+  const el = document.getElementById(id);
+  const arrow = document.getElementById(id + '-arrow');
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    arrow.style.transform = 'rotate(0deg)';
+  } else {
+    el.style.display = 'none';
+    arrow.style.transform = 'rotate(-90deg)';
+  }
+}
+
+function getTimeFormatClass(timeStr) {
+  if (!timeStr) return 'time-short';
+  const parts = timeStr.split(':');
+  if (parts.length === 3) return 'time-long';      // ЧЧ:ММ:СС
+  if (parts.length === 2 && parts[0].length > 2) return 'time-medium'; // 54:10 (две цифры)
+  return 'time-short';                              // ММ:СС
+}
+
+// Добавьте эту функцию в самое начало <script>, после объявления переменных
+function escapeHtml(str) {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function toggleTaskInModule(taskId, moduleId) {
+  const completed = taskProgressData[currentProgram]?.completed || [];
+  const isDone = completed.includes(taskId);
+  const res = await fetch('/api/task-progress', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ initData, programId: currentProgram, taskId, done: !isDone })
+  }).then(r => r.json());
+  if (res.ok) {
+    taskProgressData[currentProgram] = res.progress;
+    openModule(moduleId); // перерендер детали
+    // Обновляем прогресс-бар
+    updateProgressBar();
+  }
+}
+
+function closeDetail() {
+  showScreen('appScreen');
+}
+
+function getEmbedSrc(url) {
+  if (!url) return '';
+  // YouTube
+  const ytMatch = url.match(/(?:youtube\\.com\\/watch\\?v=|youtu\\.be\\/)([^&\\s]+)/);
+  if (ytMatch) return 'https://www.youtube.com/embed/' + ytMatch[1];
+  // Vimeo
+  const vimeoMatch = url.match(/vimeo\\.com\\/(\d+)/);
+  if (vimeoMatch) return 'https://player.vimeo.com/video/' + vimeoMatch[1];
+  return url;
+}
+
+// ── TOGGLE DONE ───────────────────────────────────────────────
+async function toggleDone(moduleId) {
+  const completed = progressData[currentProgram]?.completed || [];
+  const isDone = completed.includes(moduleId);
+  const newDone = !isDone;
+
+  try {
+    const res = await api('/api/progress', { initData, programId: currentProgram, moduleId, done: newDone }, 'POST');
+    if (res.ok) {
+      progressData[currentProgram] = res.progress;
+      
+      // Обновляем кнопку в деталях
+      const btn = document.getElementById('doneBtn');
+      if (newDone) {
+        btn.className = 'done-btn is-done';
+        btn.textContent = '✓ Пройдено';
+        showToast('Отмечено как пройденное ✓');
+      } else {
+        btn.className = 'done-btn';
+        btn.textContent = '○ Отметить как пройденное';
+        showToast('Отметка снята');
+      }
+      
+      // ⭐ ОБНОВЛЯЕМ СТАТУС МОДУЛЯ В МЕНЮ (без перезагрузки) ⭐
+      updateModuleStatusInList(moduleId, newDone);
+      
+      // Также обновляем прогресс-бар на главной
+      updateProgressBar();
+    }
+  } catch(e) {
+    showToast('Ошибка. Попробуй снова.');
+  }
+}
+
+// Новая функция для обновления статуса модуля в списке
+function updateModuleStatusInList(moduleId, isDone) {
+  // Ищем карточку модуля в DOM
+  const modules = document.querySelectorAll('.module-card');
+  for (const card of modules) {
+    // Проверяем, есть ли у карточки onclick с этим moduleId
+    const onclickAttr = card.getAttribute('onclick');
+    if (onclickAttr && onclickAttr.includes(\`'\${moduleId}'\`)) {
+      // Обновляем класс done
+      if (isDone) {
+        card.classList.add('done');
+        const statusDiv = card.querySelector('.module-status');
+        if (statusDiv) {
+          statusDiv.classList.add('done');
+          statusDiv.textContent = '✓';
+        }
+        // Обновляем тег, если есть
+        const tagSpan = card.querySelector('.module-tag');
+        if (tagSpan && !tagSpan.classList.contains('locked-tag')) {
+          tagSpan.textContent = '✓ Пройдено';
+        }
+      } else {
+        card.classList.remove('done');
+        const statusDiv = card.querySelector('.module-status');
+        if (statusDiv) {
+          statusDiv.classList.remove('done');
+          statusDiv.textContent = '';
+        }
+        const tagSpan = card.querySelector('.module-tag');
+        if (tagSpan && tagSpan.textContent === '✓ Пройдено') {
+          tagSpan.textContent = '';
+        }
+      }
+      break;
+    }
+  }
+}
+
+// Обновление прогресс-бара
+function updateProgressBar() {
+  const prog = programData[currentProgram];
+  if (!prog) return;
+  
+  const completedModules = progressData[currentProgram]?.completed || [];
+  const completedTasks = taskProgressData[currentProgram]?.completed || [];
+  
+  const totalModules = (prog.modules || []).filter(m => m.available).length;
+  const totalTasks = (tasksData[currentProgram] || []).length;
+  const total = totalModules + totalTasks;
+  
+  const doneModules = (prog.modules || []).filter(m => m.available && completedModules.includes(m.id)).length;
+  const doneTasks = completedTasks.length;
+  const done = doneModules + doneTasks;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  
+  // Обновляем прогресс-бар на странице
+  const progressWrap = document.querySelector('.progress-wrap');
+  if (progressWrap) {
+    const pctSpan = progressWrap.querySelector('.progress-pct');
+    const fillDiv = progressWrap.querySelector('.progress-bar-fill');
+    if (pctSpan) pctSpan.textContent = \`\${pct}%\`;
+    if (fillDiv) fillDiv.style.width = \`\${pct}%\`;
+  }
+}
+
+// ── QUESTIONS ─────────────────────────────────────────────────
+async function sendQuestion() {
+  const text = document.getElementById('questionText').value.trim();
+  if (!text) return;
+  await submitQuestion(text);
+  document.getElementById('questionText').value = '';
+  showToast('Вопрос отправлен!');
+}
+
+async function sendDetailQuestion(moduleId, moduleTitle) {
+  const text = document.getElementById('detailQuestionText').value.trim();
+  if (!text) return;
+  await submitQuestion(\`[Модуль: \${moduleTitle}] \${text}\`);
+  document.getElementById('detailQuestionText').value = '';
+  showToast('Вопрос отправлен!');
+}
+
+async function submitQuestion(text) {
+  try {
+    await api('/api/user', {
+      initData,
+      action: 'submitQuestion',
+      payload: { text, program: currentProgram === 'ai' ? 'ИИ-контент' : 'Воронки' }
+    }, 'POST');
+  } catch(e) {}
+}
+
+// ── UTILS ─────────────────────────────────────────────────────
+async function api(path, body, method = 'POST') {
+  const opts = { headers: { 'Content-Type': 'application/json' } };
+  if (method === 'GET') {
+    opts.method = 'GET';
+  } else {
+    opts.method = method;
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(WORKER + path, opts);
+  return res.json();
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+</script>
+</body>
+</html>`;
+}
+
+// ─── ADMIN HTML ───────────────────────────────────────────────
+function getAdminHTML() {
+  return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CMO Admin</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;700&family=Geologica:wght@300;400;500;600&display=swap');
+
+  :root {
+  --bg: #f5f5f5;
+  --bg2: #efefef;
+  --bg3: #e8e8e8;
+  --card: #ffffff;
+  --border: rgba(0,0,0,0.08);
+  --border-h: rgba(0,0,0,0.18);
+  --text: #111111;
+  --text2: rgba(0,0,0,0.5);
+  --text3: rgba(0,0,0,0.3);
+  --accent: #111111;
+  --danger: #d93025;
+  --success: #1a7f4b;
+  --radius: 10px;
+}
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Geologica', sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  /* LOGIN */
+  #loginWrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  .login-box {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px 32px;
+    width: 100%;
+    max-width: 380px;
+    text-align: center;
+  }
+
+  .login-logo {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .login-sub { color: var(--text3); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 36px; }
+
+  .login-box input {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    color: var(--text);
+    font-family: 'Geologica', sans-serif;
+    font-size: 14px;
+    outline: none;
+    margin-bottom: 12px;
+    transition: border-color 0.2s;
+  }
+
+  .login-box input:focus { border-color: rgba(255,255,255,0.25); }
+
+  .btn { display: inline-block; padding: 11px 20px; border-radius: var(--radius); font-family: 'Geologica', sans-serif; font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all 0.2s; }
+  .btn-w { background: var(--text); color: var(--bg); width: 100%; }
+  .btn-w:hover { opacity: 0.88; }
+  .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text2); }
+  .btn-ghost:hover { border-color: var(--border-h); color: var(--text); }
+  .btn-danger { background: transparent; border: 1px solid rgba(255,68,68,0.3); color: var(--danger); }
+  .btn-danger:hover { background: rgba(255,68,68,0.1); }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  #loginError { color: var(--danger); font-size: 12px; margin-top: 8px; min-height: 18px; }
+
+  /* ADMIN LAYOUT */
+  #adminWrap { display: none; }
+
+  .admin-layout { display: flex; min-height: 100vh; }
+
+  .sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    background: var(--card);
+    border-right: 1px solid var(--border);
+    padding: 24px 0;
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    overflow-y: auto;
+  }
+
+  .sidebar-logo {
+    padding: 0 20px 24px;
+    font-family: 'Unbounded', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+
+  .sidebar-logo span { color: var(--text3); font-size: 10px; display: block; margin-top: 2px; letter-spacing: 1.5px; font-weight: 400; font-family: 'Geologica'; }
+
+  .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 20px;
+    color: var(--text2);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border-radius: 0;
+  }
+
+  .nav-link:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+  .nav-link.active { color: var(--text); background: rgba(255,255,255,0.07); }
+  .nav-link-icon { font-size: 16px; width: 20px; text-align: center; }
+
+  .main-content {
+    margin-left: 220px;
+    flex: 1;
+    padding: 32px;
+    max-width: calc(100vw - 220px);
+  }
+
+  .page { display: none; }
+  .page.active { display: block; }
+
+  .page-title {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 24px;
+    letter-spacing: -0.5px;
+  }
+
+  /* CARDS */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+
+  .card-title {
+    font-size: 12px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-bottom: 14px;
+  }
+
+  /* TABLE */
+  .tbl { width: 100%; border-collapse: collapse; min-width: 900px; }
+  .tbl th {
+    text-align: left;
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text3);
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 400;
+  }
+  .tbl td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-size: 13px;
+    color: var(--text2);
+  }
+  .tbl tr:last-child td { border-bottom: none; }
+  .tbl td:first-child { color: var(--text); }
+
+  /* FORM ELEMENTS */
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--text3); margin-bottom: 6px; }
+  .field input, .field textarea, .field select {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    color: var(--text);
+    font-family: 'Geologica', sans-serif;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .field input:focus, .field textarea:focus, .field select:focus { border-color: rgba(255,255,255,0.2); }
+  .field textarea { resize: vertical; min-height: 80px; }
+  .field select option { background: var(--bg3); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  .row { display: flex; align-items: center; gap: 10px; }
+  .row .field { flex: 1; margin-bottom: 0; }
+
+  /* STATUS */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+  }
+  .badge-ok { background: rgba(68,255,136,0.12); color: var(--success); }
+  .badge-pending { background: rgba(255,200,68,0.12); color: #ffc844; }
+
+  /* NOTIFY FORM */
+  .notify-preview {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    font-size: 13px;
+    color: var(--text2);
+    min-height: 60px;
+    margin-bottom: 12px;
+    white-space: pre-wrap;
+  }
+
+  /* MODULE LIST */
+  .module-item {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .module-item:hover { border-color: var(--border-h); }
+  .module-item-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .module-item-title { font-weight: 500; font-size: 14px; }
+  .module-item-actions { display: flex; gap: 6px; }
+
+  /* MODAL */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+    display: none;
+    padding: 24px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    width: 100%;
+    max-width: 560px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  .modal-title {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 20px;
+  }
+  .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+
+  /* STATS */
+  .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .stat-val {
+    font-family: 'Unbounded', sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .stat-label { font-size: 12px; color: var(--text3); }
+
+  .msg { font-size: 12px; margin-top: 8px; min-height: 18px; }
+  .msg.ok { color: var(--success); }
+  .msg.err { color: var(--danger); }
+
+  /* Questions */
+  .q-item {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 8px;
+  }
+  .q-meta { font-size: 11px; color: var(--text3); margin-bottom: 6px; }
+  .q-text { font-size: 13px; color: var(--text2); line-height: 1.5; }
+  .q-bottom { display: flex; justify-content: flex-end; margin-top: 10px; }
+
+  /* Toggle */
+  .toggle-wrap { display: flex; align-items: center; gap: 10px; }
+  .toggle { position: relative; width: 36px; height: 20px; cursor: pointer; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-track { position: absolute; inset: 0; background: var(--bg3); border: 1px solid var(--border); border-radius: 20px; transition: 0.2s; }
+  .toggle input:checked + .toggle-track { background: var(--text); border-color: var(--text); }
+  .toggle-thumb { position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; background: var(--text3); border-radius: 50%; transition: 0.2s; }
+  .toggle input:checked ~ .toggle-thumb { transform: translateX(16px); background: var(--bg); }
+
+  @media (max-width: 768px) {
+  .sidebar { display: none; }
+  .main-content { margin-left: 0; max-width: 100vw; padding: 20px 16px 80px; }
+  .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  .stats-row { grid-template-columns: 1fr 1fr; }
+}
+  .mnav-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 2px;
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.25);
+  font-family: 'Geologica', sans-serif;
+  font-size: 9px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.mnav-btn.active { color: #ffffff; }
+.tbl-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginWrap">
+  <div class="login-box">
+    <div class="login-logo">CMO</div>
+    <div class="login-sub">Admin Panel</div>
+    <input type="password" id="adminPass" placeholder="Пароль" onkeydown="if(event.key==='Enter')adminLogin()"/>
+    <button class="btn btn-w" onclick="adminLogin()">Войти</button>
+    <div id="loginError"></div>
+  </div>
+</div>
+
+<!-- ADMIN -->
+<div id="adminWrap">
+  <div class="admin-layout">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-logo">CMO <span>ADMIN PANEL</span></div>
+      <div class="nav-link active" id="nl-dashboard" onclick="showPage('dashboard')">
+        <span class="nav-link-icon">⊞</span> Дашборд
+      </div>
+      <div class="nav-link" id="nl-participants" onclick="showPage('participants')">
+        <span class="nav-link-icon">👤</span> Участники
+      </div>
+      <div class="nav-link" id="nl-notify" onclick="showPage('notify')">
+        <span class="nav-link-icon">📢</span> Уведомления
+      </div>
+      <div class="nav-link" id="nl-programs" onclick="showPage('programs')">
+        <span class="nav-link-icon">📚</span> Программы
+      </div>
+      <div class="nav-link" id="nl-questions" onclick="showPage('questions')">
+        <span class="nav-link-icon">❓</span> Вопросы
+      </div>
+      <div class="nav-link" id="nl-events" onclick="showPage('events')">
+  <span class="nav-link-icon">📅</span> Мероприятия
+</div>
+<div class="nav-link" id="nl-admins" onclick="showPage('admins')">
+  <span class="nav-link-icon">🔐</span> Админы
+</div>
+<div class="nav-link" id="nl-kb" onclick="showPage('kb')">
+  <span class="nav-link-icon">📚</span> База знаний
+</div>
+<div class="nav-link" id="nl-coffee" onclick="showPage('coffee')">
+        <span class="nav-link-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M17 8h1a4 4 0 0 1 0 8h-1"/>
+            <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z"/>
+            <line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/>
+          </svg>
+        </span>
+        Рандом Кофе
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="main-content">
+
+      <!-- DASHBOARD -->
+      <div class="page active" id="page-dashboard">
+        <div class="page-title">Дашборд</div>
+        <div class="stats-row">
+  <div class="stat-card"><div class="stat-val" id="stat-emails">—</div><div class="stat-label">Участников</div></div>
+  <div class="stat-card"><div class="stat-val" id="stat-pending">—</div><div class="stat-label">Ожидают</div></div>
+  <div class="stat-card"><div class="stat-val" id="stat-questions">—</div><div class="stat-label">Вопросов</div></div>
+  <div class="stat-card"><div class="stat-val" id="stat-launches">—</div><div class="stat-label">Всего заходов</div></div>
+  <div class="stat-card"><div class="stat-val" id="stat-payments">—</div><div class="stat-label">Оплат</div></div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-title">Топ-5 по активности</div>
+    <div id="topUsers"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Последние оплаты</div>
+    <div id="paymentsList"></div>
+  </div>
+</div>
+      </div>
+
+      <!-- PARTICIPANTS -->
+      <div class="page" id="page-participants">
+        <div class="page-title">Участники</div>
+        <div class="card" style="margin-bottom:12px">
+          <div class="card-title">Синхронизация</div>
+          <p style="font-size:13px;color:var(--text3);margin-bottom:12px">Привязывает TG ID и username к email по существующим записям user:* в KV</p>
+          <button class="btn btn-ghost" onclick="syncParticipants()">🔄 Синхронизировать участников</button>
+          <div class="msg" id="syncMsg" style="margin-top:8px"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Добавить участника</div>
+          <div class="row">
+            <div class="field">
+              <input type="email" id="newEmail" placeholder="email@example.com"/>
+            </div>
+            <button class="btn btn-ghost" onclick="addEmail()">Добавить</button>
+          </div>
+          <div class="msg" id="addEmailMsg"></div>
+        </div>
+        <div class="field" style="margin-bottom:16px">
+  <input type="text" id="participantSearch" placeholder="Поиск по участникам" 
+    oninput="filterParticipants(this.value)"/>
+</div>
+        <div class="card">
+          <div class="card-title">Список участников</div>
+          <div class="tbl-scroll">
+          <table class="tbl">
+  <thead>
+  <tr>
+    <th>Email</th>
+    <th>Username</th>
+    <th>TG ID</th>
+    <th>Заходов</th>
+    <th>Вопросов</th>
+    <th>ИИ мод.</th>
+    <th>ИИ зад.</th>
+    <th>Ворон. мод.</th>
+    <th>Ворон. зад.</th>
+    <th>Дата оплаты</th>
+    <th></th>
+  </tr>
+</thead>
+  <tbody id="emailTable"></tbody>
+</table>
+</div>
+
+        </div>
+        <div class="card">
+          <div class="card-title">Ожидают одобрения</div>
+          <div id="pendingTable"></div>
+        </div>
+        <div class="card">
+  <div class="card-title">Все пользователи бота</div>
+  <div id="botUsersList"></div>
+</div>
+      </div>
+
+      <!-- EVENTS -->
+<div class="page" id="page-events">
+  <div class="page-title">Мероприятия</div>
+
+  <div class="card">
+<div class="card-title" id="evCardTitle">Добавить мероприятие</div>
+    <div class="grid-2">
+      <div class="field">
+        <label>Название</label>
+        <input type="text" id="evTitle" placeholder="Субботний разбор #12"/>
+      </div>
+      <div class="field">
+  <label>Теги (через запятую)</label>
+  <input type="text" id="evTags" placeholder="Встреча, Разборы..."/>
+</div>
+<div class="grid-2">
+      <div class="field">
+        <label>Автор (опционально)</label>
+        <input type="text" id="evAuthor" placeholder="Иван Иванов"/>
+      </div>
+    <div class="field">
+  <label>Ссылка на автора (опционально)</label>
+  <input type="url" id="evAuthorUrl" placeholder="https://t.me/username"/>
+</div>
+</div>
+<div class="field">
+        <label>Фото (URL)</label>
+        <input type="url" id="evPhoto" placeholder="https://..."/>
+      </div>
+      <div class="field">
+        <label>Дата и время</label>
+        <input type="datetime-local" id="evDatetime"/>
+      </div>
+<div class="grid-2">
+    <div class="field">
+    <label>Тип кнопки</label>
+    <select id="evActionType">
+      <option value="zoom">Zoom</option>
+      <option value="register">Записаться</option>
+    </select>
+  </div>
+    <div class="field">
+      <label>Ссылка на мероприятие</label>
+      <input type="url" id="evZoom" placeholder="https://zoom.us/j/..."/>
+    </div>
+      </div>
+      </div>
+    <button class="btn btn-w" id="evSaveBtn" onclick="saveEvent()">Добавить</button>
+    <div class="msg" id="evMsg"></div>
+    </div>
+  <div id="eventsList"></div>
+</div>
+
+      <!-- NOTIFY -->
+      <div class="page" id="page-notify">
+        <div class="page-title">Уведомления</div>
+        <div class="card">
+          <div class="card-title">Отправить уведомление</div>
+          <div class="field">
+  <label>Получатели</label>
+  <div style="display:flex;gap:8px;margin-bottom:12px">
+    <button class="btn btn-w btn-sm" id="notifyModeAll" onclick="setNotifyMode('all')">Все участники</button>
+    <button class="btn btn-ghost btn-sm" id="notifyModeSelect" onclick="setNotifyMode('select')">Выбрать</button>
+  </div>
+  <div id="notifyUserList" style="display:none;max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);padding:8px"></div>
+</div>
+          <div class="field">
+            <label>Текст сообщения</label>
+            <textarea id="notifyText" rows="5" placeholder="Текст уведомления..." oninput="updatePreview()"></textarea>
+          </div>
+          <div class="card-title" style="margin-bottom:8px">Предпросмотр</div>
+          <div class="notify-preview" id="notifyPreview">📢 Уведомление от CMO&#10;&#10;...</div>
+          <button class="btn btn-w" onclick="sendNotify()" style="margin-top:8px">Отправить всем →</button>
+          <div class="msg" id="notifyMsg"></div>
+        </div>
+      </div>
+
+      <!-- PROGRAMS -->
+      <div class="page" id="page-programs">
+        <div class="page-title">Программы</div>
+        <div style="display:flex;gap:8px;margin-bottom:20px">
+          <button class="btn btn-w" id="pb-ai" onclick="selectProgAdmin('ai')">🤖 ИИ-контент</button>
+          <button class="btn btn-ghost" id="pb-funnels" onclick="selectProgAdmin('funnels')">🔻 Воронки</button>
+        </div>
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+            <div class="card-title" style="margin-bottom:0">Модули программы</div>
+            <button class="btn btn-ghost btn-sm" onclick="addModule()">+ Добавить модуль</button>
+          </div>
+          <div id="moduleList"></div>
+        </div>
+      </div>
+
+      <!-- QUESTIONS -->
+      <div class="page" id="page-questions">
+        <div class="page-title">Вопросы участников</div>
+        <div id="questionsList"></div>
+      </div>
+
+      <div class="page" id="page-admins">
+  <div class="page-title">Администраторы</div>
+  <div class="card">
+    <div class="card-title">Добавить админа</div>
+    <div class="grid-3">
+      <div class="field"><input type="text" id="newAdminName" placeholder="Имя"/></div>
+      <div class="field"><input type="email" id="newAdminEmail" placeholder="Email"/></div>
+      <div class="field"><input type="text" id="newAdminTgId" placeholder="TG ID"/></div>
+    </div>
+    <button class="btn btn-ghost" onclick="addAdmin()">Добавить</button>
+  </div>
+  <div class="card">
+    <div class="card-title">Список администраторов</div>
+    <table class="tbl">
+      <thead><tr><th>Имя</th><th>Email</th><th>TG ID</th><th></th></tr></thead>
+      <tbody id="adminTable"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- KB PAGE -->
+<div class="page" id="page-kb">
+  <div class="page-title">📚 База знаний</div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">Инициализация данных</div>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:12px">При первом запуске или для сброса данных нажмите кнопку — загрузит все встречи из архива.</p>
+    <button class="btn btn-ghost" onclick="kbInitData()">Загрузить начальные данные</button>
+    <div class="msg" id="kbInitMsg"></div>
+  </div>
+
+  <div class="grid-2" style="margin-bottom:16px">
+    <div class="card">
+      <div class="card-title">Категории</div>
+      <div id="kbCategoryList"></div>
+      <div style="margin-top:12px">
+        <button class="btn btn-ghost" onclick="kbOpenCategoryModal(null)">+ Добавить категорию</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Записи в категории</div>
+      <div class="field">
+        <label>Выбрать категорию</label>
+        <select id="kbSelectedCat" onchange="kbLoadEntries(this.value)">
+          <option value="">— выбрать —</option>
+        </select>
+      </div>
+      <div id="kbEntryList"></div>
+      <div style="margin-top:12px">
+        <button class="btn btn-ghost" onclick="kbOpenEntryModal(null)" id="kbAddEntryBtn" disabled>+ Добавить запись</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- KB CATEGORY MODAL -->
+<div class="modal-overlay" id="kbCatModal">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-title" id="kbCatModalTitle">Категория</div>
+    <input type="hidden" id="kbCatId"/>
+    <div class="field"><label>ID (латиница, без пробелов)</label><input type="text" id="kbCatIdInput" placeholder="experts-2026"/></div>
+    <div class="field"><label>Название</label><input type="text" id="kbCatTitle" placeholder="Встречи с экспертами 2026"/></div>
+    <div class="field"><label>Иконка (emoji)</label><input type="text" id="kbCatIcon" placeholder="🎤" maxlength="4"/></div>
+    <div class="field"><label>Порядок</label><input type="number" id="kbCatOrder" placeholder="1" min="0"/></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="kbCloseCatModal()">Отмена</button>
+      <button class="btn btn-w" onclick="kbSaveCategory()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- KB ENTRY MODAL -->
+<div class="modal-overlay" id="kbEntryModal">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-title" id="kbEntryModalTitle">Запись базы знаний</div>
+    <input type="hidden" id="kbEntryId"/>
+    <input type="hidden" id="kbEntryCatId"/>
+    <div class="grid-2">
+      <div class="field"><label>ID (латиница)</label><input type="text" id="kbEntryIdInput" placeholder="expert-name-2026-04-16"/></div>
+      <div class="field"><label>Дата</label><input type="text" id="kbEntryDate" placeholder="16.04.2026"/></div>
+    </div>
+    <div class="field"><label>Название</label><input type="text" id="kbEntryTitle" placeholder="Встреча с Иваном Ивановым"/></div>
+    <div class="field"><label>Подзаголовок / тема</label><input type="text" id="kbEntrySubtitle" placeholder="Как увеличить конверсию на 300%"/></div>
+    <div class="field"><label>Ссылка на запись (YouTube)</label><input type="url" id="kbEntryVideo" placeholder="https://youtu.be/..."/></div>
+    <div class="field">
+      <label>Материалы (по одному на строку: Название | URL)</label>
+      <textarea id="kbEntryMaterials" rows="4" placeholder="Шаблон аудита базы | https://docs.google.com/...&#10;Промт для нейро-прогрева | https://docs.google.com/..."></textarea>
+    </div>
+    <div class="field">
+      <label>Выводы и тезисы</label>
+      <textarea id="kbEntrySummary" rows="8" placeholder="Основные тезисы встречи..."></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="kbCloseEntryModal()">Отмена</button>
+      <button class="btn btn-danger" id="kbEntryDeleteBtn" onclick="kbDeleteEntry()" style="display:none">Удалить</button>
+      <button class="btn btn-w" onclick="kbSaveEntry()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- COFFEE PAGE -->
+<div class="page" id="page-coffee">
+  <div class="page-title">☕ Рандом Кофе</div>
+
+  <!-- Статистика -->
+  <div class="stats-row" style="margin-bottom:24px">
+    <div class="stat-card"><div class="stat-val" id="coffee-stat-total">—</div><div class="stat-label">Участников</div></div>
+    <div class="stat-card"><div class="stat-val" id="coffee-stat-active">—</div><div class="stat-label">Активных</div></div>
+    <div class="stat-card"><div class="stat-val" id="coffee-stat-complaints">—</div><div class="stat-label">Жалоб</div></div>
+    <div class="stat-card"><div class="stat-val" id="coffee-stat-week">—</div><div class="stat-label">Пар на неделе</div></div>
+  </div>
+
+  <!-- Текущий раунд -->
+  <div class="card" style="margin-bottom:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="font-size:14px;font-weight:600">Раунд <span id="coffee-week-id">—</span></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost" onclick="loadCoffeeAdmin()">↻ Обновить</button>
+        <button class="btn btn-w" onclick="openCoffeePairModal()">+ Назначить пары</button>
+      </div>
+    </div>
+    <div id="coffee-pairs-table">
+      <div style="color:var(--text3);font-size:13px">Пары ещё не назначены</div>
+    </div>
+  </div>
+
+  <!-- Жалобы -->
+  <div class="card" style="margin-bottom:20px">
+    <div style="font-size:14px;font-weight:600;margin-bottom:16px">Жалобы</div>
+    <div id="coffee-complaints-list">
+      <div style="color:var(--text3);font-size:13px">Жалоб нет</div>
+    </div>
+  </div>
+
+  <!-- Участники -->
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="font-size:14px;font-weight:600">Участники</div>
+      <input id="coffee-search" type="text" placeholder="Поиск..."
+        oninput="filterCoffeeParticipants()"
+        style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:13px;width:200px;outline:none"/>
+    </div>
+    <table class="tbl" style="width:100%">
+      <thead>
+        <tr>
+          <th>Участник</th>
+          <th>Анкета</th>
+          <th>Встреч</th>
+          <th>Рейтинг</th>
+          <th>Статус</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody id="coffee-participants-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+    </div>
+  </div>
+</div>
+
+<!-- COFFEE PAIR MODAL -->
+<div id="coffeePairModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:24px;width:480px;max-height:80vh;overflow-y:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <div style="font-family:'Unbounded',sans-serif;font-size:14px;font-weight:600">Назначить пары</div>
+      <button onclick="document.getElementById('coffeePairModal').style.display='none'" style="background:none;border:none;color:var(--text2);font-size:18px;cursor:pointer">✕</button>
+    </div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:16px">
+      Выбери пары участников из списков ниже.
+    </div>
+    <div id="coffee-pair-rows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"></div>
+    <button onclick="addCoffeePairRow()" class="btn btn-ghost" style="width:100%;margin-bottom:16px">+ Добавить пару</button>
+    <div style="display:flex;gap:8px">
+      <button onclick="document.getElementById('coffeePairModal').style.display='none'" class="btn btn-ghost" style="flex:1">Отмена</button>
+      <button onclick="saveCoffeePairs()" class="btn btn-w" style="flex:1">Сохранить раунд</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODULE MODAL -->
+<div class="modal-overlay" id="moduleModal">
+  <div class="modal">
+    <div class="modal-title" id="modalTitle">Редактировать модуль</div>
+    <input type="hidden" id="mId"/>
+    <div class="field">
+      <label>Название модуля</label>
+      <input type="text" id="mTitle" placeholder="Название"/>
+    </div>
+    <div class="field">
+      <label>Описание</label>
+      <textarea id="mDesc" placeholder="Описание модуля..."></textarea>
+    </div>
+    <div class="field">
+      <label>Ссылка на видео (YouTube / Vimeo)</label>
+      <input type="url" id="mEmbed" placeholder="https://youtube.com/watch?v=..."/>
+    </div>
+    <div class="field">
+  <label>Таймкоды (формат: "00:00 Название;01:24 Название" — через точку с запятой)</label>
+  <textarea id="mTimecodes" placeholder="00:00 Приветствие;01:24 Тема встречи..." rows="5"></textarea>
+</div>
+    <div class="field">
+      <label>Файлы (по одному на строку: Название|URL)</label>
+      <textarea id="mFiles" placeholder="Презентация|https://drive.google.com/...;;Шаблон|https://docs.google.com/..." rows="4"></textarea>
+    </div>
+    <div class="field">
+      <div class="toggle-wrap">
+        <label class="toggle">
+          <input type="checkbox" id="mAvailable"/>
+          <div class="toggle-track"></div>
+          <div class="toggle-thumb"></div>
+        </label>
+        <span style="font-size:13px;color:var(--text2)">Доступен участникам</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Отмена</button>
+      <button class="btn btn-w" onclick="saveModule()">Сохранить</button>
+    </div>
+    <div class="msg" id="moduleMsg"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="taskModal">
+  <div class="modal">
+    <div class="modal-title" id="taskModalTitle">Новая задача</div>
+    <input type="hidden" id="tId"/>
+    <div class="field"><label>Название</label><input type="text" id="tTitle" placeholder="Название задачи"/></div>
+    <div class="field"><label>Описание</label><textarea id="tDesc" placeholder="Описание (необязательно)..."></textarea></div>
+    <div class="field">
+  <label>Модуль (опционально)</label>
+  <select id="tModuleId"><option value="">Без привязки к модулю</option></select>
+</div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="document.getElementById('taskModal').classList.remove('open')">Отмена</button>
+      <button class="btn btn-w" onclick="saveTask()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<nav id="mobileNav" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:200;background:rgba(13,13,13,0.97);backdrop-filter:blur(12px);border-top:1px solid rgba(255,255,255,0.08);padding:0 8px;padding-bottom:env(safe-area-inset-bottom,0px)">
+  <div style="display:flex">
+    <button class="mnav-btn active" id="mnav-dashboard" onclick="showPage('dashboard')">
+      <span style="font-size:20px">⊞</span>
+      <span>Дашборд</span>
+    </button>
+    <button class="mnav-btn" id="mnav-participants" onclick="showPage('participants')">
+      <span style="font-size:20px">👤</span>
+      <span>Участники</span>
+    </button>
+    <button class="mnav-btn" id="mnav-notify" onclick="showPage('notify')">
+      <span style="font-size:20px">📢</span>
+      <span>Рассылка</span>
+    </button>
+    <button class="mnav-btn" id="mnav-programs" onclick="showPage('programs')">
+      <span style="font-size:20px">📚</span>
+      <span>Программы</span>
+    </button>
+    <button class="mnav-btn" id="mnav-questions" onclick="showPage('questions')">
+      <span style="font-size:20px">❓</span>
+      <span>Вопросы</span>
+    </button>
+    <button class="mnav-btn" id="nl-events" onclick="showPage('events')">
+      <span style="font-size:20px">📅</span>
+      <span>Мероприятия</span>
+    </button>
+    <button class="mnav-btn" id="nl-admins" onclick="showPage('admins')">
+      <span style="font-size:20px">🔐</span>
+      <span>Админы</span>
+    </button>
+    <button class="mnav-btn" id="nl-kb" onclick="showPage('kb')">
+      <span style="font-size:20px">📚</span>
+      <span>База знаний</span>
+    </button>
+  </div>
+</nav>
+
+<!-- COFFEE PAGE -->
+      <div class="page" id="page-coffee">
+        <div class="page-title">☕ Рандом Кофе</div>
+ 
+        <!-- Статистика -->
+        <div class="stats-row" style="margin-bottom:24px">
+          <div class="stat-card"><div class="stat-val" id="coffee-stat-total">—</div><div class="stat-label">Участников</div></div>
+          <div class="stat-card"><div class="stat-val" id="coffee-stat-active">—</div><div class="stat-label">Активных</div></div>
+          <div class="stat-card"><div class="stat-val" id="coffee-stat-complaints">—</div><div class="stat-label">Жалоб</div></div>
+          <div class="stat-card"><div class="stat-val" id="coffee-stat-week">—</div><div class="stat-label">Пар на неделе</div></div>
+        </div>
+ 
+        <!-- Текущий раунд -->
+        <div class="card" style="margin-bottom:20px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+            <div style="font-size:14px;font-weight:600">Раунд <span id="coffee-week-id">—</span></div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-ghost" onclick="loadCoffeeAdmin()">↻ Обновить</button>
+              <button class="btn btn-w" onclick="openCoffeePairModal()">+ Назначить пары</button>
+            </div>
+          </div>
+          <div id="coffee-pairs-table">
+            <div style="color:var(--text3);font-size:13px">Пары ещё не назначены</div>
+          </div>
+        </div>
+ 
+        <!-- Жалобы -->
+        <div class="card" style="margin-bottom:20px">
+          <div style="font-size:14px;font-weight:600;margin-bottom:16px">Жалобы</div>
+          <div id="coffee-complaints-list">
+            <div style="color:var(--text3);font-size:13px">Жалоб нет</div>
+          </div>
+        </div>
+ 
+        <!-- Участники -->
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+            <div style="font-size:14px;font-weight:600">Участники</div>
+            <input id="coffee-search" type="text" placeholder="Поиск..."
+              oninput="filterCoffeeParticipants()"
+              style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:13px;width:200px;outline:none"/>
+          </div>
+          <table class="data-table" style="width:100%">
+            <thead>
+              <tr>
+                <th>Участник</th>
+                <th>Анкета</th>
+                <th>Встреч</th>
+                <th>Рейтинг</th>
+                <th>Статус</th>
+                <th>Действия</th>
+              </tr>
+            </thead>
+            <tbody id="coffee-participants-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+ 
+      <!-- COFFEE PAIR MODAL -->
+      <div id="coffeePairModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center;">
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:24px;width:480px;max-height:80vh;overflow-y:auto">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+            <div style="font-family:'Unbounded',sans-serif;font-size:14px;font-weight:600">Назначить пары</div>
+            <button onclick="document.getElementById('coffeePairModal').style.display='none'" style="background:none;border:none;color:var(--text2);font-size:18px;cursor:pointer">✕</button>
+          </div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:16px">
+            Введите пары вручную. Каждая строка: <code style="background:var(--bg3);padding:2px 6px;border-radius:4px">@username1 — @username2</code> или tgId через пробел.
+          </div>
+          <div id="coffee-pair-rows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"></div>
+          <button onclick="addCoffeePairRow()" class="btn btn-ghost" style="width:100%;margin-bottom:16px">+ Добавить пару</button>
+          <div style="display:flex;gap:8px">
+            <button onclick="document.getElementById('coffeePairModal').style.display='none'" class="btn btn-ghost" style="flex:1">Отмена</button>
+            <button onclick="saveCoffeePairs()" class="btn btn-w" style="flex:1">Сохранить раунд</button>
+          </div>
+        </div>
+      </div>
+
+<script>
+let adminToken = '';
+let adminProgram = 'ai';
+let adminProgramData = { ai: null, funnels: null };
+let allParticipantsData = [];
+let notifyMode = 'all';
+let selectedNotifyUsers = new Set();
+let editingEventId = null;
+
+
+function setNotifyMode(mode) {
+  notifyMode = mode;
+  document.getElementById('notifyModeAll').className = mode === 'all' ? 'btn btn-w btn-sm' : 'btn btn-ghost btn-sm';
+  document.getElementById('notifyModeSelect').className = mode === 'select' ? 'btn btn-w btn-sm' : 'btn btn-ghost btn-sm';
+  document.getElementById('notifyUserList').style.display = mode === 'select' ? 'block' : 'none';
+  if (mode === 'select') loadNotifyUserList();
+}
+
+async function loadNotifyUserList() {
+  const data = await fetch('/api/admin/participants', { headers: aHeaders() }).then(r => r.json());
+  let html = '';
+  for (const email of (data.emails || [])) {
+    const { userId } = await fetch('/api/admin/userid-by-email?email=' + encodeURIComponent(email), { headers: aHeaders() }).then(r => r.json());
+    html += \`<label style="display:flex;align-items:center;gap:8px;padding:8px;cursor:pointer;border-bottom:1px solid var(--border)">
+      <input type="checkbox" onchange="toggleNotifyUser('\${userId}')" style="width:16px;height:16px"/>
+      <span style="font-size:13px">\${email}</span>
+      \${userId ? '<span style="font-size:11px;color:var(--text3)">ID: ' + userId + '</span>' : ''}
+    </label>\`;
+  }
+  document.getElementById('notifyUserList').innerHTML = html;
+}
+
+function toggleNotifyUser(userId) {
+  if (selectedNotifyUsers.has(userId)) selectedNotifyUsers.delete(userId);
+  else selectedNotifyUsers.add(userId);
+}
+
+
+window.addEventListener('load', () => {
+  const savedToken = localStorage.getItem('adminToken');
+  if (savedToken) {
+    adminToken = savedToken;
+    document.getElementById('loginWrap').style.display = 'none';
+    document.getElementById('adminWrap').style.display = 'block';
+    const savedPage = localStorage.getItem('adminPage') || 'dashboard';
+    const savedProg = localStorage.getItem('adminProg') || 'ai';
+    loadDashboard();
+    loadParticipants();
+    loadProgramAdmin(savedProg);
+    loadQuestions();
+    showPage(savedPage);
+    selectProgAdmin(savedProg);
+  }
+});
+
+function renderParticipantRows(participants) {
+  // Убираем возможные дубли по email
+  const uniqueParticipants = [];
+  const seenEmails = new Set();
+  
+  for (const p of participants) {
+    if (!seenEmails.has(p.email)) {
+      seenEmails.add(p.email);
+      uniqueParticipants.push(p);
+    }
+  }
+  let rows = '';
+  for (const p of participants) {
+    const safeId = p.email.replace(/[@.]/g, '_');
+    const isStopped = (window.stoppedUsers || []).includes(p.email.toLowerCase());
+    const rowStyle = isStopped ? 'opacity:0.5;background:rgba(239,68,68,0.05)' : '';
+    const stopBtnStyle = isStopped ? 'display:none' : '';
+    const restoreBtnStyle = isStopped ? 'display:inline-block' : 'display:none';
+    rows += \`<tr style="\${rowStyle}">
+      <td>\${p.email}</td>
+      <td id="us-username-\${safeId}" style="color:var(--text3)">—</td>
+      <td id="us-id-\${safeId}" style="color:var(--text3);font-size:11px">\${p.userId || '—'}</td>
+      <td id="us-launches-\${safeId}">—</td>
+      <td id="us-questions-\${safeId}">—</td>
+      <td id="us-ai-mod-\${safeId}">—</td>
+      <td id="us-ai-task-\${safeId}">—</td>
+      <td id="us-fun-mod-\${safeId}">—</td>
+      <td id="us-fun-task-\${safeId}">—</td>
+      <td>
+  <input type="date" id="us-payment-\${safeId}"
+    style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:12px;width:130px"
+    onchange="savePayment('\${p.email}', this.value)"/>
+</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm" style="background:#f59e0b;color:#fff;margin-right:4px;\${stopBtnStyle}" onclick="stopUser('\${p.email}', '\${safeId}')">Остановить</button>
+        <button class="btn btn-sm" style="background:#22c55e;color:#fff;margin-right:4px;\${restoreBtnStyle}" id="restore-btn-\${safeId}" onclick="restoreUser('\${p.email}', '\${safeId}')">Вернуть</button>
+        <button class="btn btn-danger btn-sm" onclick="removeEmail('\${p.email}')">Удалить</button>
+      </td>
+    </tr>\`;
+  }
+  document.getElementById('emailTable').innerHTML = rows || '<tr><td colspan="13" style="color:var(--text3)">Нет участников</td></tr>';
+}
+
+function filterParticipants(query) {
+  const q = query.toLowerCase().trim();
+  const filtered = q
+    ? allParticipantsData.filter(p =>
+        p.email?.toLowerCase().includes(q) ||
+        p.username?.toLowerCase().includes(q) ||
+        String(p.userId).includes(q) ||
+        p.name?.toLowerCase().includes(q)
+      )
+    : allParticipantsData;
+  renderParticipantRows(filtered);
+}
+
+function initMobileNav() {
+  const isMobile = window.innerWidth <= 768;
+  document.getElementById('mobileNav').style.display = isMobile ? 'block' : 'none';
+}
+window.addEventListener('resize', initMobileNav);
+window.addEventListener('load', initMobileNav);
+
+// ── LOGIN ─────────────────────────────────────────────────────
+async function adminLogin() {
+  const pass = document.getElementById('adminPass').value;
+  try {
+    const res = await fetch('/api/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pass })
+    }).then(r => r.json());
+
+    if (res.ok) {
+  adminToken = res.token;
+  localStorage.setItem('adminToken', adminToken);
+  document.getElementById('loginWrap').style.display = 'none';
+  document.getElementById('adminWrap').style.display = 'block';
+  
+  const savedPage = localStorage.getItem('adminPage') || 'dashboard';
+  const savedProg = localStorage.getItem('adminProg') || 'ai';
+  
+  loadDashboard();
+  loadParticipants();
+  loadProgramAdmin(savedProg);
+  loadQuestions();
+  showPage(savedPage);
+  selectProgAdmin(savedProg);
+} else {
+      document.getElementById('loginError').textContent = res.error || 'Ошибка';
+    }
+  } catch(e) {
+    document.getElementById('loginError').textContent = 'Ошибка подключения';
+  }
+}
+
+function aHeaders() {
+  return { 'Content-Type': 'application/json', 'Authorization': 'admin_session_' + adminToken };
+}
+
+async function loadTasks(prog) {
+  const data = await fetch('/api/admin/tasks?id=' + prog, { headers: aHeaders() }).then(r => r.json());
+  renderTaskList(data.tasks || [], prog);
+}
+
+function renderTaskList(tasks, prog) {
+  window._currentTasks = tasks;
+  let html = '';
+  tasks.forEach(t => {
+    html += '<div class="module-item"><div class="module-item-top"><div><div class="module-item-title">' + t.title + '</div>';
+    if (t.description) html += '<div style="font-size:12px;color:var(--text3);margin-top:4px">' + t.description + '</div>';
+    html += '</div><div class="module-item-actions"><button class="btn btn-ghost btn-sm" onclick="editTask(&quot;' + t.id + '&quot;)">Изменить</button><button class="btn btn-danger btn-sm" onclick="deleteTask(&quot;' + t.id + '&quot;)">Удалить</button></div></div></div>';
+  });
+  document.getElementById('taskList').innerHTML = html || '<p style="color:var(--text3);font-size:13px">Нет задач</p>';
+}
+
+function fillModuleSelect(selectedId = '') {
+  const prog = adminProgramData[adminProgram];
+  const modules = prog?.modules || [];
+  const select = document.getElementById('tModuleId');
+  select.innerHTML = '<option value="">Без привязки к модулю</option>';
+  modules.forEach((mod, i) => {
+    const opt = document.createElement('option');
+    opt.value = mod.id;
+    opt.textContent = 'Модуль ' + (i + 1) + ': ' + mod.title;
+    if (mod.id === selectedId) opt.selected = true;
+    select.appendChild(opt);
+  });
+}
+
+function addTask() {
+  document.getElementById('taskModalTitle').textContent = 'Новая задача';
+  document.getElementById('tId').value = 'task_' + Date.now();
+  document.getElementById('tTitle').value = '';
+  document.getElementById('tDesc').value = '';
+  fillModuleSelect('');
+  document.getElementById('taskModal').classList.add('open');
+}
+
+function editTask(taskId) {
+  // нужно хранить задачи в памяти
+  const tasks = window._currentTasks || [];
+  const task = tasks.find(t => t.id === taskId);
+  if (!task) return;
+  document.getElementById('taskModalTitle').textContent = 'Редактировать задачу';
+  document.getElementById('tId').value = task.id;
+  document.getElementById('tTitle').value = task.title;
+  document.getElementById('tDesc').value = task.description || '';
+  fillModuleSelect(task.moduleId || '');
+  document.getElementById('taskModal').classList.add('open');
+}
+
+async function saveTask() {
+  const task = {
+    id: document.getElementById('tId').value,
+    title: document.getElementById('tTitle').value.trim(),
+    description: document.getElementById('tDesc').value.trim(),
+    moduleId: document.getElementById('tModuleId').value
+  };
+  if (!task.title) return;
+  await fetch('/api/admin/save-task', {
+    method: 'POST', headers: aHeaders(),
+    body: JSON.stringify({ programId: adminProgram, task })
+  });
+  document.getElementById('taskModal').classList.remove('open');
+  loadTasks(adminProgram);
+}
+
+async function deleteTask(taskId) {
+  if (!confirm('Удалить задачу?')) return;
+  await fetch('/api/admin/delete-task', {
+    method: 'POST', headers: aHeaders(),
+    body: JSON.stringify({ programId: adminProgram, taskId })
+  });
+  loadTasks(adminProgram);
+}
+
+// ── PAGES ─────────────────────────────────────────────────────
+function showPage(id) {
+  localStorage.setItem('adminPage', id);
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-link').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.mnav-btn').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  document.getElementById('nl-' + id).classList.add('active');
+  const mnavBtn = document.getElementById('mnav-' + id);
+  if (mnavBtn) mnavBtn.classList.add('active');
+
+  if (id === 'participants') loadParticipants();
+  if (id === 'questions') loadQuestions();
+  if (id === 'dashboard') loadDashboard();
+  if (id === 'admins') loadAdmins();
+  if (id === 'events') loadEvents();
+  if (id === 'coffee') loadCoffeeAdmin();
+  if (id === 'kb') kbLoadAdmin();
+}
+
+async function loadAdmins() {
+  const data = await fetch('/api/admin/admins', { headers: aHeaders() }).then(r => r.json());
+  let rows = '';
+  (data.admins || []).forEach(a => {
+    rows += \`<tr>
+      <td>\${a.name || '—'}</td>
+      <td>\${a.email}</td>
+      <td style="color:var(--text3);font-size:12px">\${a.tgId || '—'}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="removeAdmin('\${a.email}')">Удалить</button></td>
+    </tr>\`;
+  });
+  document.getElementById('adminTable').innerHTML = rows || '<tr><td colspan="4" style="color:var(--text3)">Нет администраторов</td></tr>';
+}
+
+async function addAdmin() {
+  const name = document.getElementById('newAdminName').value.trim();
+  const email = document.getElementById('newAdminEmail').value.trim();
+  const tgId = document.getElementById('newAdminTgId').value.trim();
+  if (!email) return;
+  await fetch('/api/admin/add-admin', { method: 'POST', headers: aHeaders(), body: JSON.stringify({ email, tgId, name }) });
+  document.getElementById('newAdminName').value = '';
+  document.getElementById('newAdminEmail').value = '';
+  document.getElementById('newAdminTgId').value = '';
+  loadAdmins();
+}
+
+async function removeAdmin(email) {
+  if (!confirm('Удалить ' + email + '?')) return;
+  await fetch('/api/admin/remove-admin', { method: 'POST', headers: aHeaders(), body: JSON.stringify({ email }) });
+  loadAdmins();
+}
+
+// ── DASHBOARD ─────────────────────────────────────────────────
+async function loadDashboard() {
+  const stats = await fetch('/api/admin/dashboard-stats', { headers: aHeaders() }).then(r => r.json());
+  
+  document.getElementById('stat-emails').textContent = stats.totalEmails || 0;
+  document.getElementById('stat-pending').textContent = stats.totalPending || 0;
+  document.getElementById('stat-questions').textContent = stats.totalQuestions || 0;
+  document.getElementById('stat-launches').textContent = stats.totalLaunches || 0;
+  document.getElementById('stat-payments').textContent = stats.paymentsWithDates?.length || 0;
+  
+  // Топ-5
+  let topHtml = '';
+  (stats.topUsers || []).forEach((u, i) => {
+    topHtml += \`<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="font-family:'Unbounded',sans-serif;font-size:18px;color:var(--text3);width:24px">\${i+1}</div>
+      <div style="flex:1">
+        <div style="font-size:13px">\${u.email}</div>
+        <div style="font-size:11px;color:var(--text3)">\${u.username ? '@' + u.username : '—'}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:13px">\${u.launches} заходов</div>
+        <div style="font-size:11px;color:var(--text3)">\${u.done} пройдено</div>
+      </div>
+    </div>\`;
+  });
+  document.getElementById('topUsers').innerHTML = topHtml || '<p style="color:var(--text3);font-size:13px">Нет данных</p>';
+  
+  // Даты оплат
+  let payHtml = '';
+  (stats.paymentsWithDates || []).forEach(p => {
+    payHtml += \`<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <span>\${p.email}</span>
+      <span style="color:var(--text3)">\${p.date}</span>
+    </div>\`;
+  });
+  document.getElementById('paymentsList').innerHTML = payHtml || '<p style="color:var(--text3);font-size:13px">Нет оплат</p>';
+}
+
+async function syncParticipants() {
+  const msg = document.getElementById('syncMsg');
+  msg.className = 'msg';
+  msg.textContent = 'Синхронизируем...';
+  try {
+    const res = await fetch('/api/admin/sync-participants', { method: 'POST', headers: aHeaders() }).then(r => r.json());
+    msg.className = 'msg ok';
+    msg.textContent = 'Готово: привязано ' + res.linked + ', без TG ID: ' + res.missing + (res.updated ? ', обновлено: ' + res.updated : '');
+    loadParticipants();
+  } catch(e) {
+    msg.className = 'msg err';
+    msg.textContent = 'Ошибка синхронизации';
+  }
+}
+
+async function approveFromDash(email) {
+  await fetch('/api/admin/add-email', {
+    method: 'POST', headers: aHeaders(),
+    body: JSON.stringify({ email })
+  });
+  loadDashboard();
+  loadParticipants();
+}
+
+// ── PARTICIPANTS ──────────────────────────────────────────────
+async function loadParticipants() {
+  try {
+    const data = await fetch('/api/admin/participants', { headers: aHeaders() }).then(r => r.json());
+    window.stoppedUsers = data.stopped || [];
+    // ОЧИЩАЕМ массив перед заполнени
+    allParticipantsData = [];
+    const emails = data.emails || [];
+    
+    // Заполняем базовыми данными
+    for (const email of emails) {
+      // Проверяем, нет ли уже такого email в массиве
+      if (!allParticipantsData.find(p => p.email === email)) {
+        allParticipantsData.push({
+          email: email,
+          userId: '',
+          username: '',
+          name: '',
+          payment: ''
+        });
+      }
+    }
+
+    // Рендерим таблицу сразу (с пустыми данными)
+    filterParticipants(document.getElementById('participantSearch')?.value || '');
+
+    // Асинхронно подгружаем статистику для каждого email
+    for (const email of emails) {
+      loadUserStats(email);
+    }
+
+    // Pending
+    let pendHtml = '';
+    (data.pending || []).forEach(p => {
+      const d = new Date(p.date).toLocaleDateString('ru');
+      pendHtml += \`<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1">
+          <div style="font-size:13px">\${p.email}</div>
+          <div style="font-size:11px;color:var(--text3)">\${p.name || ''} · TG: \${p.tgId || ''} · \${d}</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="approveEmail('\${p.email}')">Одобрить</button>
+      </div>\`;
+    });
+    document.getElementById('pendingTable').innerHTML = pendHtml || '<p style="color:var(--text3);font-size:13px">Нет ожидающих</p>';
+
+    // Получить всех юзеров бота
+    const botData = await fetch('/api/admin/bot-users', { headers: aHeaders() }).then(r => r.json());
+
+    const usersWithoutEmail = [];
+    for (const u of (botData.users || [])) {
+      const userRecord = await fetch('/api/admin/user-by-id?userId=' + u.tgId, { headers: aHeaders() }).then(r => r.json()).catch(() => ({}));
+      if (!userRecord?.approved) usersWithoutEmail.push(u);
+    }
+    
+    let botHtml = '';
+    usersWithoutEmail.forEach(u => {
+      const d = new Date(u.startedAt).toLocaleDateString('ru');
+      botHtml += \`<div style="padding:10px 0;border-bottom:1px solid var(--border);font-size:13px">
+        <span>\${u.name || ''} \${u.lastName || ''}</span>
+        <span style="color:var(--text3)"> @\${u.username || '—'} · \${d}</span>
+      </div>\`;
+    });
+    document.getElementById('botUsersList').innerHTML = botHtml || '<p style="color:var(--text3);font-size:13px">Нет пользователей</p>';
+
+  } catch(e) { console.error(e); }
+}
+
+async function loadUserStats(email) {
+  const safeId = email.replace(/[@.]/g, '_');
+  try {
+    const { userId } = await fetch('/api/admin/userid-by-email?email=' + encodeURIComponent(email), { headers: aHeaders() }).then(r => r.json());
+    
+    if (!userId) {
+      // Нет userId - показываем прочерки
+      const usernameCell = document.getElementById('us-username-' + safeId);
+      if (usernameCell) usernameCell.textContent = '—';
+      
+      const idCell = document.getElementById('us-id-' + safeId);
+      if (idCell) idCell.textContent = '—';
+      
+      document.getElementById('us-launches-' + safeId).textContent = '0';
+      document.getElementById('us-questions-' + safeId).textContent = '0';
+      document.getElementById('us-ai-mod-' + safeId).textContent = '0';
+      document.getElementById('us-ai-task-' + safeId).textContent = '0';
+      document.getElementById('us-fun-mod-' + safeId).textContent = '0';
+      document.getElementById('us-fun-task-' + safeId).textContent = '0';
+      return;
+    }
+
+    // Получаем данные пользователя
+    const userKV = await fetch('/api/admin/user-by-id?userId=' + userId, { headers: aHeaders() }).then(r => r.json());
+    
+    // ⭐ ОБНОВЛЯЕМ ЯЧЕЙКИ НАПРЯМУЮ ⭐
+    const usernameCell = document.getElementById('us-username-' + safeId);
+    if (usernameCell) {
+      usernameCell.textContent = userKV.username ? '@' + userKV.username : '—';
+    }
+    
+    const idCell = document.getElementById('us-id-' + safeId);
+    if (idCell) {
+      idCell.textContent = userId;
+    }
+
+    const stats = await fetch('/api/admin/user-stats?userId=' + userId, { headers: aHeaders() }).then(r => r.json());
+    
+    // Обновляем остальные ячейки
+    document.getElementById('us-launches-' + safeId).textContent = stats.launches ?? 0;
+    document.getElementById('us-questions-' + safeId).textContent = stats.questions ?? 0;
+    document.getElementById('us-ai-mod-' + safeId).textContent = stats.progress?.ai ?? 0;
+    document.getElementById('us-ai-task-' + safeId).textContent = stats.tasks?.ai ?? 0;
+    document.getElementById('us-fun-mod-' + safeId).textContent = stats.progress?.funnels ?? 0;
+    document.getElementById('us-fun-task-' + safeId).textContent = stats.tasks?.funnels ?? 0;
+    
+    // Обновляем дату оплаты
+    const paymentInput = document.getElementById('us-payment-' + safeId);
+    if (paymentInput && stats.payment) {
+      let paymentDate = stats.payment;
+      if (paymentDate && paymentDate.includes('.')) {
+        const parts = paymentDate.split('.');
+        paymentDate = \`\${parts[2]}-\${parts[1]}-\${parts[0]}\`;
+      }
+      paymentInput.value = paymentDate;
+    }
+    
+    // Обновляем данные в массиве (для фильтрации)
+    const entry = allParticipantsData.find(p => p.email === email);
+    if (entry) {
+      entry.username = userKV.username || '';
+      entry.userId = userId;
+      entry.payment = stats.payment || '';
+    }
+    
+  } catch(e) { 
+    console.error('loadUserStats error for', email, e);
+  }
+}
+
+async function savePayment(email, date) {
+  if (!date || !date.trim()) return;
+  
+  try {
+    // Сначала пробуем найти userId
+    let userId = null;
+    try {
+      const userRes = await fetch('/api/admin/userid-by-email?email=' + encodeURIComponent(email), { headers: aHeaders() });
+      const userData = await userRes.json();
+      userId = userData.userId;
+    } catch(e) {}
+    
+    // Если userId не найден - сохраняем payment через email напрямую
+    const payload = { email, date: date };
+    if (userId) {
+      payload.userId = userId;
+    }
+    
+    const response = await fetch('/api/admin/set-payment', {
+      method: 'POST', 
+      headers: aHeaders(),
+      body: JSON.stringify(payload)
+    });
+    
+    if (!response.ok) {
+      throw new Error('Ошибка сервера');
+    }
+    
+    // Визуальная обратная связь
+    const safeId = email.replace(/[@.]/g, '_');
+    const input = document.getElementById('us-payment-' + safeId);
+    if (input) { 
+      input.style.borderColor = 'var(--success)'; 
+      setTimeout(() => input.style.borderColor = '', 1500); 
+    }
+    
+    // Обновляем локальные данные
+    const entry = allParticipantsData.find(p => p.email === email);
+    if (entry) entry.payment = date;
+    
+  } catch(e) { 
+    console.error('savePayment error', e);
+    const safeId = email.replace(/[@.]/g, '_');
+    const input = document.getElementById('us-payment-' + safeId);
+    if (input) { 
+      input.style.borderColor = 'var(--danger)'; 
+      setTimeout(() => input.style.borderColor = '', 1500); 
+    }
+  }
+}
+
+async function addEmail() {
+  const email = document.getElementById('newEmail').value.trim().toLowerCase();
+  const msg = document.getElementById('addEmailMsg');
+  if (!email || !email.includes('@')) { msg.className='msg err'; msg.textContent='Введи корректный email'; return; }
+  try {
+    await fetch('/api/admin/add-email', { method: 'POST', headers: aHeaders(), body: JSON.stringify({ email }) });
+    msg.className = 'msg ok'; msg.textContent = 'Добавлен: ' + email;
+    document.getElementById('newEmail').value = '';
+    loadParticipants(); loadDashboard();
+  } catch(e) { msg.className = 'msg err'; msg.textContent = 'Ошибка'; }
+}
+
+async function removeEmail(email) {
+  if (!confirm('Удалить ' + email + '?')) return;
+  await fetch('/api/admin/remove-email', { method: 'POST', headers: aHeaders(), body: JSON.stringify({ email }) });
+  loadParticipants(); loadDashboard();
+}
+
+async function stopUser(email, safeId) {
+  if (!confirm('Остановить доступ для ' + email + '? Пользователю придёт уведомление об отключении.')) return;
+  const res = await fetch('/api/admin/stop-user', {
+    method: 'POST', headers: aHeaders(), body: JSON.stringify({ email })
+  }).then(r => r.json());
+  if (res.ok) {
+    const restoreBtn = document.getElementById('restore-btn-' + safeId);
+    if (restoreBtn) {
+      restoreBtn.style.display = 'inline-block';
+      restoreBtn.previousElementSibling.style.display = 'none';
+    }
+    alert('✅ Доступ остановлен. Уведомление отправлено.');
+  } else {
+    alert('Ошибка: не удалось остановить доступ');
+  }
+}
+
+async function restoreUser(email, safeId) {
+  if (!confirm('Восстановить доступ для ' + email + '? Пользователю придёт уведомление.')) return;
+  const res = await fetch('/api/admin/restore-user', {
+    method: 'POST', headers: aHeaders(), body: JSON.stringify({ email })
+  }).then(r => r.json());
+  if (res.ok) {
+    const restoreBtn = document.getElementById('restore-btn-' + safeId);
+    if (restoreBtn) {
+      restoreBtn.style.display = 'none';
+      restoreBtn.previousElementSibling.style.display = 'inline-block';
+    }
+    alert('✅ Доступ восстановлен. Пользователь уведомлён.');
+  } else {
+    alert('Ошибка: не удалось восстановить доступ');
+  }
+}
+
+async function approveEmail(email) {
+  await fetch('/api/admin/add-email', { method: 'POST', headers: aHeaders(), body: JSON.stringify({ email }) });
+  loadParticipants(); loadDashboard();
+}
+
+// ── NOTIFY ────────────────────────────────────────────────────
+function updatePreview() {
+  const text = document.getElementById('notifyText').value;
+  document.getElementById('notifyPreview').textContent = '📢 Уведомление от CMO' + (text || '...');
+}
+
+async function sendNotify() {
+  const text = document.getElementById('notifyText').value.trim();
+  const msg = document.getElementById('notifyMsg');
+
+  if (!text) { 
+    msg.className = 'msg err'; 
+    msg.textContent = 'Введи текст'; 
+    return; 
+  }
+
+  if (!confirm('Отправить уведомление?')) return;
+
+  const body = notifyMode === 'all'
+    ? { text, program: '' }
+    : { text, userIds: [...selectedNotifyUsers] };
+
+  try {
+    const res = await fetch('/api/admin/notify', {
+      method: 'POST', 
+      headers: aHeaders(),
+      body: JSON.stringify(body)
+    }).then(r => r.json());
+
+    msg.className = 'msg ok';
+    msg.textContent = 'Отправлено: ' + res.sent + ' участникам';
+    document.getElementById('notifyText').value = '';
+    selectedNotifyUsers.clear();
+    updatePreview();
+  } catch(e) { 
+    msg.className = 'msg err'; 
+    msg.textContent = 'Ошибка отправки'; 
+  }
+}
+
+// ── PROGRAMS ─────────────────────────────────────────────────
+function selectProgAdmin(prog) {
+  localStorage.setItem('adminProg', prog);
+  adminProgram = prog;
+  document.getElementById('pb-ai').className = prog === 'ai' ? 'btn btn-w' : 'btn btn-ghost';
+  document.getElementById('pb-funnels').className = prog === 'funnels' ? 'btn btn-w' : 'btn btn-ghost';
+  loadProgramAdmin(prog);
+}
+
+async function loadProgramAdmin(prog) {
+  try {
+    // Загружаем программу (модули)
+    const data = await fetch('/api/admin/program?id=' + prog, { headers: aHeaders() }).then(r => r.json());
+    adminProgramData[prog] = data;
+    
+    // ⭐ ЗАГРУЖАЕМ ЗАДАНИЯ ПЕРЕД РЕНДЕРОМ ⭐
+    const tasksData = await fetch('/api/admin/tasks?id=' + prog, { headers: aHeaders() }).then(r => r.json());
+    window._currentTasks = tasksData.tasks || [];
+    
+    // Рендерим модули с заданиями
+    renderModuleList(data.modules || []);
+  } catch(e) {
+    console.error('loadProgramAdmin error', e);
+  }
+}
+
+function renderModuleList(modules) {
+  const tasks = window._currentTasks || [];
+  let html = '';
+  modules.forEach((mod, i) => {
+    const lockLabel = mod.available ? '<span style="color:var(--success);font-size:11px">● Доступен</span>' : '<span style="color:var(--text3);font-size:11px">● Заблокирован</span>';
+    const modTasks = tasks.filter(t => t.moduleId === mod.id);
+
+    let tasksHtml = modTasks.map(t => 
+      \`<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
+        <span style="color:var(--text2)">\${t.title}</span>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-ghost btn-sm" onclick="editTask('\${t.id}')">✎</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteTask('\${t.id}')">✕</button>
+        </div>
+      </div>\`
+    ).join('');
+
+    html += \`<div class="module-item">
+      <div class="module-item-top">
+        <div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:2px">МОДУЛЬ \${i+1}</div>
+          <div class="module-item-title">\${mod.title}</div>
+          <div style="margin-top:4px">\${lockLabel}</div>
+        </div>
+        <div class="module-item-actions">
+          <button class="btn btn-ghost btn-sm" onclick="addTaskForModule('\${mod.id}')">+ задание</button>
+          <button class="btn btn-ghost btn-sm" onclick="editModule('\${mod.id}')">Изменить</button>
+        </div>
+      </div>
+      \${modTasks.length > 0 ? \`<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">\${tasksHtml}</div>\` : ''}
+    </div>\`;
+  });
+  document.getElementById('moduleList').innerHTML = html || '<p style="color:var(--text3);font-size:13px">Нет модулей</p>';
+}
+
+function addTaskForModule(moduleId) {
+  document.getElementById('taskModalTitle').textContent = 'Новая задача';
+  document.getElementById('tId').value = 'task_' + Date.now();
+  document.getElementById('tTitle').value = '';
+  document.getElementById('tDesc').value = '';
+  fillModuleSelect(moduleId); // предвыбрать нужный модуль
+  document.getElementById('taskModal').classList.add('open');
+}
+
+function editModule(modId) {
+  const prog = adminProgramData[adminProgram];
+  if (!prog) return;
+  const mod = prog.modules.find(m => m.id === modId);
+  if (!mod) return;
+
+  document.getElementById('modalTitle').textContent = 'Редактировать модуль';
+  document.getElementById('mId').value = mod.id;
+  document.getElementById('mTitle').value = mod.title;
+  document.getElementById('mDesc').value = mod.description || '';
+  document.getElementById('mEmbed').value = mod.embedUrl || '';
+  document.getElementById('mAvailable').checked = mod.available || false;
+
+  const filesStr = (mod.files || []).map(f => f.name + '|' + f.url).join(';;');
+document.getElementById('mFiles').value = filesStr;
+document.getElementById('mTimecodes').value = (mod.timecodes || []).map(t => t.time + ' ' + t.label).join(';');
+
+  document.getElementById('moduleMsg').textContent = '';
+  document.getElementById('moduleModal').classList.add('open');
+}
+
+async function addModule() {
+  try {
+    const res = await fetch('/api/admin/add-module', {
+      method: 'POST', headers: aHeaders(),
+      body: JSON.stringify({ programId: adminProgram })
+    }).then(r => r.json());
+    if (res.ok) {
+      adminProgramData[adminProgram] = res.program;
+      renderModuleList(res.program.modules || []);
+      // Edit the last added module
+      const last = res.program.modules[res.program.modules.length - 1];
+      if (last) editModule(last.id);
+    }
+  } catch(e) {}
+}
+
+async function saveModule() {
+  const modId = document.getElementById('mId').value;
+  const title = document.getElementById('mTitle').value.trim();
+  const desc = document.getElementById('mDesc').value.trim();
+  const embed = document.getElementById('mEmbed').value.trim();
+  const available = document.getElementById('mAvailable').checked;
+  const filesRaw = document.getElementById('mFiles').value.trim();
+  const msg = document.getElementById('moduleMsg');
+
+  if (!title) { msg.className='msg err'; msg.textContent='Введи название'; return; }
+
+  const files = filesRaw ? filesRaw.split(';;').filter(Boolean).map(line => {
+  const parts = line.split('|');
+  return { name: (parts[0] || '').trim(), url: (parts[1] || '').trim() };
+}).filter(f => f.name && f.url) : [];
+
+  const timecodesRaw = document.getElementById('mTimecodes').value.trim();
+const timecodes = timecodesRaw ? timecodesRaw.split(';').filter(Boolean).map(line => {
+  const m = line.trim().match(/^(\\d{1,2}:\\d{2}(?::\\d{2})?)\\s+(.+)$/);
+  return m ? { time: m[1], label: m[2] } : null;
+}).filter(Boolean) : [];
+
+  const module = { id: modId, title, description: desc, embedUrl: embed, files, timecodes, available };
+
+  try {
+    await fetch('/api/admin/module', {
+      method: 'POST', headers: aHeaders(),
+      body: JSON.stringify({ programId: adminProgram, module })
+    });
+    msg.className = 'msg ok'; msg.textContent = 'Сохранено!';
+    loadProgramAdmin(adminProgram);
+    setTimeout(() => closeModal(), 800);
+  } catch(e) { msg.className = 'msg err'; msg.textContent = 'Ошибка'; }
+}
+
+function closeModal() {
+  document.getElementById('moduleModal').classList.remove('open');
+}
+
+// ── QUESTIONS ─────────────────────────────────────────────────
+async function loadQuestions() {
+  try {
+    const data = await fetch('/api/admin/questions', { headers: aHeaders() }).then(r => r.json());
+    const qs = data.questions || [];
+    let html = '';
+    if (!qs.length) {
+      html = '<p style="color:var(--text3);font-size:13px">Вопросов нет</p>';
+    } else {
+      qs.forEach(q => {
+        const d = new Date(q.date).toLocaleString('ru');
+        html += \`<div class="q-item">
+          <div class="q-meta">\${q.name} · \${q.program} · \${d}</div>
+          <div class="q-text">\${q.text}</div>
+          <div class="q-bottom">
+            <button class="btn btn-ghost btn-sm" onclick="clearQuestion(\${q.id})">Удалить</button>
+          </div>
+        </div>\`;
+      });
+    }
+    document.getElementById('questionsList').innerHTML = html;
+  } catch(e) {}
+}
+
+async function clearQuestion(id) {
+  await fetch('/api/admin/clear-question', {
+    method: 'POST', headers: aHeaders(),
+    body: JSON.stringify({ id })
+  });
+  loadQuestions(); loadDashboard();
+}
+
+// Close modal on overlay click
+document.getElementById('moduleModal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+async function loadEvents() {
+  const data = await fetch('/api/admin/events', { headers: aHeaders() }).then(r => r.json());
+  const events = (data.events || []).sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+  
+  window._currentEvents = events; // все события, не только активные
+
+  if (!events.length) {
+    document.getElementById('eventsList').innerHTML = '<p style="color:var(--text3);font-size:13px;padding:8px 0">Мероприятий нет</p>';
+    return;
+  }
+
+  const now = Date.now();
+  let html = '';
+  events.forEach(e => {
+    const dt = new Date(e.datetime);
+    const days = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+    const formatted = days[dt.getDay()] + ', ' + dt.toLocaleDateString('ru', {day:'numeric', month:'long'}) + ' · ' + dt.toLocaleTimeString('ru', {hour:'2-digit', minute:'2-digit'});
+    
+    // Визуально отмечаем прошедшие, но не скрываем
+    const endTime = new Date(e.datetime).getTime() + (e.duration || 90) * 60 * 1000;
+    const isPast = endTime < now;
+
+    html += '<div class="card" style="display:flex;align-items:center;gap:16px' + (isPast ? ';opacity:0.45' : '') + '">' +
+      (e.photo ? '<img src="' + e.photo + '" style="width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1px solid var(--border)"/>' : '<div style="width:56px;height:56px;border-radius:50%;background:var(--bg3);flex-shrink:0"></div>') +
+      '<div style="flex:1">' +
+      '<div style="font-weight:500;font-size:14px">' + e.title + (isPast ? ' <span style="font-size:11px;color:var(--text3)">(прошло)</span>' : '') + '</div>' +
+      (e.author ? '<div style="font-size:12px;color:var(--text3);margin-top:2px">' + e.author + '</div>' : '') +
+      '<div style="font-size:12px;color:var(--text2);margin-top:4px">' + formatted + '</div>' +
+      '<div style="font-size:11px;color:var(--text3);margin-top:2px">' + (e.actionUrl || '') + '</div>' +
+      '</div>' +
+      '<button class="btn btn-ghost btn-sm" onclick="editEvent(' + e.id + ')">Изменить</button>' +
+      '<button class="btn btn-danger btn-sm" onclick="deleteEvent(' + e.id + ')">Удалить</button>' +
+      '</div>';
+  });
+
+  document.getElementById('eventsList').innerHTML = html;
+}
+
+async function saveEvent() {
+  const msg = document.getElementById('evMsg');
+  const event = {
+    id: editingEventId || Date.now(),
+    title: document.getElementById('evTitle').value.trim(),
+    author: document.getElementById('evAuthor').value.trim(),
+    datetime: document.getElementById('evDatetime').value,
+    photo: document.getElementById('evPhoto').value.trim(),
+    actionType: document.getElementById('evActionType').value,
+    actionUrl: document.getElementById('evZoom').value.trim(),
+    tags: document.getElementById('evTags').value.split(',').map(t => t.trim()).filter(Boolean),
+    authorUrl: document.getElementById('evAuthorUrl').value.trim(),
+  };
+
+  if (!event.title || !event.datetime || !event.actionUrl) {
+    msg.className = 'msg err';
+    msg.textContent = 'Заполни название, дату и ссылку';
+    return;
+  }
+
+  await fetch('/api/admin/save-event', {
+    method: 'POST', headers: aHeaders(),
+    body: JSON.stringify({ event })
+  });
+
+  editingEventId = null;
+  document.getElementById('evSaveBtn').textContent = 'Добавить';
+  msg.className = 'msg ok';
+  msg.textContent = 'Сохранено!';
+  // очистить поля...
+  ['evTitle','evAuthor','evDatetime','evPhoto','evZoom','evTags','evAuthorUrl'].forEach(function(id) {
+  var el = document.getElementById(id);
+  if (el) el.value = '';
+});
+var weeklyEl = document.getElementById('evWeekly');
+if (weeklyEl) weeklyEl.checked = false;
+document.getElementById('evActionType').value = 'zoom';
+  document.getElementById('evWeekly').checked = false;
+  document.getElementById('evActionType').value = 'zoom';
+  loadEvents();
+  setTimeout(() => msg.textContent = '', 3000);
+}
+
+// Функция для заполнения формы при редактировании
+function editEvent(id) {
+  // нужно хранить события в памяти
+  const ev = window._currentEvents?.find(e => e.id === id);
+  if (!ev) return;
+  editingEventId = id;
+  document.getElementById('evCardTitle').textContent = 'Редактировать мероприятие';
+  document.getElementById('evTitle').value = ev.title || '';
+  document.getElementById('evAuthor').value = ev.author || '';
+  document.getElementById('evDatetime').value = ev.datetime || '';
+  document.getElementById('evAuthorUrl').value = ev.authorUrl || '';
+  document.getElementById('evPhoto').value = ev.photo || '';
+  document.getElementById('evZoom').value = ev.actionUrl || '';
+  document.getElementById('evActionType').value = ev.actionType || 'zoom';
+  document.getElementById('evTags').value = (ev.tags || []).join(', ');
+  document.getElementById('page-events').scrollIntoView({ behavior: 'smooth' });
+  document.getElementById('evSaveBtn').textContent = 'Сохранить изменения';
+}
+
+async function deleteEvent(id) {
+  if (!confirm('Удалить мероприятие?')) return;
+  await fetch('/api/admin/delete-event', {
+    method: 'POST', headers: aHeaders(),
+    body: JSON.stringify({ id })
+  });
+  loadEvents();
+}
+
+let coffeeAdminData = null;
+let coffeeParticipantsAll = [];
+ 
+async function loadCoffeeAdmin() {
+  try {
+    const data = await fetch('/api/admin/coffee', { headers: aHeaders() }).then(r => r.json());
+    if (!data.ok) return;
+    coffeeAdminData = data;
+    coffeeParticipantsAll = data.participants || [];
+ 
+    // Статистика
+    const active = coffeeParticipantsAll.filter(p => p.active).length;
+    const complaints = (data.complaints || []).filter(c => !c.resolved).length;
+    const pairs = data.round?.pairs?.length || 0;
+ 
+    document.getElementById('coffee-stat-total').textContent = coffeeParticipantsAll.length;
+    document.getElementById('coffee-stat-active').textContent = active;
+    document.getElementById('coffee-stat-complaints').textContent = complaints;
+    document.getElementById('coffee-stat-week').textContent = pairs;
+    document.getElementById('coffee-week-id').textContent = data.weekId || '—';
+ 
+    // Пары
+    renderCoffeePairsTable(data.round, coffeeParticipantsAll);
+ 
+    // Жалобы
+    renderCoffeeComplaints(data.complaints || [], coffeeParticipantsAll);
+ 
+    // Участники
+    renderCoffeeParticipantsTable(coffeeParticipantsAll);
+ 
+  } catch(e) { console.error('loadCoffeeAdmin', e); }
+}
+ 
+function getParticipantName(tgId, participants) {
+  const p = participants.find(x => String(x.tgId) === String(tgId));
+  return p ? (p.name || p.tgId) : tgId;
+}
+ 
+function renderCoffeePairsTable(round, participants) {
+  const el = document.getElementById('coffee-pairs-table');
+  if (!round || !round.pairs || round.pairs.length === 0) {
+    el.innerHTML = '<div style="color:var(--text3);font-size:13px">Пары ещё не назначены на эту неделю</div>';
+    return;
+  }
+  const rows = round.pairs.map((pair, i) => \`
+    <tr>
+      <td style="color:var(--text3);font-size:12px">\${i+1}</td>
+      <td>\${escapeAdminHtml(getParticipantName(pair.a, participants))}</td>
+      <td style="color:var(--text3)">↔</td>
+      <td>\${escapeAdminHtml(getParticipantName(pair.b, participants))}</td>
+      <td>
+        <button onclick="openReassignModal('\${pair.a}','\${pair.b}')" class="btn btn-ghost" style="font-size:11px;padding:4px 10px">Переназначить</button>
+      </td>
+    </tr>
+  \`).join('');
+  el.innerHTML = \`
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th style="text-align:left;color:var(--text3);font-size:11px;padding:4px 8px">#</th>
+        <th style="text-align:left;font-size:11px;padding:4px 8px">Участник А</th>
+        <th></th>
+        <th style="text-align:left;font-size:11px;padding:4px 8px">Участник Б</th>
+        <th></th>
+      </tr></thead>
+      <tbody>\${rows}</tbody>
+    </table>
+    \${round.sentAt ? '<div style="font-size:11px;color:var(--text3);margin-top:10px">✓ Рассылка отправлена</div>' : '<div style="font-size:11px;color:#F5C842;margin-top:10px">⏳ Рассылка ещё не отправлена (пн 12:00 МСК)</div>'}
+  \`;
+}
+ 
+function renderCoffeeComplaints(complaints, participants) {
+  const el = document.getElementById('coffee-complaints-list');
+  const open = complaints.filter(c => !c.resolved);
+  if (open.length === 0) {
+    el.innerHTML = '<div style="color:var(--text3);font-size:13px">Жалоб нет</div>';
+    return;
+  }
+  el.innerHTML = open.map((c, i) => \`
+    <div style="padding:14px;background:rgba(255,80,80,0.06);border:1px solid rgba(255,80,80,0.15);border-radius:10px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="font-size:13px;font-weight:500">
+          <span style="color:#ff6b6b">\${escapeAdminHtml(getParticipantName(c.fromId, participants))}</span>
+          <span style="color:var(--text3)"> → </span>
+          \${escapeAdminHtml(getParticipantName(c.toId, participants))}
+        </div>
+        <div style="font-size:11px;color:var(--text3)">\${c.weekId || ''}</div>
+      </div>
+      \${c.note ? \`<div style="font-size:12px;color:var(--text2);margin-bottom:10px">"\${escapeAdminHtml(c.note)}"</div>\` : ''}
+      <div style="display:flex;gap:8px">
+        <select id="reassign-select-\${i}" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);font-size:12px">
+          <option value="">— выбрать нового партнёра —</option>
+          \${participants.filter(p => p.active && String(p.tgId) !== String(c.fromId)).map(p =>
+            \`<option value="\${p.tgId}">\${escapeAdminHtml(p.name || p.tgId)}</option>\`
+          ).join('')}
+        </select>
+        <button onclick="resolveComplaint(\${i}, '\${c.fromId}', '\${c.weekId}')" class="btn btn-w" style="font-size:12px;white-space:nowrap">Назначить</button>
+        <button onclick="ignoreComplaint(\${i})" class="btn btn-ghost" style="font-size:12px">Игнор</button>
+      </div>
+    </div>
+  \`).join('');
+}
+ 
+async function resolveComplaint(idx, fromId, weekId) {
+  const select = document.getElementById('reassign-select-' + idx);
+  const newPartnerId = select?.value;
+  if (!newPartnerId) { alert('Выбери нового партнёра'); return; }
+  if (!confirm('Назначить нового партнёра и закрыть жалобу?')) return;
+  try {
+    const res = await fetch('/api/admin/coffee/reassign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...aHeaders() },
+      body: JSON.stringify({ tgId: fromId, newPartnerId, weekId, complaintId: idx })
+    }).then(r => r.json());
+    if (res.ok) { showAdminToast('Переназначено'); loadCoffeeAdmin(); }
+    else alert('Ошибка');
+  } catch(e) { alert('Ошибка подключения'); }
+}
+ 
+async function ignoreComplaint(idx) {
+  if (!confirm('Пометить жалобу как решённую без переназначения?')) return;
+
+  const complaints = coffeeAdminData?.complaints || [];
+  if (complaints[idx]) complaints[idx].resolved = true;
+
+  // Эндпоинта PATCH нет — отправляем через reassign-логику или добавь отдельный эндпоинт
+  // Временно: просто перерисовать без серверного сохранения (жалоба вернётся при reload)
+  showAdminToast('Жалоба скрыта (без сохранения на сервере)');
+  renderCoffeeComplaints(complaints, coffeeParticipantsAll);
+}
+ 
+function renderCoffeeParticipantsTable(participants) {
+  const tbody = document.getElementById('coffee-participants-tbody');
+  if (!participants.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="color:var(--text3);text-align:center;padding:20px">Участников нет</td></tr>';
+    return;
+  }
+  tbody.innerHTML = participants.map(p => {
+    const statusBadge = p.active
+      ? '<span style="color:#6bffb8;font-size:11px">● Активен</span>'
+      : '<span style="color:var(--text3);font-size:11px">○ Остановлен</span>';
+    const disableBtnText = p.active ? 'Отключить' : 'Включить';
+    return \`
+      <tr id="coffee-row-\${p.tgId}">
+        <td>
+          <div style="font-size:13px;font-weight:500">\${escapeAdminHtml(p.name || '—')}</div>
+          <div style="font-size:11px;color:var(--text3)">\${p.tgId}</div>
+          \${p.username ? \`<div style="font-size:11px;color:#6bffb8">@\${escapeAdminHtml(p.username)}</div>\` : '<div style="font-size:11px;color:var(--text3);opacity:0.5">нет username</div>'}
+        </td>
+        <td>
+          <button onclick="toggleCoffeeInfo('\${p.tgId}')" class="btn btn-ghost" style="font-size:11px;padding:4px 10px">Информация</button>
+        </td>
+        <td style="font-size:13px">\${p.totalMeetings || 0}</td>
+        <td style="font-size:13px;color:#F5C842">\${p.avgRating ? '★ ' + p.avgRating : '—'}</td>
+        <td>\${statusBadge}</td>
+        <td>
+          <button onclick="toggleCoffeeParticipant('\${p.tgId}', \${p.active})"
+            class="btn \${p.active ? 'btn-ghost' : 'btn-w'}" style="font-size:11px;padding:4px 10px">
+            \${disableBtnText}
+          </button>
+        </td>
+      </tr>
+      <tr id="coffee-info-\${p.tgId}" style="display:none">
+        <td colspan="6" style="background:rgba(255,255,255,0.02);padding:16px;border-radius:8px">
+          \${renderCoffeeInfoCard(p)}
+        </td>
+      </tr>
+    \`;
+  }).join('');
+}
+
+function renderCoffeeInfoCard(p) {
+  const skillsHTML = (p.skills || []).filter(Boolean).map(s =>
+    \`<span style="display:inline-block;background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:4px 10px;font-size:12px;margin:0 6px 6px 0">\${escapeAdminHtml(s)}</span>\`
+  ).join('') || '<span style="color:var(--text3);font-size:12px">—</span>';
+
+  let partnerHTML = '<span style="color:var(--text3);font-size:12px">Партнёр не назначен</span>';
+  if (p.currentMatch?.partnerId) {
+    const partner = coffeeParticipantsAll.find(x => String(x.tgId) === String(p.currentMatch.partnerId));
+    const partnerName = partner ? (partner.name || partner.tgId) : p.currentMatch.partnerId;
+    const statusMap = { active: 'Ожидает встречи', done: 'Встреча оценена', complained: 'Жалоба' };
+    const statusText = statusMap[p.currentMatch.status] || p.currentMatch.status || '';
+    partnerHTML = \`
+      <div style="font-size:13px;font-weight:500">\${escapeAdminHtml(partnerName)}</div>
+      <div style="font-size:11px;color:v">\${escapeAdminHtml(statusText)} · \${p.currentMatch.weekId || ''}</div>
+    \`;
+  }
+
+  return \`
+    <div style="display:flex;flex-direction:column;gap:12px;font-size:13px">
+      <div>
+        <div style="color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">О себе</div>
+        <div style="color:var(--text2);line-height:1.5">\${escapeAdminHtml(p.bio || '—')}</div>
+      </div>
+      <div>
+        <div style="color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Текущий запрос</div>
+        <div style="color:var(--text2);line-height:1.5">\${escapeAdminHtml(p.request || '—')}</div>
+      </div>
+      <div>
+        <div style="color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Чем готов помочь</div>
+        <div>\${skillsHTML}</div>
+      </div>
+      <div>
+        <div style="color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Текущий партнёр</div>
+        \${partnerHTML}
+      </div>
+      <div>
+  <div style="color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Telegram</div>
+  \${p.username
+    ? \`<a href="https://t.me/\${escapeAdminHtml(p.username)}" target="_blank" style="color:#00bd62;font-size:13px;text-decoration:none">@\${escapeAdminHtml(p.username)}</a>\`
+    : '<span style="color:var(--text3);font-size:12px">— нет username</span>'
+  }
+</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
+        \${p.circleFileId 
+          ? \`<span style="font-size:11px;color:var(--text3)">🎥 Кружочек записан</span>
+             <button onclick="sendCircleToAdmin('\${p.tgId}')" 
+               style="background:var(--bg3);border:1px solid var(--border);border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:border-color 0.2s"
+               title="Прислать кружочек в Telegram"
+               onmouseover="this.style.borderColor='var(--border-h)'" 
+               onmouseout="this.style.borderColor='var(--border)'">
+               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                 <circle cx="12" cy="8" r="4"/>
+                 <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+               </svg>
+             </button>\`
+          : '<span style="font-size:11px;color:var(--text3)">— кружочек не записан</span>'
+        }
+      </div>
+    </div>
+  \`;
+}
+
+function toggleCoffeeInfo(tgId) {
+  const row = document.getElementById('coffee-info-' + tgId);
+  if (!row) return;
+  row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+ 
+async function toggleCoffeeParticipant(tgId, currentlyActive) {
+  const endpoint = currentlyActive ? '/api/admin/coffee/disable' : '/api/admin/coffee/enable';
+  let reason = '';
+  if (currentlyActive) {
+    reason = prompt('Причина отключения (необязательно):') || '';
+  }
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...aHeaders() },
+      body: JSON.stringify({ tgId, reason })
+    }).then(r => r.json());
+    if (res.ok) { showAdminToast(currentlyActive ? 'Участник отключён' : 'Участник восстановлен'); loadCoffeeAdmin(); }
+    else alert('Ошибка');
+  } catch(e) { alert('Ошибка'); }
+}
+ 
+function filterCoffeeParticipants() {
+  const q = document.getElementById('coffee-search').value.toLowerCase();
+  const filtered = coffeeParticipantsAll.filter(p =>
+    (p.name || '').toLowerCase().includes(q) ||
+    String(p.tgId).includes(q) ||
+    (p.city || '').toLowerCase().includes(q)
+  );
+  renderCoffeeParticipantsTable(filtered);
+}
+ 
+function openCoffeePairModal() {
+  const modal = document.getElementById('coffeePairModal');
+  modal.style.display = 'flex';
+  const rows = document.getElementById('coffee-pair-rows');
+  rows.innerHTML = '';
+  addCoffeePairRow();
+  addCoffeePairRow();
+  addCoffeePairRow();
+}
+ 
+function addCoffeePairRow() {
+  const rows = document.getElementById('coffee-pair-rows');
+  const participants = coffeeParticipantsAll.filter(p => p.active);
+  const options = participants.map(p =>
+    \`<option value="\${p.tgId}">\${escapeAdminHtml(p.name || p.tgId)}</option>\`
+  ).join('');
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;gap:8px;align-items:center';
+  div.innerHTML = \`
+    <select class="coffee-pair-a" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-size:12px">
+      <option value="">— участник А —</option>\${options}
+    </select>
+    <span style="color:var(--text3)">↔</span>
+    <select class="coffee-pair-b" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-size:12px">
+      <option value="">— участник Б —</option>\${options}
+    </select>
+    <button onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px">✕</button>
+  \`;
+  rows.appendChild(div);
+}
+ 
+async function saveCoffeePairs() {
+  const rows = document.querySelectorAll('#coffee-pair-rows > div');
+  const pairs = [];
+  for (const row of rows) {
+    const a = row.querySelector('.coffee-pair-a')?.value;
+    const b = row.querySelector('.coffee-pair-b')?.value;
+    if (a && b && a !== b) pairs.push({ a, b });
+  }
+  if (pairs.length === 0) { alert('Добавь хотя бы одну пару'); return; }
+ 
+  // Проверить дубли
+  const seen = new Set();
+  for (const p of pairs) {
+    const key = [p.a, p.b].sort().join('-');
+    if (seen.has(key)) { alert('Есть повторяющиеся пары'); return; }
+    seen.add(key);
+  }
+ 
+  // Получить weekId
+  const weekId = coffeeAdminData?.weekId;
+  if (!weekId) { alert('Ошибка: нет weekId'); return; }
+ 
+  try {
+    const res = await fetch('/api/admin/coffee/pairs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...aHeaders() },
+      body: JSON.stringify({ weekId, pairs })
+    }).then(r => r.json());
+    if (res.ok) {
+      document.getElementById('coffeePairModal').style.display = 'none';
+      showAdminToast('Пары сохранены');
+      loadCoffeeAdmin();
+    } else alert('Ошибка сохранения');
+  } catch(e) { alert('Ошибка подключения'); }
+}
+ 
+async function openReassignModal(tgId, currentPartnerId) {
+  const participants = coffeeParticipantsAll.filter(p => p.active && String(p.tgId) !== String(tgId) && String(p.tgId) !== String(currentPartnerId));
+  const options = participants.map(p =>
+    \`<option value="\${p.tgId}">\${escapeAdminHtml(p.name || p.tgId)}</option>\`
+  ).join('');
+  const newPartnerId = await showAdminSelect('Выбрать нового партнёра:', options);
+  if (!newPartnerId) return;
+  const weekId = coffeeAdminData?.weekId;
+  try {
+    const res = await fetch('/api/admin/coffee/reassign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...aHeaders() },
+      body: JSON.stringify({ tgId, newPartnerId, weekId })
+    }).then(r => r.json());
+    if (res.ok) { showAdminToast('Переназначено'); loadCoffeeAdmin(); }
+    else alert('Ошибка');
+  } catch(e) { alert('Ошибка'); }
+}
+ 
+// Простой select-диалог (браузерный confirm не возвращает значение)
+function showAdminSelect(label, optionsHTML) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:2000;display:flex;align-items:center;justify-content:center';
+    overlay.innerHTML = \`
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;width:320px">
+        <div style="font-size:13px;margin-bottom:12px">\${label}</div>
+        <select id="admin-tmp-select" style="width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:13px;margin-bottom:16px">
+          <option value="">— выбрать —</option>\${optionsHTML}
+        </select>
+        <div style="display:flex;gap:8px">
+          <button onclick="document.body.removeChild(this.closest('[style*=fixed]'));window._adminSelectResolve(null)" class="btn btn-ghost" style="flex:1">Отмена</button>
+          <button onclick="const v=document.getElementById('admin-tmp-select').value;document.body.removeChild(this.closest('[style*=fixed]'));window._adminSelectResolve(v||null)" class="btn btn-w" style="flex:1">OK</button>
+        </div>
+      </div>
+    \`;
+    window._adminSelectResolve = resolve;
+    document.body.appendChild(overlay);
+  });
+}
+ 
+function escapeAdminHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+ 
+function showAdminToast(msg) {
+  // Используй существующую функцию если есть, иначе:
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px 18px;font-size:13px;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,0.4)';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+async function sendCircleToAdmin(tgId) {
+  try {
+    const res = await fetch('/api/admin/coffee/send-circle', {
+      method: 'POST',
+      headers: aHeaders(),
+      body: JSON.stringify({ tgId })
+    }).then(r => r.json());
+    if (res.ok) showAdminToast('☕ Кружочек отправлен в Telegram');
+    else showAdminToast('Ошибка: ' + (res.error || 'неизвестно'));
+  } catch(e) {
+    showAdminToast('Ошибка подключения');
+  }
+}
+
+// ── KB ADMIN ──────────────────────────────────────────────────
+let kbAdminCats = [];
+let kbAdminCurrentCat = null;
+
+async function kbLoadAdmin() {
+  const data = await fetch('/api/admin/kb-categories', { headers: aHeaders() }).then(r => r.json());
+  kbAdminCats = data.categories || [];
+  renderKBAdminCategories();
+  const sel = document.getElementById('kbSelectedCat');
+  sel.innerHTML = '<option value="">— выбрать —</option>' + kbAdminCats.map(c => '<option value="' + c.id + '">' + escapeAdminHtml(c.icon) + ' ' + escapeAdminHtml(c.title) + '</option>').join('');
+  document.getElementById('kbEntryList').innerHTML = '';
+  document.getElementById('kbAddEntryBtn').disabled = true;
+}
+
+function renderKBAdminCategories() {
+  const el = document.getElementById('kbCategoryList');
+  if (!kbAdminCats.length) { el.innerHTML = '<p style="color:var(--text3);font-size:13px">Нет категорий</p>'; return; }
+  el.innerHTML = kbAdminCats.map(c =>
+    '<div class="module-item"><div class="module-item-top">' +
+    '<div class="module-item-title">' + escapeAdminHtml(c.icon) + ' ' + escapeAdminHtml(c.title) + '</div>' +
+    '<div class="module-item-actions">' +
+    '<button class="btn btn-ghost btn-sm" data-id="' + c.id + '" onclick="kbOpenCategoryModal(this.dataset.id)">✏️</button>' +
+    '<button class="btn btn-danger btn-sm" data-id="' + c.id + '" onclick="kbDeleteCategory(this.dataset.id)">✕</button>' +
+    '</div></div></div>'
+  ).join('');
+}
+
+function kbOpenCategoryModal(id) {
+  const cat = id ? kbAdminCats.find(c => c.id === id) : null;
+  document.getElementById('kbCatModalTitle').textContent = cat ? 'Редактировать категорию' : 'Новая категория';
+  document.getElementById('kbCatId').value = id || '';
+  document.getElementById('kbCatIdInput').value = cat?.id || '';
+  document.getElementById('kbCatIdInput').disabled = !!cat;
+  document.getElementById('kbCatTitle').value = cat?.title || '';
+  document.getElementById('kbCatIcon').value = cat?.icon || '';
+  document.getElementById('kbCatOrder').value = cat?.order ?? kbAdminCats.length + 1;
+  document.getElementById('kbCatModal').classList.add('open');
+}
+function kbCloseCatModal() { document.getElementById('kbCatModal').classList.remove('open'); }
+
+async function kbSaveCategory() {
+  const isNew = !document.getElementById('kbCatId').value;
+  const id = isNew ? document.getElementById('kbCatIdInput').value.trim() : document.getElementById('kbCatId').value;
+  if (!id) { showAdminToast('Укажи ID категории'); return; }
+  const category = {
+    id,
+    title: document.getElementById('kbCatTitle').value.trim(),
+    icon: document.getElementById('kbCatIcon').value.trim(),
+    order: parseInt(document.getElementById('kbCatOrder').value) || 0
+  };
+  await fetch('/api/admin/kb-save-category', { method: 'POST', headers: aHeaders(), body: JSON.stringify({ category }) });
+  kbCloseCatModal();
+  showAdminToast('Категория сохранена');
+  kbLoadAdmin();
+}
+
+async function kbDeleteCategory(id) {
+  if (!confirm('Удалить категорию и все её записи?')) return;
+  await fetch('/api/admin/kb-delete-category', { method: 'POST', headers: aHeaders(), body: JSON.stringify({ id }) });
+  showAdminToast('Категория удалена');
+  kbLoadAdmin();
+}
+
+async function kbLoadEntries(catId) {
+  kbAdminCurrentCat = catId;
+  document.getElementById('kbAddEntryBtn').disabled = !catId;
+  if (!catId) { document.getElementById('kbEntryList').innerHTML = ''; return; }
+  const data = await fetch('/api/admin/kb-entries?catId=' + catId, { headers: aHeaders() }).then(r => r.json());
+  const entries = data.entries || [];
+  const el = document.getElementById('kbEntryList');
+  if (!entries.length) { el.innerHTML = '<p style="color:var(--text3);font-size:13px;margin-top:8px">Нет записей</p>'; return; }
+  el.innerHTML = entries.map(e =>
+    '<div class="module-item" style="margin-top:6px"><div class="module-item-top"><div>' +
+    '<div class="module-item-title" style="font-size:13px">' + escapeAdminHtml(e.title) + '</div>' +
+    '<div style="font-size:11px;color:var(--text3)">' + escapeAdminHtml(e.date) + (e.videoUrl ? ' · ▶ видео' : '') + (e.materials && e.materials.length ? ' · 📎 ' + e.materials.length : '') + '</div>' +
+    '</div><div class="module-item-actions">' +
+    '<button class="btn btn-ghost btn-sm" data-id="' + e.id + '" onclick="kbOpenEntryModal(this.dataset.id)">✏️</button>' +
+    '</div></div></div>'
+  ).join('');
+}
+
+async function kbOpenEntryModal(id) {
+  const catId = kbAdminCurrentCat;
+  if (!catId) { showAdminToast('Выбери категорию'); return; }
+  let entry = null;
+  if (id) {
+    const data = await fetch('/api/admin/kb-entries?catId=' + catId, { headers: aHeaders() }).then(r => r.json());
+    entry = (data.entries || []).find(e => e.id === id);
+  }
+  document.getElementById('kbEntryModalTitle').textContent = entry ? 'Редактировать запись' : 'Новая запись';
+  document.getElementById('kbEntryId').value = entry?.id || '';
+  document.getElementById('kbEntryCatId').value = catId;
+  document.getElementById('kbEntryIdInput').value = entry?.id || '';
+  document.getElementById('kbEntryIdInput').disabled = !!entry;
+  document.getElementById('kbEntryDate').value = entry?.date || '';
+  document.getElementById('kbEntryTitle').value = entry?.title || '';
+  document.getElementById('kbEntrySubtitle').value = entry?.subtitle || '';
+  document.getElementById('kbEntryVideo').value = entry?.videoUrl || '';
+  document.getElementById('kbEntryMaterials').value = (entry?.materials || []).map(m => m.title + ' | ' + m.url).join('\\n');
+  document.getElementById('kbEntrySummary').value = entry?.summary || '';
+  document.getElementById('kbEntryDeleteBtn').style.display = entry ? 'block' : 'none';
+  document.getElementById('kbEntryModal').classList.add('open');
+}
+function kbCloseEntryModal() { document.getElementById('kbEntryModal').classList.remove('open'); }
+
+async function kbSaveEntry() {
+  const isNew = !document.getElementById('kbEntryId').value;
+  const catId = document.getElementById('kbEntryCatId').value;
+  const id = isNew ? document.getElementById('kbEntryIdInput').value.trim() : document.getElementById('kbEntryId').value;
+  if (!id) { showAdminToast('Укажи ID записи'); return; }
+  const materialsRaw = document.getElementById('kbEntryMaterials').value.trim();
+  const materials = materialsRaw ? materialsRaw.split('\\n').filter(l => l.trim()).map(l => {
+    const sep = l.indexOf(' | ');
+    if (sep === -1) return { title: l.trim(), url: l.trim() };
+    return { title: l.slice(0, sep).trim(), url: l.slice(sep + 3).trim() };
+  }) : [];
+  const entry = {
+    id,
+    title: document.getElementById('kbEntryTitle').value.trim(),
+    subtitle: document.getElementById('kbEntrySubtitle').value.trim(),
+    date: document.getElementById('kbEntryDate').value.trim(),
+    videoUrl: document.getElementById('kbEntryVideo').value.trim(),
+    materials,
+    summary: document.getElementById('kbEntrySummary').value.trim()
+  };
+  await fetch('/api/admin/kb-save-entry', { method: 'POST', headers: aHeaders(), body: JSON.stringify({ catId, entry }) });
+  kbCloseEntryModal();
+  showAdminToast('Запись сохранена');
+  kbLoadEntries(catId);
+}
+
+async function kbDeleteEntry() {
+  if (!confirm('Удалить запись?')) return;
+  const catId = document.getElementById('kbEntryCatId').value;
+  const entryId = document.getElementById('kbEntryId').value;
+  await fetch('/api/admin/kb-delete-entry', { method: 'POST', headers: aHeaders(), body: JSON.stringify({ catId, entryId }) });
+  kbCloseEntryModal();
+  showAdminToast('Запись удалена');
+  kbLoadEntries(catId);
+}
+
+async function kbInitData() {
+  const msg = document.getElementById('kbInitMsg');
+  msg.textContent = 'Загружаем...';
+  msg.className = 'msg';
+  try {
+    await fetch('/api/admin/kb-init', { method: 'POST', headers: aHeaders() });
+    msg.textContent = 'Данные загружены!';
+    msg.className = 'msg ok';
+    kbLoadAdmin();
+  } catch(e) {
+    msg.textContent = 'Ошибка';
+    msg.className = 'msg err';
+  }
+}
+</script>
+</body>
+</html>`;
+}
