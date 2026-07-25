@@ -20,6 +20,10 @@ export default {
     if (url.pathname === "/api/questions") return apiQuestions(request, env);
     if (url.pathname === "/api/admin/login") return apiAdminLogin(request, env);
     if (url.pathname.startsWith('/api/admin/coffee')) return apiAdminCoffee(request, env, url);
+    if (url.pathname === '/api/admin/analytics') return apiAdminAnalytics(request, env, url);
+    if (url.pathname === '/api/admin/workshop-attendance') return apiAdminWorkshopAttendance(request, env, url);
+    if (url.pathname === '/api/admin/crm') return apiAdminCRM(request, env, url);
+    if (url.pathname === '/api/admin/chat-activity') return apiAdminChatActivity(request, env, url);
     if (url.pathname.startsWith("/api/admin/")) return apiAdminAction(request, env, url);
     if (url.pathname === "/" || url.pathname === "/app") return serveApp(env);
     if (url.pathname === "/quiz1" || url.pathname === "/worker/quiz1") return serveQuiz1();
@@ -38,6 +42,7 @@ if (url.pathname === '/api/coffee/profile') return apiCoffeeProfile(request, env
 if (url.pathname === '/api/coffee/toggle') return apiCoffeeToggle(request, env);
 if (url.pathname === '/api/coffee/status') return apiCoffeeStatus(request, env);
 if (url.pathname === '/api/coffee/rate') return apiCoffeeRate(request, env);
+if (url.pathname === '/api/track') return apiTrack(request, env);
 if (url.pathname === '/api/admin/coffee/send-now') {
   const auth = request.headers.get('Authorization') || '';
   if (!auth.includes('admin_session_' + ADMIN_PASSWORD))
@@ -73,7 +78,13 @@ if (url.pathname === '/api/admin/coffee/send-now') {
   const day = now.getUTCDay(); // 1=пн, 5=пт
   const hour = now.getUTCHours(); // ✅ Fixed: was getUTCHour()
   // 9 = 12:00 МСК
-  if (day === 1) await coffeeSendPairs(env);   // понедельник — рассылка назначенных пар
+  if (day === 1) {
+    // понедельник — если админ не назначил пары вручную, формируем их автоматически (избегая повторов)
+    const weekId = COFFEE_WEEK();
+    const existing = await env.KV.get(`coffee:round:${weekId}`, 'json');
+    if (!existing) await coffeeAutoGeneratePairs(env, weekId);
+    await coffeeSendPairs(env); // рассылка пар
+  }
   if (day === 5) await coffeeSendReminder(env); // пятница — напоминание + оценка
     await coffeeSendNewbieReminders(env); // ← добавь эту строку
 
@@ -211,6 +222,12 @@ async function handleMessage(msg, env) {
   const text = msg.text || "";
   const userId = msg.from.id;
 
+  // Групповой чат (например, чат Ядра) — отдельная ветка: только учёт активности, без ответов бота
+  if (msg.chat.type === 'group' || msg.chat.type === 'supergroup') {
+    await handleGroupMessage(msg, env);
+    return;
+  }
+
   // Сохраняем пользователя
   await env.KV.put(`botuser:${userId}`, JSON.stringify({
     tgId: userId,
@@ -254,6 +271,7 @@ if (text === "/start circle_onboarding" || text === "/start?start=circle_onboard
   if (text === "/start") {
     const userData = await env.KV.get(`user:${userId}`, "json");
     const name = msg.from.first_name || "участник";
+    await logEvent(env, 'bot_start', userId);
 
     const keyboard = {
       inline_keyboard: [
@@ -569,10 +587,12 @@ async function apiAuth(request, env) {
   if (userData && userData.approved) {
     const launches = (await env.KV.get(`userstat:${userId}:launches`, "json") || 0) + 1;
     await env.KV.put(`userstat:${userId}:launches`, JSON.stringify(launches));
+    await logEvent(env, 'miniapp_open', userId, { role: 'member' });
     return jsonResp({ ok: true, role: 'member', user: { ...parsed.user, ...userData } });
   }
 
   // Гость — пускаем, но без доступа к Ядру
+  await logEvent(env, 'miniapp_open', userId, { role: 'guest' });
   return jsonResp({ ok: true, role: 'guest', user: parsed.user });
 }
 
@@ -876,15 +896,13 @@ if (action === "remove-admin" && request.method === "POST") {
 
   if (action === "user-stats" && request.method === "GET") {
   const userId = url.searchParams.get("userId");
-  const [launches, payment, progAi, progFun, progMini, tpAi, tpFun, tpMini, questions] = await Promise.all([
+  const [launches, payment, progAi, progFun, tpAi, tpFun, questions] = await Promise.all([
     env.KV.get(`userstat:${userId}:launches`, "json"),
     env.KV.get(`userpayment:${userId}`),
     env.KV.get(`progress:${userId}:ai`, "json"),
     env.KV.get(`progress:${userId}:funnels`, "json"),
-    env.KV.get(`progress:${userId}:minicourses`, "json"),
     env.KV.get(`taskprogress:${userId}:ai`, "json"),
     env.KV.get(`taskprogress:${userId}:funnels`, "json"),
-    env.KV.get(`taskprogress:${userId}:minicourses`, "json"),
     env.KV.get("questions:list", "json")
   ]);
   const userQuestions = (questions || []).filter(q => String(q.userId) === String(userId)).length;
@@ -893,13 +911,11 @@ if (action === "remove-admin" && request.method === "POST") {
     payment: payment || null,
     progress: {
       ai: (progAi?.completed || []).length,
-      funnels: (progFun?.completed || []).length,
-      minicourses: (progMini?.completed || []).length
+      funnels: (progFun?.completed || []).length
     },
     tasks: {
       ai: (tpAi?.completed || []).length,
-      funnels: (tpFun?.completed || []).length,
-      minicourses: (tpMini?.completed || []).length
+      funnels: (tpFun?.completed || []).length
     },
     questions: userQuestions
   });
@@ -1094,6 +1110,24 @@ if (action === "notify" && request.method === "POST") {
     const newId = "m" + (program.modules.length + 1) + "_" + Date.now();
     program.modules.push({ id: newId, title: "Новый модуль", description: "", embedUrl: "", files: [], available: false });
     await env.KV.put(`program:${programId}`, JSON.stringify(program));
+    return jsonResp({ ok: true, program });
+  }
+
+  if (action === "delete-module" && request.method === "POST") {
+    const { programId, moduleId } = await request.json();
+    const program = await env.KV.get(`program:${programId}`, "json");
+    if (!program) return jsonResp({ ok: false, error: "Программа не найдена" });
+    program.modules = (program.modules || []).filter(m => m.id !== moduleId);
+    await env.KV.put(`program:${programId}`, JSON.stringify(program));
+
+    // Отвязать (не удалять) задания, привязанные к удалённому модулю
+    const tasks = await env.KV.get(`tasks:${programId}`, "json") || [];
+    let changed = false;
+    for (const t of tasks) {
+      if (t.moduleId === moduleId) { t.moduleId = ""; changed = true; }
+    }
+    if (changed) await env.KV.put(`tasks:${programId}`, JSON.stringify(tasks));
+
     return jsonResp({ ok: true, program });
   }
 
@@ -1821,12 +1855,61 @@ if (!auth.includes("admin_session_" + ADMIN_PASSWORD)) {
       const profile = await env.KV.get(`coffee:user:${tgId}`, 'json');
       const match = await env.KV.get(`coffee:match:${tgId}`, 'json');
       const history = await env.KV.get(`coffee:history:${tgId}`, 'json') || [];
-      return { ...profile, currentMatch: match, totalMeetings: history.length };
+      const ratingsAboutMe = await Promise.all(
+        history.map(h => env.KV.get(`coffee:rating:${h.partnerId}:${h.weekId}`, 'json'))
+      );
+      const validRatings = ratingsAboutMe.filter(r => r?.stars);
+      const avgRating = validRatings.length
+        ? (validRatings.reduce((s, r) => s + r.stars, 0) / validRatings.length).toFixed(1)
+        : null;
+      return { ...profile, currentMatch: match, totalMeetings: history.length, avgRating };
     }));
     const complaints = await env.KV.get('coffee:complaints', 'json') || [];
     const weekId = COFFEE_WEEK();
     const round = await env.KV.get(`coffee:round:${weekId}`, 'json') || null;
     return jsonResp({ ok: true, participants, complaints, round, weekId });
+  }
+
+  // GET /api/admin/coffee/history — история по неделям
+  if (request.method === 'GET' && sub === '/history') {
+    const roundKeys = await env.KV.list({ prefix: 'coffee:round:' });
+    const rounds = (await Promise.all(roundKeys.keys.map(k => env.KV.get(k.name, 'json')))).filter(Boolean);
+    const idx = await env.KV.get('coffee:participants', 'json') || [];
+    const profiles = {};
+    await Promise.all(idx.map(async tgId => { profiles[tgId] = await env.KV.get(`coffee:user:${tgId}`, 'json'); }));
+    const weeks = await Promise.all(rounds.map(async round => {
+      const pairs = await Promise.all((round.pairs || []).map(async pair => {
+        const ratingA = await env.KV.get(`coffee:rating:${pair.a}:${round.weekId}`, 'json');
+        const ratingB = await env.KV.get(`coffee:rating:${pair.b}:${round.weekId}`, 'json');
+        return {
+          a: pair.a, b: pair.b,
+          nameA: profiles[pair.a]?.name || String(pair.a),
+          nameB: profiles[pair.b]?.name || String(pair.b),
+          ratingA: ratingA || null, ratingB: ratingB || null
+        };
+      }));
+      return { weekId: round.weekId, sentAt: round.sentAt, createdAt: round.createdAt, auto: !!round.auto, pairs };
+    }));
+    weeks.sort((a, b) => String(b.weekId).localeCompare(String(a.weekId)));
+    return jsonResp({ ok: true, weeks });
+  }
+
+  // POST /api/admin/coffee/generate — автоматически сформировать пары на текущую неделю (избегая повторов)
+  if (request.method === 'POST' && sub === '/generate') {
+    const weekId = COFFEE_WEEK();
+    const existing = await env.KV.get(`coffee:round:${weekId}`, 'json');
+    if (existing?.sentAt) return jsonResp({ ok: false, error: `Пары на ${weekId} уже отправлены` });
+    const round = await coffeeAutoGeneratePairs(env, weekId);
+    return jsonResp({ ok: true, round });
+  }
+
+  // POST /api/admin/coffee/ignore-complaint — закрыть жалобу без переназначения
+  if (request.method === 'POST' && sub === '/ignore-complaint') {
+    const { index } = await request.json();
+    const complaints = await env.KV.get('coffee:complaints', 'json') || [];
+    if (complaints[index]) complaints[index].resolved = true;
+    await env.KV.put('coffee:complaints', JSON.stringify(complaints));
+    return jsonResp({ ok: true });
   }
 
   // POST /api/admin/coffee/pairs — сохранить пары на неделю (вручную)
@@ -2112,6 +2195,53 @@ async function coffeeAddHistory(env, tgId, partnerId, weekId) {
   }
 }
 
+function shuffleArray(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Автоматически формирует пары активных участников на неделю, стараясь не повторять
+// партнёров, с которыми пользователь уже встречался ранее (по coffee:history).
+async function coffeeAutoGeneratePairs(env, weekId) {
+  const idx = await env.KV.get('coffee:participants', 'json') || [];
+  const profiles = await Promise.all(idx.map(tgId => env.KV.get(`coffee:user:${tgId}`, 'json')));
+  const activeIds = idx.filter((tgId, i) => profiles[i]?.active).map(String);
+
+  const histories = await Promise.all(activeIds.map(tgId => env.KV.get(`coffee:history:${tgId}`, 'json')));
+  const historyMap = new Map();
+  activeIds.forEach((tgId, i) => {
+    historyMap.set(tgId, new Set((histories[i] || []).map(h => String(h.partnerId))));
+  });
+
+  let pool = shuffleArray(activeIds);
+  const pairs = [];
+  while (pool.length > 1) {
+    const a = pool.shift();
+    let pickIdx = pool.findIndex(b => !historyMap.get(a)?.has(b));
+    if (pickIdx === -1) pickIdx = 0; // все возможные партнёры уже были — придётся повторить
+    const b = pool.splice(pickIdx, 1)[0];
+    pairs.push({ a, b });
+  }
+  const unmatched = pool.length === 1 ? [pool[0]] : [];
+
+  const round = { pairs, weekId, createdAt: Date.now(), sentAt: null, auto: true, unmatched };
+  await env.KV.put(`coffee:round:${weekId}`, JSON.stringify(round));
+
+  if (unmatched.length) {
+    for (const tgId of unmatched) {
+      await tgSend(env, tgId,
+        `☕ На этой неделе для тебя, к сожалению, не нашлось пары (нечётное число участников). На следующей неделе тебя подберут в первую очередь!`
+      );
+    }
+  }
+
+  return round;
+}
+
 // ─── HELPERS ─────────────────────────────────────────────────
 function parseTgInitData(initData) {
   if (!initData) return null;
@@ -2133,6 +2263,387 @@ function jsonResp(data, status = 200) {
       "Access-Control-Allow-Origin": "*"
     }
   });
+}
+
+// ══════════════════════════════════════════════
+// АКТИВНОСТЬ ПОЛЬЗОВАТЕЛЕЙ — ЛОГ СОБЫТИЙ
+// ══════════════════════════════════════════════
+
+function eventDateStr(ts) {
+  return new Date(ts).toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
+// Записывает событие активности (bot_start, miniapp_open, section_view, module_open, click, chat_message, ...)
+// и обновляет суточную агрегацию для дашборда + короткую историю по пользователю.
+async function logEvent(env, type, userId, meta) {
+  try {
+    const ts = Date.now();
+    const date = eventDateStr(ts);
+    const rand = Math.random().toString(36).slice(2, 8);
+    await env.KV.put(`evt:${date}:${ts}_${rand}`, JSON.stringify({ type, userId: userId ?? null, meta: meta || null, ts }), { expirationTtl: 60 * 60 * 24 * 400 });
+
+    // Суточная агрегация
+    const aggKey = `evtagg:${date}`;
+    const agg = await env.KV.get(aggKey, 'json') || { date, total: 0, byType: {}, users: [] };
+    agg.total++;
+    agg.byType[type] = (agg.byType[type] || 0) + 1;
+    if (userId && !agg.users.includes(String(userId))) agg.users.push(String(userId));
+    await env.KV.put(aggKey, JSON.stringify(agg), { expirationTtl: 60 * 60 * 24 * 400 });
+
+    // Короткая история по пользователю (последние 50 событий)
+    if (userId) {
+      const userKey = `useractivity:${userId}`;
+      const list = await env.KV.get(userKey, 'json') || [];
+      list.unshift({ type, meta: meta || null, ts });
+      await env.KV.put(userKey, JSON.stringify(list.slice(0, 50)));
+    }
+  } catch (e) { /* трекинг не должен ронять основной запрос */ }
+}
+
+// Записывает событие активности задним числом (для ручного импорта истории чата)
+async function logEventBackdated(env, type, userId, meta, date) {
+  try {
+    const ts = new Date(date + 'T12:00:00Z').getTime() || Date.now();
+    const rand = Math.random().toString(36).slice(2, 8);
+    await env.KV.put(`evt:${date}:${ts}_${rand}`, JSON.stringify({ type, userId: userId ?? null, meta: meta || null, ts }), { expirationTtl: 60 * 60 * 24 * 400 });
+    const aggKey = `evtagg:${date}`;
+    const agg = await env.KV.get(aggKey, 'json') || { date, total: 0, byType: {}, users: [] };
+    agg.total++;
+    agg.byType[type] = (agg.byType[type] || 0) + 1;
+    if (userId && !agg.users.includes(String(userId))) agg.users.push(String(userId));
+    await env.KV.put(aggKey, JSON.stringify(agg), { expirationTtl: 60 * 60 * 24 * 400 });
+  } catch (e) {}
+}
+
+// ══════════════════════════════════════════════
+// АКТИВНОСТЬ В ГРУППОВОМ ЧАТЕ (ЧАТ ЯДРА)
+// ══════════════════════════════════════════════
+
+async function handleGroupMessage(msg, env) {
+  const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  if (msg.from.is_bot) return;
+
+  const key = `chatuser:${chatId}:${userId}`;
+  const existing = await env.KV.get(key, 'json') || {
+    userId, name: msg.from.first_name || '', lastName: msg.from.last_name || '',
+    username: msg.from.username || '', messageCount: 0, firstSeenAt: Date.now()
+  };
+  existing.name = msg.from.first_name || existing.name;
+  existing.lastName = msg.from.last_name || existing.lastName;
+  existing.username = msg.from.username || existing.username;
+  existing.messageCount = (existing.messageCount || 0) + 1;
+  existing.lastMessageAt = Date.now();
+  await env.KV.put(key, JSON.stringify(existing));
+
+  const chatIdx = await env.KV.get('chatactivity:chats', 'json') || [];
+  if (!chatIdx.includes(String(chatId))) {
+    chatIdx.push(String(chatId));
+    await env.KV.put('chatactivity:chats', JSON.stringify(chatIdx));
+  }
+
+  await logEvent(env, 'chat_message', userId, { chatId });
+}
+
+async function apiAdminChatActivity(request, env, url) {
+  const auth = request.headers.get("Authorization") || "";
+  if (!auth.includes("admin_session_" + ADMIN_PASSWORD)) return jsonResp({ error: "Unauthorized" }, 401);
+
+  if (request.method === 'GET') {
+    const chatIdx = await env.KV.get('chatactivity:chats', 'json') || [];
+    const users = [];
+    for (const chatId of chatIdx) {
+      const keys = await env.KV.list({ prefix: `chatuser:${chatId}:` });
+      const records = await Promise.all(keys.keys.map(k => env.KV.get(k.name, 'json')));
+      records.filter(Boolean).forEach(r => users.push({ ...r, chatId }));
+    }
+    users.sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
+    return jsonResp({ ok: true, chats: chatIdx, users });
+  }
+
+  if (request.method === 'POST') {
+    const body = await request.json();
+
+    // Ручной импорт активности за прошлые дни (например, из выгрузки чата)
+    if (body.action === 'import') {
+      const { chatId, records } = body; // records: [{ userId, name, username, date, count }]
+      if (!chatId || !Array.isArray(records)) return jsonResp({ ok: false, error: 'Некорректные данные' });
+      const chatIdx = await env.KV.get('chatactivity:chats', 'json') || [];
+      if (!chatIdx.includes(String(chatId))) {
+        chatIdx.push(String(chatId));
+        await env.KV.put('chatactivity:chats', JSON.stringify(chatIdx));
+      }
+      let imported = 0;
+      for (const r of records) {
+        const uid = r.userId || ('name_' + (r.name || 'unknown').replace(/\s+/g, '_').toLowerCase());
+        const key = `chatuser:${chatId}:${uid}`;
+        const existing = await env.KV.get(key, 'json') || { userId: uid, name: r.name || '', username: r.username || '', messageCount: 0, firstSeenAt: Date.now() };
+        const count = Number(r.count) || 1;
+        existing.messageCount = (existing.messageCount || 0) + count;
+        const ts = r.date ? new Date(r.date + 'T12:00:00Z').getTime() : Date.now();
+        if (!existing.lastMessageAt || ts > existing.lastMessageAt) existing.lastMessageAt = ts;
+        if (r.name) existing.name = r.name;
+        if (r.username) existing.username = r.username;
+        await env.KV.put(key, JSON.stringify(existing));
+        if (r.date) {
+          for (let i = 0; i < count; i++) await logEventBackdated(env, 'chat_message', r.userId || null, { chatId, imported: true }, r.date);
+        }
+        imported++;
+      }
+      return jsonResp({ ok: true, imported });
+    }
+
+    return jsonResp({ error: 'Unknown action' }, 404);
+  }
+
+  return jsonResp({ error: 'Not found' }, 404);
+}
+
+async function apiTrack(request, env) {
+  if (request.method !== 'POST') return jsonResp({ error: 'Method not allowed' }, 405);
+  const { type, tgId, initData, meta } = await request.json();
+  if (!type) return jsonResp({ ok: false });
+  let userId = tgId || null;
+  if (!userId && initData) {
+    const parsed = parseTgInitData(initData);
+    if (parsed?.user) userId = parsed.user.id;
+  }
+  await logEvent(env, type, userId, meta);
+  return jsonResp({ ok: true });
+}
+
+// ══════════════════════════════════════════════
+// РУЧНОЙ УЧЁТ ПОСЕЩЕНИЙ ВОРКШОПОВ
+// ══════════════════════════════════════════════
+
+async function apiAdminWorkshopAttendance(request, env, url) {
+  const auth = request.headers.get("Authorization") || "";
+  if (!auth.includes("admin_session_" + ADMIN_PASSWORD)) return jsonResp({ error: "Unauthorized" }, 401);
+
+  if (request.method === 'GET') {
+    const userId = url.searchParams.get('userId');
+    if (!userId) return jsonResp({ ok: false, error: 'Нет userId' });
+    const records = await env.KV.get(`workshopattendance:${userId}`, 'json') || [];
+    return jsonResp({ ok: true, records });
+  }
+
+  if (request.method === 'POST') {
+    const body = await request.json();
+    const { userId } = body;
+    if (!userId) return jsonResp({ ok: false, error: 'Нет userId' });
+    const records = await env.KV.get(`workshopattendance:${userId}`, 'json') || [];
+
+    if (body.deleteId) {
+      const filtered = records.filter(r => r.id !== body.deleteId);
+      await env.KV.put(`workshopattendance:${userId}`, JSON.stringify(filtered));
+      return jsonResp({ ok: true, records: filtered });
+    }
+
+    const { title, date, note } = body;
+    if (!title || !date) return jsonResp({ ok: false, error: 'Нужны название и дата' });
+    records.unshift({ id: 'wa_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), title, date, note: note || '', recordedAt: Date.now() });
+    records.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    await env.KV.put(`workshopattendance:${userId}`, JSON.stringify(records));
+    return jsonResp({ ok: true, records });
+  }
+
+  return jsonResp({ error: 'Not found' }, 404);
+}
+
+// ══════════════════════════════════════════════
+// CRM — УЧАСТНИКИ ПО СТАТУСАМ
+// ══════════════════════════════════════════════
+
+const CRM_STATUSES = ['lead', 'paid', 'active', 'paused', 'left'];
+
+async function crmSuspendAccess(env, email) {
+  const stopped = await env.KV.get('users:stopped', 'json') || [];
+  if (!stopped.includes(email.toLowerCase())) {
+    stopped.push(email.toLowerCase());
+    await env.KV.put('users:stopped', JSON.stringify(stopped));
+  }
+  const userId = await env.KV.get(`email_to_user:${email.toLowerCase()}`);
+  if (userId) {
+    const userData = await env.KV.get(`user:${userId}`, 'json');
+    if (userData) {
+      userData.approved = false;
+      userData.stoppedAt = Date.now();
+      await env.KV.put(`user:${userId}`, JSON.stringify(userData));
+    }
+  }
+}
+
+async function crmRestoreAccess(env, email) {
+  let stopped = await env.KV.get('users:stopped', 'json') || [];
+  stopped = stopped.filter(e => e !== email.toLowerCase());
+  await env.KV.put('users:stopped', JSON.stringify(stopped));
+  const userId = await env.KV.get(`email_to_user:${email.toLowerCase()}`);
+  if (userId) {
+    const userData = await env.KV.get(`user:${userId}`, 'json');
+    if (userData) {
+      userData.approved = true;
+      delete userData.stoppedAt;
+      await env.KV.put(`user:${userId}`, JSON.stringify(userData));
+    }
+  }
+}
+
+async function apiAdminCRM(request, env, url) {
+  const auth = request.headers.get("Authorization") || "";
+  if (!auth.includes("admin_session_" + ADMIN_PASSWORD)) return jsonResp({ error: "Unauthorized" }, 401);
+
+  if (request.method === 'GET') {
+    const [approvedEmails, pending, stopped, crmKeys] = await Promise.all([
+      env.KV.get('emails:approved', 'json').then(v => v || []),
+      env.KV.get('pending:list', 'json').then(v => v || []),
+      env.KV.get('users:stopped', 'json').then(v => v || []),
+      env.KV.list({ prefix: 'crm:' })
+    ]);
+    const crmRecords = {};
+    await Promise.all(crmKeys.keys.map(async k => {
+      const r = await env.KV.get(k.name, 'json');
+      if (r) crmRecords[k.name.replace('crm:', '')] = r;
+    }));
+
+    const keySet = new Map(); // key(lowercase) -> canonical email
+    approvedEmails.forEach(e => keySet.set(e.toLowerCase(), e));
+    pending.forEach(p => keySet.set(p.email.toLowerCase(), p.email));
+    Object.values(crmRecords).forEach(r => { if (r.email) keySet.set(r.email.toLowerCase(), r.email); });
+
+    const list = [];
+
+    for (const [key, email] of keySet) {
+      const crm = crmRecords[key] || {};
+      const isPending = pending.some(p => p.email.toLowerCase() === key);
+      const isStopped = stopped.includes(key);
+      let status = crm.status;
+      if (!status) status = isStopped ? 'paused' : isPending ? 'lead' : 'active';
+
+      const tgId = crm.tgId || await env.KV.get(`email_to_user:${key}`);
+      let userRec = null, botUser = null;
+      if (tgId) {
+        [userRec, botUser] = await Promise.all([
+          env.KV.get(`user:${tgId}`, 'json'),
+          env.KV.get(`botuser:${tgId}`, 'json')
+        ]);
+      }
+      const paymentDate = crm.paymentDate || (tgId ? await env.KV.get(`userpayment:${tgId}`) : null);
+      const launches = tgId ? (await env.KV.get(`userstat:${tgId}:launches`, 'json') || 0) : 0;
+      const pendingEntry = pending.find(p => p.email.toLowerCase() === key);
+
+      list.push({
+        key, email,
+        status,
+        name: crm.name || userRec?.name || botUser?.name || pendingEntry?.name || '',
+        telegram: crm.telegram || botUser?.username || userRec?.username || '',
+        note: crm.note || '',
+        tgId: tgId || null,
+        paymentDate: paymentDate || null,
+        enrolledAt: userRec?.enrolledAt || crm.createdAt || null,
+        launches,
+        updatedAt: crm.updatedAt || null
+      });
+    }
+
+    // Чистые лиды без email/аккаунта (добавленные вручную)
+    for (const [key, r] of Object.entries(crmRecords)) {
+      if (!r.email && !list.some(x => x.key === key)) {
+        list.push({
+          key, email: null, status: r.status || 'lead',
+          name: r.name || '', telegram: r.telegram || '', note: r.note || '',
+          tgId: r.tgId || null, paymentDate: r.paymentDate || null,
+          enrolledAt: r.createdAt || null, launches: 0, updatedAt: r.updatedAt || null
+        });
+      }
+    }
+
+    return jsonResp({ ok: true, participants: list });
+  }
+
+  if (request.method === 'POST') {
+    const body = await request.json();
+    const action = body.action;
+
+    if (action === 'set-status') {
+      const { key, status } = body;
+      if (!key || !CRM_STATUSES.includes(status)) return jsonResp({ ok: false, error: 'Некорректные данные' });
+      const crm = await env.KV.get(`crm:${key}`, 'json') || { email: body.email || null, createdAt: Date.now() };
+      const prevStatus = crm.status;
+      crm.status = status;
+      crm.updatedAt = Date.now();
+      if (body.email) crm.email = body.email;
+      await env.KV.put(`crm:${key}`, JSON.stringify(crm));
+
+      if (crm.email) {
+        const goingInactive = (status === 'paused' || status === 'left');
+        const wasInactive = (prevStatus === 'paused' || prevStatus === 'left');
+        if (goingInactive && !wasInactive) await crmSuspendAccess(env, crm.email);
+        else if (!goingInactive && wasInactive) await crmRestoreAccess(env, crm.email);
+      }
+      return jsonResp({ ok: true });
+    }
+
+    if (action === 'save') {
+      const { key, fields } = body;
+      if (!key) return jsonResp({ ok: false, error: 'Нет key' });
+      const crm = await env.KV.get(`crm:${key}`, 'json') || { status: 'lead', createdAt: Date.now() };
+      Object.assign(crm, fields || {});
+      crm.updatedAt = Date.now();
+      await env.KV.put(`crm:${key}`, JSON.stringify(crm));
+      return jsonResp({ ok: true, record: crm });
+    }
+
+    if (action === 'add-lead') {
+      const { name, email, telegram, note } = body;
+      if (!name && !email && !telegram) return jsonResp({ ok: false, error: 'Заполни хотя бы одно поле' });
+      const key = email ? email.toLowerCase() : ('lead_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7));
+      const crm = { email: email || null, name: name || '', telegram: telegram || '', note: note || '', status: 'lead', createdAt: Date.now(), updatedAt: Date.now() };
+      await env.KV.put(`crm:${key}`, JSON.stringify(crm));
+      return jsonResp({ ok: true, key });
+    }
+
+    if (action === 'delete') {
+      const { key } = body;
+      if (!key) return jsonResp({ ok: false });
+      await env.KV.delete(`crm:${key}`);
+      return jsonResp({ ok: true });
+    }
+
+    return jsonResp({ error: 'Unknown action' }, 404);
+  }
+
+  return jsonResp({ error: 'Not found' }, 404);
+}
+
+async function apiAdminAnalytics(request, env, url) {
+  const auth = request.headers.get("Authorization") || "";
+  if (!auth.includes("admin_session_" + ADMIN_PASSWORD)) return jsonResp({ error: "Unauthorized" }, 401);
+
+  const days = Math.min(Math.max(parseInt(url.searchParams.get('days') || '14', 10) || 14, 1), 90);
+  const now = Date.now();
+  const dayList = [];
+  for (let i = days - 1; i >= 0; i--) {
+    dayList.push(eventDateStr(now - i * 86400000));
+  }
+  const aggs = await Promise.all(dayList.map(d => env.KV.get(`evtagg:${d}`, 'json')));
+  const daily = dayList.map((d, i) => {
+    const a = aggs[i];
+    return {
+      date: d,
+      total: a?.total || 0,
+      byType: a?.byType || {},
+      uniqueUsers: a?.users?.length || 0
+    };
+  });
+
+  const totals = daily.reduce((acc, d) => {
+    acc.total += d.total;
+    acc.uniqueUsers += d.uniqueUsers; // приблизительно (без дедупликации между днями)
+    for (const [t, c] of Object.entries(d.byType)) acc.byType[t] = (acc.byType[t] || 0) + c;
+    return acc;
+  }, { total: 0, uniqueUsers: 0, byType: {} });
+
+  return jsonResp({ ok: true, days: daily, totals });
 }
 
 // ─── MINI APP HTML ───────────────────────────────────────────
@@ -3896,8 +4407,8 @@ function getMiniAppHTML() {
 
 <script>
 const WORKER = '';
-let tasksData = { ai: [], funnels: [], minicourses: [] };
-let taskProgressData = { ai: { completed: [] }, funnels: { completed: [] }, minicourses: { completed: [] } };
+let tasksData = { ai: [], funnels: [] };
+let taskProgressData = { ai: { completed: [] }, funnels: { completed: [] } };
 let tg = window.Telegram?.WebApp;
 let initData = tg?.initData || '';
 let currentUser = null;
@@ -3999,23 +4510,19 @@ async function loadUserData() {
         fetch('/api/progress?userId=' + userId + '&programId=ai').then(r => r.json()),
         fetch('/api/progress?userId=' + userId + '&programId=funnels').then(r => r.json())
       ]);
-      const [tasksAi, tasksFunnels, tasksMini] = await Promise.all([
+      const [tasksAi, tasksFunnels] = await Promise.all([
         fetch('/api/tasks?id=ai').then(r => r.json()),
-        fetch('/api/tasks?id=funnels').then(r => r.json()),
-        fetch('/api/tasks?id=minicourses').then(r => r.json())
+        fetch('/api/tasks?id=funnels').then(r => r.json())
       ]);
       tasksData.ai = tasksAi.tasks || [];
       tasksData.funnels = tasksFunnels.tasks || [];
-      tasksData.minicourses = tasksMini.tasks || [];
 
-      const [tpAi, tpFun, tpMini] = await Promise.all([
+      const [tpAi, tpFun] = await Promise.all([
         fetch('/api/task-progress?userId=' + userId + '&programId=ai').then(r => r.json()),
-        fetch('/api/task-progress?userId=' + userId + '&programId=funnels').then(r => r.json()),
-        fetch('/api/task-progress?userId=' + userId + '&programId=minicourses').then(r => r.json())
+        fetch('/api/task-progress?userId=' + userId + '&programId=funnels').then(r => r.json())
       ]);
       taskProgressData.ai = tpAi;
       taskProgressData.funnels = tpFun;
-      taskProgressData.minicourses = tpMini;
 
       progressData.ai = pAi;
       progressData.funnels = pFun;
@@ -4162,7 +4669,20 @@ function navTo(page) {
   } else if (page === 'ask') {
     currentSection = 'questions';
   }
+  track('section_view', { section: currentSection });
   renderContent();
+}
+
+// Лёгкая fire-and-forget отправка события активности (не блокирует UI)
+function track(type, meta) {
+  try {
+    const tgId = currentUser?.tgId || tg?.initDataUnsafe?.user?.id || null;
+    fetch('/api/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, tgId, initData, meta: meta || null })
+    }).catch(() => {});
+  } catch(e) {}
 }
 
 function showNucleusGate() {
@@ -5400,6 +5920,7 @@ function openModule(moduleId) {
   if (!prog) return;
   const mod = prog.modules.find(m => m.id === moduleId);
   if (!mod) return;
+  track('module_open', { program: currentProgram, moduleId });
   const moduleTasks = (tasksData[currentProgram] || []).filter(t => t.moduleId === moduleId);
 const moduleTaskProgress = taskProgressData[currentProgram]?.completed || [];
 
@@ -5555,6 +6076,7 @@ function escapeHtml(str) {
 async function toggleTaskInModule(taskId, moduleId) {
   const completed = taskProgressData[currentProgram]?.completed || [];
   const isDone = completed.includes(taskId);
+  track('click', { action: 'toggle_task', taskId, moduleId, done: !isDone });
   const res = await fetch('/api/task-progress', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -6140,6 +6662,9 @@ function getAdminHTML() {
         </span>
         Рандом Кофе
       </div>
+      <div class="nav-link" id="nl-analytics" onclick="showPage('analytics')">
+        <span class="nav-link-icon">📊</span> Аналитика
+      </div>
     </div>
 
     <!-- Content -->
@@ -6170,7 +6695,22 @@ function getAdminHTML() {
 
       <!-- PARTICIPANTS -->
       <div class="page" id="page-participants">
-        <div class="page-title">Участники</div>
+        <div class="page-title">CRM участников</div>
+
+        <div class="card" style="margin-bottom:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:4px">
+            <div class="card-title" style="margin-bottom:0">Участники по статусам</div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="text" id="crmSearch" placeholder="Поиск..." oninput="renderCRMBoard()"
+                style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:13px;width:180px;outline:none"/>
+              <button class="btn btn-ghost btn-sm" onclick="loadCRM()">↻</button>
+              <button class="btn btn-w btn-sm" onclick="openCRMEdit(null)">+ Добавить</button>
+            </div>
+          </div>
+          <p style="font-size:12px;color:var(--text3);margin:4px 0 12px">Перетащи карточку в другую колонку, чтобы сменить статус. Клик по карточке открывает карточку участника.</p>
+          <div id="crm-board" style="display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;align-items:flex-start"></div>
+        </div>
+
         <div class="card" style="margin-bottom:12px">
           <div class="card-title">Синхронизация</div>
           <p style="font-size:13px;color:var(--text3);margin-bottom:12px">Привязывает TG ID и username к email по существующим записям user:* в KV</p>
@@ -6178,7 +6718,7 @@ function getAdminHTML() {
           <div class="msg" id="syncMsg" style="margin-top:8px"></div>
         </div>
         <div class="card">
-          <div class="card-title">Добавить участника</div>
+          <div class="card-title">Добавить email напрямую (выдать доступ)</div>
           <div class="row">
             <div class="field">
               <input type="email" id="newEmail" placeholder="email@example.com"/>
@@ -6186,34 +6726,6 @@ function getAdminHTML() {
             <button class="btn btn-ghost" onclick="addEmail()">Добавить</button>
           </div>
           <div class="msg" id="addEmailMsg"></div>
-        </div>
-        <div class="field" style="margin-bottom:16px">
-  <input type="text" id="participantSearch" placeholder="Поиск по участникам" 
-    oninput="filterParticipants(this.value)"/>
-</div>
-        <div class="card">
-          <div class="card-title">Список участников</div>
-          <div class="tbl-scroll">
-          <table class="tbl">
-  <thead>
-  <tr>
-    <th>Email</th>
-    <th>Username</th>
-    <th>TG ID</th>
-    <th>Заходов</th>
-    <th>Вопросов</th>
-    <th>ИИ мод.</th>
-    <th>ИИ зад.</th>
-    <th>Ворон. мод.</th>
-    <th>Ворон. зад.</th>
-    <th>Дата оплаты</th>
-    <th></th>
-  </tr>
-</thead>
-  <tbody id="emailTable"></tbody>
-</table>
-</div>
-
         </div>
         <div class="card">
           <div class="card-title">Ожидают одобрения</div>
@@ -6223,6 +6735,54 @@ function getAdminHTML() {
   <div class="card-title">Все пользователи бота</div>
   <div id="botUsersList"></div>
 </div>
+      </div>
+
+      <!-- CRM EDIT MODAL -->
+      <div class="modal-overlay" id="crmEditModal">
+        <div class="modal" style="max-width:560px">
+          <div class="modal-title" id="crmEditTitle">Карточка участника</div>
+          <input type="hidden" id="crmKey"/>
+          <div class="grid-2">
+            <div class="field"><label>Имя</label><input type="text" id="crmName" placeholder="Имя Фамилия"/></div>
+            <div class="field"><label>Статус</label>
+              <select id="crmStatus">
+                <option value="lead">Лид</option>
+                <option value="paid">Оплатил</option>
+                <option value="active">Активен</option>
+                <option value="paused">Пауза</option>
+                <option value="left">Ушёл</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="field"><label>Email</label><input type="email" id="crmEmail" placeholder="email@example.com"/></div>
+            <div class="field"><label>Telegram (без @)</label><input type="text" id="crmTelegram" placeholder="username"/></div>
+          </div>
+          <div class="field"><label>Дата оплаты</label><input type="date" id="crmPaymentDate"/></div>
+          <div class="field"><label>Примечание</label><textarea id="crmNote" rows="3" placeholder="Заметки по участнику..."></textarea></div>
+
+          <div class="field" id="crmStatsBlock" style="display:none">
+            <label>Статистика</label>
+            <div id="crmStatsContent" style="font-size:12px;color:var(--text2);display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px"></div>
+          </div>
+
+          <div class="field">
+            <label>Посещения воркшопов</label>
+            <div id="crmWorkshopList" style="margin-bottom:8px"></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <input type="text" id="crmWorkshopTitle" placeholder="Название воркшопа" style="flex:2;min-width:140px"/>
+              <input type="date" id="crmWorkshopDate" style="flex:1;min-width:120px"/>
+              <button class="btn btn-ghost btn-sm" onclick="addCRMWorkshop()">+ Добавить</button>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeCRMEdit()">Отмена</button>
+            <button class="btn btn-danger" id="crmDeleteBtn" onclick="deleteCRMEntry()" style="display:none">Удалить</button>
+            <button class="btn btn-w" onclick="saveCRMEdit()">Сохранить</button>
+          </div>
+          <div class="msg" id="crmEditMsg"></div>
+        </div>
       </div>
 
       <!-- EVENTS -->
@@ -6440,13 +7000,17 @@ function getAdminHTML() {
   <div class="card" style="margin-bottom:20px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
       <div style="font-size:14px;font-weight:600">Раунд <span id="coffee-week-id">—</span></div>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-ghost" onclick="loadCoffeeAdmin()">↻ Обновить</button>
-        <button class="btn btn-w" onclick="openCoffeePairModal()">+ Назначить пары</button>
+        <button class="btn btn-ghost" onclick="generateCoffeePairsAuto()">🎲 Авто-распределение</button>
+        <button class="btn btn-w" onclick="openCoffeePairModal()">+ Назначить пары вручную</button>
       </div>
     </div>
     <div id="coffee-pairs-table">
       <div style="color:var(--text3);font-size:13px">Пары ещё не назначены</div>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:8px">
+      Каждый понедельник в 12:00 МСК пары формируются автоматически (по возможности без повторов партнёров) и рассылаются участникам. Кнопка «Авто-распределение» позволяет сформировать пары заранее и при необходимости скорректировать их вручную до рассылки.
     </div>
   </div>
 
@@ -6455,6 +7019,17 @@ function getAdminHTML() {
     <div style="font-size:14px;font-weight:600;margin-bottom:16px">Жалобы</div>
     <div id="coffee-complaints-list">
       <div style="color:var(--text3);font-size:13px">Жалоб нет</div>
+    </div>
+  </div>
+
+  <!-- История по неделям -->
+  <div class="card" style="margin-bottom:20px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div style="font-size:14px;font-weight:600">История взаимодействий по неделям</div>
+      <button class="btn btn-ghost" onclick="loadCoffeeHistory()">↻ Обновить</button>
+    </div>
+    <div id="coffee-history-list">
+      <div style="color:var(--text3);font-size:13px">Загрузка...</div>
     </div>
   </div>
 
@@ -6479,6 +7054,66 @@ function getAdminHTML() {
       </thead>
       <tbody id="coffee-participants-tbody"></tbody>
     </table>
+  </div>
+</div>
+
+<!-- ANALYTICS PAGE -->
+<div class="page" id="page-analytics">
+  <div class="page-title">📊 Аналитика активности</div>
+
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:20px">
+    <label style="font-size:12px;color:var(--text3)">Период:</label>
+    <select id="analytics-days" onchange="loadAnalytics()" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);font-size:13px">
+      <option value="7">7 дней</option>
+      <option value="14" selected>14 дней</option>
+      <option value="30">30 дней</option>
+      <option value="90">90 дней</option>
+    </select>
+    <button class="btn btn-ghost" onclick="loadAnalytics()">↻ Обновить</button>
+  </div>
+
+  <div class="stats-row" style="margin-bottom:24px">
+    <div class="stat-card"><div class="stat-val" id="an-total-events">—</div><div class="stat-label">Событий за период</div></div>
+    <div class="stat-card"><div class="stat-val" id="an-bot-start">—</div><div class="stat-label">Открытий бота</div></div>
+    <div class="stat-card"><div class="stat-val" id="an-miniapp-open">—</div><div class="stat-label">Открытий мини-апа</div></div>
+    <div class="stat-card"><div class="stat-val" id="an-section-view">—</div><div class="stat-label">Просмотров разделов</div></div>
+    <div class="stat-card"><div class="stat-val" id="an-clicks">—</div><div class="stat-label">Кликов</div></div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px">
+    <div style="font-size:14px;font-weight:600;margin-bottom:16px">Активность по дням</div>
+    <div id="analytics-daily-chart"></div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px">
+    <div style="font-size:14px;font-weight:600;margin-bottom:16px">Текущие показатели (сводка)</div>
+    <div id="analytics-current-summary" style="color:var(--text3);font-size:13px">Загрузка...</div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div style="font-size:14px;font-weight:600">Активность в чате Ядра</div>
+      <button class="btn btn-ghost btn-sm" onclick="openChatImportModal()">+ Внести данные вручную</button>
+    </div>
+    <p style="font-size:12px;color:var(--text3);margin:0 0 12px">Бот учитывает сообщения автоматически, если добавлен в чат. Прошлые дни (до добавления бота) можно внести вручную, включая задний числом.</p>
+    <div id="chat-activity-list" style="color:var(--text3);font-size:13px">Загрузка...</div>
+  </div>
+</div>
+
+<!-- CHAT ACTIVITY IMPORT MODAL -->
+<div class="modal-overlay" id="chatImportModal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-title">Внести активность чата вручную</div>
+    <div class="field"><label>Chat ID</label><input type="text" id="chatImportChatId" placeholder="-100XXXXXXXXXX"/></div>
+    <div class="field">
+      <label>Данные (по одной записи на строку: Имя | Дата ГГГГ-ММ-ДД | Кол-во сообщений)</label>
+      <textarea id="chatImportData" rows="8" placeholder="Иван Иванов | 2026-07-20 | 5&#10;Мария Петрова | 2026-07-21 | 3"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="document.getElementById('chatImportModal').classList.remove('open')">Отмена</button>
+      <button class="btn btn-w" onclick="submitChatImport()">Сохранить</button>
+    </div>
+    <div class="msg" id="chatImportMsg"></div>
   </div>
 </div>
 
@@ -6507,7 +7142,7 @@ function getAdminHTML() {
 
 <!-- MODULE MODAL -->
 <div class="modal-overlay" id="moduleModal">
-  <div class="modal">
+  <div class="modal" style="max-width:640px">
     <div class="modal-title" id="modalTitle">Редактировать модуль</div>
     <input type="hidden" id="mId"/>
     <div class="field">
@@ -6523,12 +7158,14 @@ function getAdminHTML() {
       <input type="url" id="mEmbed" placeholder="https://youtube.com/watch?v=..."/>
     </div>
     <div class="field">
-  <label>Таймкоды (формат: "00:00 Название;01:24 Название" — через точку с запятой)</label>
-  <textarea id="mTimecodes" placeholder="00:00 Приветствие;01:24 Тема встречи..." rows="5"></textarea>
-</div>
+      <label>Таймкоды</label>
+      <div id="mTimecodesRows" style="display:flex;flex-direction:column;gap:6px"></div>
+      <button type="button" class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addTimecodeRow()">+ Добавить таймкод</button>
+    </div>
     <div class="field">
-      <label>Файлы (по одному на строку: Название|URL)</label>
-      <textarea id="mFiles" placeholder="Презентация|https://drive.google.com/...;;Шаблон|https://docs.google.com/..." rows="4"></textarea>
+      <label>Файлы / материалы</label>
+      <div id="mFilesRows" style="display:flex;flex-direction:column;gap:6px"></div>
+      <button type="button" class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addFileRow()">+ Добавить файл</button>
     </div>
     <div class="field">
       <div class="toggle-wrap">
@@ -6540,28 +7177,17 @@ function getAdminHTML() {
         <span style="font-size:13px;color:var(--text2)">Доступен участникам</span>
       </div>
     </div>
+    <div class="field">
+      <label>Задания модуля</label>
+      <div id="mTasksRows" style="display:flex;flex-direction:column;gap:10px"></div>
+      <button type="button" class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="addModuleTaskRow()">+ Добавить задание</button>
+    </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal()">Отмена</button>
+      <button class="btn btn-danger" id="mDeleteBtn" onclick="deleteModuleFromModal()">Удалить модуль</button>
       <button class="btn btn-w" onclick="saveModule()">Сохранить</button>
     </div>
     <div class="msg" id="moduleMsg"></div>
-  </div>
-</div>
-
-<div class="modal-overlay" id="taskModal">
-  <div class="modal">
-    <div class="modal-title" id="taskModalTitle">Новая задача</div>
-    <input type="hidden" id="tId"/>
-    <div class="field"><label>Название</label><input type="text" id="tTitle" placeholder="Название задачи"/></div>
-    <div class="field"><label>Описание</label><textarea id="tDesc" placeholder="Описание (необязательно)..."></textarea></div>
-    <div class="field">
-  <label>Модуль (опционально)</label>
-  <select id="tModuleId"><option value="">Без привязки к модулю</option></select>
-</div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="document.getElementById('taskModal').classList.remove('open')">Отмена</button>
-      <button class="btn btn-w" onclick="saveTask()">Сохранить</button>
-    </div>
   </div>
 </div>
 
@@ -6734,62 +7360,6 @@ window.addEventListener('load', () => {
   }
 });
 
-function renderParticipantRows(participants) {
-  // Убираем возможные дубли по email
-  const uniqueParticipants = [];
-  const seenEmails = new Set();
-  
-  for (const p of participants) {
-    if (!seenEmails.has(p.email)) {
-      seenEmails.add(p.email);
-      uniqueParticipants.push(p);
-    }
-  }
-  let rows = '';
-  for (const p of participants) {
-    const safeId = p.email.replace(/[@.]/g, '_');
-    const isStopped = (window.stoppedUsers || []).includes(p.email.toLowerCase());
-    const rowStyle = isStopped ? 'opacity:0.5;background:rgba(239,68,68,0.05)' : '';
-    const stopBtnStyle = isStopped ? 'display:none' : '';
-    const restoreBtnStyle = isStopped ? 'display:inline-block' : 'display:none';
-    rows += \`<tr style="\${rowStyle}">
-      <td>\${p.email}</td>
-      <td id="us-username-\${safeId}" style="color:var(--text3)">—</td>
-      <td id="us-id-\${safeId}" style="color:var(--text3);font-size:11px">\${p.userId || '—'}</td>
-      <td id="us-launches-\${safeId}">—</td>
-      <td id="us-questions-\${safeId}">—</td>
-      <td id="us-ai-mod-\${safeId}">—</td>
-      <td id="us-ai-task-\${safeId}">—</td>
-      <td id="us-fun-mod-\${safeId}">—</td>
-      <td id="us-fun-task-\${safeId}">—</td>
-      <td>
-  <input type="date" id="us-payment-\${safeId}"
-    style="background:transparent;border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:12px;width:130px"
-    onchange="savePayment('\${p.email}', this.value)"/>
-</td>
-      <td style="white-space:nowrap">
-        <button class="btn btn-sm" style="background:#f59e0b;color:#fff;margin-right:4px;\${stopBtnStyle}" onclick="stopUser('\${p.email}', '\${safeId}')">Остановить</button>
-        <button class="btn btn-sm" style="background:#22c55e;color:#fff;margin-right:4px;\${restoreBtnStyle}" id="restore-btn-\${safeId}" onclick="restoreUser('\${p.email}', '\${safeId}')">Вернуть</button>
-        <button class="btn btn-danger btn-sm" onclick="removeEmail('\${p.email}')">Удалить</button>
-      </td>
-    </tr>\`;
-  }
-  document.getElementById('emailTable').innerHTML = rows || '<tr><td colspan="13" style="color:var(--text3)">Нет участников</td></tr>';
-}
-
-function filterParticipants(query) {
-  const q = query.toLowerCase().trim();
-  const filtered = q
-    ? allParticipantsData.filter(p =>
-        p.email?.toLowerCase().includes(q) ||
-        p.username?.toLowerCase().includes(q) ||
-        String(p.userId).includes(q) ||
-        p.name?.toLowerCase().includes(q)
-      )
-    : allParticipantsData;
-  renderParticipantRows(filtered);
-}
-
 function initMobileNav() {
   const isMobile = window.innerWidth <= 768;
   document.getElementById('mobileNav').style.display = isMobile ? 'block' : 'none';
@@ -6834,81 +7404,51 @@ function aHeaders() {
   return { 'Content-Type': 'application/json', 'Authorization': 'admin_session_' + adminToken };
 }
 
-async function loadTasks(prog) {
-  const data = await fetch('/api/admin/tasks?id=' + prog, { headers: aHeaders() }).then(r => r.json());
-  renderTaskList(data.tasks || [], prog);
+// ── Редактор модуля: таймкоды / файлы / задания как списки строк ──
+
+function addTimecodeRow(time, label) {
+  const rows = document.getElementById('mTimecodesRows');
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;gap:8px;align-items:center';
+  div.innerHTML = '<input type="text" class="tc-time" placeholder="00:00" value="' + escapeAdminHtml(time || '') + '" style="width:90px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-size:12px"/>' +
+    '<input type="text" class="tc-label" placeholder="Название раздела" value="' + escapeAdminHtml(label || '') + '" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-size:12px"/>' +
+    '<button type="button" onclick="this.parentElement.remove()" class="btn btn-ghost btn-sm">✕</button>';
+  rows.appendChild(div);
 }
 
-function renderTaskList(tasks, prog) {
-  window._currentTasks = tasks;
-  let html = '';
-  tasks.forEach(t => {
-    html += '<div class="module-item"><div class="module-item-top"><div><div class="module-item-title">' + t.title + '</div>';
-    if (t.description) html += '<div style="font-size:12px;color:var(--text3);margin-top:4px">' + t.description + '</div>';
-    html += '</div><div class="module-item-actions"><button class="btn btn-ghost btn-sm" onclick="editTask(&quot;' + t.id + '&quot;)">Изменить</button><button class="btn btn-danger btn-sm" onclick="deleteTask(&quot;' + t.id + '&quot;)">Удалить</button></div></div></div>';
-  });
-  document.getElementById('taskList').innerHTML = html || '<p style="color:var(--text3);font-size:13px">Нет задач</p>';
+function addFileRow(name, url) {
+  const rows = document.getElementById('mFilesRows');
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;gap:8px;align-items:center';
+  div.innerHTML = '<input type="text" class="mf-name" placeholder="Название файла" value="' + escapeAdminHtml(name || '') + '" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-size:12px"/>' +
+    '<input type="url" class="mf-url" placeholder="https://..." value="' + escapeAdminHtml(url || '') + '" style="flex:2;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-size:12px"/>' +
+    '<button type="button" onclick="this.parentElement.remove()" class="btn btn-ghost btn-sm">✕</button>';
+  rows.appendChild(div);
 }
 
-function fillModuleSelect(selectedId = '') {
-  const prog = adminProgramData[adminProgram];
-  const modules = prog?.modules || [];
-  const select = document.getElementById('tModuleId');
-  select.innerHTML = '<option value="">Без привязки к модулю</option>';
-  modules.forEach((mod, i) => {
-    const opt = document.createElement('option');
-    opt.value = mod.id;
-    opt.textContent = 'Модуль ' + (i + 1) + ': ' + mod.title;
-    if (mod.id === selectedId) opt.selected = true;
-    select.appendChild(opt);
-  });
+function addModuleTaskRow(taskId, title, description) {
+  const rows = document.getElementById('mTasksRows');
+  const div = document.createElement('div');
+  div.className = 'module-task-row';
+  div.dataset.taskId = taskId || '';
+  div.style.cssText = 'border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px';
+  div.innerHTML = '<div style="display:flex;gap:8px;align-items:center">' +
+    '<input type="text" class="mt-title" placeholder="Название задания" value="' + escapeAdminHtml(title || '') + '" style="flex:1;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-size:12px"/>' +
+    '<button type="button" onclick="removeModuleTaskRow(this)" class="btn btn-danger btn-sm">✕</button>' +
+    '</div>' +
+    '<textarea class="mt-desc" placeholder="Описание задания (необязательно)" rows="2" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-size:12px">' + escapeAdminHtml(description || '') + '</textarea>';
+  rows.appendChild(div);
 }
 
-function addTask() {
-  document.getElementById('taskModalTitle').textContent = 'Новая задача';
-  document.getElementById('tId').value = 'task_' + Date.now();
-  document.getElementById('tTitle').value = '';
-  document.getElementById('tDesc').value = '';
-  fillModuleSelect('');
-  document.getElementById('taskModal').classList.add('open');
-}
-
-function editTask(taskId) {
-  // нужно хранить задачи в памяти
-  const tasks = window._currentTasks || [];
-  const task = tasks.find(t => t.id === taskId);
-  if (!task) return;
-  document.getElementById('taskModalTitle').textContent = 'Редактировать задачу';
-  document.getElementById('tId').value = task.id;
-  document.getElementById('tTitle').value = task.title;
-  document.getElementById('tDesc').value = task.description || '';
-  fillModuleSelect(task.moduleId || '');
-  document.getElementById('taskModal').classList.add('open');
-}
-
-async function saveTask() {
-  const task = {
-    id: document.getElementById('tId').value,
-    title: document.getElementById('tTitle').value.trim(),
-    description: document.getElementById('tDesc').value.trim(),
-    moduleId: document.getElementById('tModuleId').value
-  };
-  if (!task.title) return;
-  await fetch('/api/admin/save-task', {
-    method: 'POST', headers: aHeaders(),
-    body: JSON.stringify({ programId: adminProgram, task })
-  });
-  document.getElementById('taskModal').classList.remove('open');
-  loadTasks(adminProgram);
-}
-
-async function deleteTask(taskId) {
-  if (!confirm('Удалить задачу?')) return;
-  await fetch('/api/admin/delete-task', {
-    method: 'POST', headers: aHeaders(),
-    body: JSON.stringify({ programId: adminProgram, taskId })
-  });
-  loadTasks(adminProgram);
+function removeModuleTaskRow(btn) {
+  const row = btn.closest('.module-task-row');
+  if (!row) return;
+  const taskId = row.dataset.taskId;
+  if (taskId) {
+    window._moduleDeletedTaskIds = window._moduleDeletedTaskIds || [];
+    window._moduleDeletedTaskIds.push(taskId);
+  }
+  row.remove();
 }
 
 // ── PAGES ─────────────────────────────────────────────────────
@@ -6929,6 +7469,102 @@ function showPage(id) {
   if (id === 'events') loadEvents();
   if (id === 'coffee') loadCoffeeAdmin();
   if (id === 'kb') kbLoadAdmin();
+  if (id === 'analytics') loadAnalytics();
+}
+
+async function loadAnalytics() {
+  const days = document.getElementById('analytics-days')?.value || 14;
+  try {
+    const data = await fetch('/api/admin/analytics?days=' + days, { headers: aHeaders() }).then(r => r.json());
+    if (!data.ok) return;
+
+    document.getElementById('an-total-events').textContent = data.totals.total || 0;
+    document.getElementById('an-bot-start').textContent = data.totals.byType.bot_start || 0;
+    document.getElementById('an-miniapp-open').textContent = data.totals.byType.miniapp_open || 0;
+    document.getElementById('an-section-view').textContent = data.totals.byType.section_view || 0;
+    document.getElementById('an-clicks').textContent = data.totals.byType.click || 0;
+
+    renderAnalyticsDaily(data.days || []);
+
+    const stats = await fetch('/api/admin/dashboard-stats', { headers: aHeaders() }).then(r => r.json());
+    document.getElementById('analytics-current-summary').innerHTML = \`
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
+        <div><div style="font-size:20px;font-weight:600">\${stats.totalEmails || 0}</div><div style="font-size:11px;color:var(--text3)">Участников всего</div></div>
+        <div><div style="font-size:20px;font-weight:600">\${stats.totalPending || 0}</div><div style="font-size:11px;color:var(--text3)">В ожидании</div></div>
+        <div><div style="font-size:20px;font-weight:600">\${stats.totalLaunches || 0}</div><div style="font-size:11px;color:var(--text3)">Заходов в мини-ап (всего)</div></div>
+        <div><div style="font-size:20px;font-weight:600">\${stats.totalQuestions || 0}</div><div style="font-size:11px;color:var(--text3)">Вопросов задано</div></div>
+        <div><div style="font-size:20px;font-weight:600">\${stats.paymentsWithDates?.length || 0}</div><div style="font-size:11px;color:var(--text3)">Оплат зафиксировано</div></div>
+      </div>
+    \`;
+
+    loadChatActivity();
+  } catch(e) { console.error('loadAnalytics', e); }
+}
+
+async function loadChatActivity() {
+  const el = document.getElementById('chat-activity-list');
+  try {
+    const data = await fetch('/api/admin/chat-activity', { headers: aHeaders() }).then(r => r.json());
+    if (!data.ok || !data.users.length) { el.innerHTML = '<div style="color:var(--text3)">Данных пока нет — добавь бота в чат Ядра или внеси данные вручную.</div>'; return; }
+    el.innerHTML = \`<table class="tbl" style="width:100%"><thead><tr>
+      <th>Участник</th><th>Сообщений</th><th>Последняя активность</th>
+    </tr></thead><tbody>\` + data.users.map(u => \`
+      <tr>
+        <td>\${escapeAdminHtml(u.name || '—')} \${u.username ? '<span style="color:var(--text3)">@' + escapeAdminHtml(u.username) + '</span>' : ''}</td>
+        <td>\${u.messageCount || 0}</td>
+        <td style="color:var(--text3);font-size:12px">\${u.lastMessageAt ? new Date(u.lastMessageAt).toLocaleDateString('ru') : '—'}</td>
+      </tr>\`).join('') + '</tbody></table>';
+  } catch(e) { el.innerHTML = '<div style="color:var(--text3)">Ошибка загрузки</div>'; }
+}
+
+function openChatImportModal() {
+  document.getElementById('chatImportMsg').textContent = '';
+  document.getElementById('chatImportModal').classList.add('open');
+}
+
+async function submitChatImport() {
+  const chatId = document.getElementById('chatImportChatId').value.trim();
+  const raw = document.getElementById('chatImportData').value.trim();
+  const msg = document.getElementById('chatImportMsg');
+  if (!chatId || !raw) { msg.className = 'msg err'; msg.textContent = 'Укажи Chat ID и данные'; return; }
+
+  const records = raw.split('\\n').map(line => {
+    const parts = line.split('|').map(s => s.trim());
+    if (!parts[0]) return null;
+    return { name: parts[0], date: parts[1] || '', count: parseInt(parts[2]) || 1 };
+  }).filter(Boolean);
+
+  if (!records.length) { msg.className = 'msg err'; msg.textContent = 'Не удалось разобрать данные'; return; }
+
+  try {
+    const res = await fetch('/api/admin/chat-activity', {
+      method: 'POST', headers: aHeaders(),
+      body: JSON.stringify({ action: 'import', chatId, records })
+    }).then(r => r.json());
+    if (res.ok) {
+      msg.className = 'msg ok'; msg.textContent = 'Импортировано записей: ' + res.imported;
+      loadChatActivity();
+      setTimeout(() => document.getElementById('chatImportModal').classList.remove('open'), 900);
+    } else { msg.className = 'msg err'; msg.textContent = res.error || 'Ошибка'; }
+  } catch(e) { msg.className = 'msg err'; msg.textContent = 'Ошибка подключения'; }
+}
+
+function renderAnalyticsDaily(days) {
+  const el = document.getElementById('analytics-daily-chart');
+  if (!days.length) { el.innerHTML = '<div style="color:var(--text3);font-size:13px">Нет данных</div>'; return; }
+  const max = Math.max(1, ...days.map(d => d.total));
+  el.innerHTML = days.map(d => {
+    const pct = Math.round((d.total / max) * 100);
+    return \`
+      <div style="display:flex;align-items:center;gap:10px;padding:5px 0">
+        <div style="width:76px;font-size:11px;color:var(--text3);flex-shrink:0">\${d.date.slice(5)}</div>
+        <div style="flex:1;background:var(--bg3);border-radius:6px;overflow:hidden;height:18px;position:relative">
+          <div style="width:\${pct}%;background:var(--brand,#00bd62);height:100%;border-radius:6px"></div>
+        </div>
+        <div style="width:110px;font-size:11px;color:var(--text2);text-align:right;flex-shrink:0">\${d.total} соб. · \${d.uniqueUsers} польз.</div>
+      </div>
+    \`;
+  }).join('');
 }
 
 async function loadAdmins() {
@@ -7026,35 +7662,209 @@ async function approveFromDash(email) {
 }
 
 // ── PARTICIPANTS ──────────────────────────────────────────────
-async function loadParticipants() {
+// ── CRM ───────────────────────────────────────────────────────
+const CRM_STATUS_LABELS = { lead: 'Лид', paid: 'Оплатил', active: 'Активен', paused: 'Пауза', left: 'Ушёл' };
+const CRM_STATUS_ORDER = ['lead', 'paid', 'active', 'paused', 'left'];
+let crmData = [];
+let crmDraggedKey = null;
+
+async function loadCRM() {
   try {
-    const data = await fetch('/api/admin/participants', { headers: aHeaders() }).then(r => r.json());
-    window.stoppedUsers = data.stopped || [];
-    // ОЧИЩАЕМ массив перед заполнени
-    allParticipantsData = [];
-    const emails = data.emails || [];
-    
-    // Заполняем базовыми данными
-    for (const email of emails) {
-      // Проверяем, нет ли уже такого email в массиве
-      if (!allParticipantsData.find(p => p.email === email)) {
-        allParticipantsData.push({
-          email: email,
-          userId: '',
-          username: '',
-          name: '',
-          payment: ''
-        });
+    const data = await fetch('/api/admin/crm', { headers: aHeaders() }).then(r => r.json());
+    if (!data.ok) return;
+    crmData = data.participants || [];
+    renderCRMBoard();
+  } catch(e) { console.error('loadCRM', e); }
+}
+
+function renderCRMBoard() {
+  const board = document.getElementById('crm-board');
+  if (!board) return;
+  const q = (document.getElementById('crmSearch')?.value || '').toLowerCase().trim();
+  const filtered = q
+    ? crmData.filter(p =>
+        (p.name || '').toLowerCase().includes(q) ||
+        (p.email || '').toLowerCase().includes(q) ||
+        (p.telegram || '').toLowerCase().includes(q))
+    : crmData;
+
+  board.innerHTML = CRM_STATUS_ORDER.map(status => {
+    const items = filtered.filter(p => p.status === status);
+    const cards = items.map(p => \`
+      <div class="crm-card" draggable="true" data-key="\${escapeAdminHtml(p.key)}"
+        ondragstart="crmDraggedKey='\${escapeAdminHtml(p.key)}';event.dataTransfer.effectAllowed='move'"
+        onclick="openCRMEdit('\${escapeAdminHtml(p.key)}')"
+        style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;cursor:pointer">
+        <div style="font-size:13px;font-weight:500">\${escapeAdminHtml(p.name || p.email || 'Без имени')}</div>
+        \${p.email ? \`<div style="font-size:11px;color:var(--text3);margin-top:2px">\${escapeAdminHtml(p.email)}</div>\` : ''}
+        \${p.telegram ? \`<div style="font-size:11px;color:#6bffb8;margin-top:2px">@\${escapeAdminHtml(p.telegram)}</div>\` : ''}
+        \${p.paymentDate ? \`<div style="font-size:11px;color:var(--text3);margin-top:4px">💳 \${escapeAdminHtml(p.paymentDate)}</div>\` : ''}
+      </div>\`).join('');
+    return \`
+      <div class="crm-column" data-status="\${status}"
+        ondragover="event.preventDefault()"
+        ondrop="crmHandleDrop(event,'\${status}')"
+        style="flex:1;min-width:200px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:12px;padding:10px">
+        <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text3);margin-bottom:10px;display:flex;justify-content:space-between">
+          <span>\${CRM_STATUS_LABELS[status]}</span><span>\${items.length}</span>
+        </div>
+        \${cards || '<div style="font-size:12px;color:var(--text3);opacity:0.6">Пусто</div>'}
+      </div>\`;
+  }).join('');
+}
+
+async function crmHandleDrop(event, status) {
+  event.preventDefault();
+  const key = crmDraggedKey;
+  crmDraggedKey = null;
+  if (!key) return;
+  const entry = crmData.find(p => p.key === key);
+  if (!entry || entry.status === status) return;
+  entry.status = status; // оптимистичное обновление
+  renderCRMBoard();
+  await fetch('/api/admin/crm', {
+    method: 'POST', headers: aHeaders(),
+    body: JSON.stringify({ action: 'set-status', key, status, email: entry.email })
+  });
+  showAdminToast('Статус обновлён: ' + CRM_STATUS_LABELS[status]);
+}
+
+function openCRMEdit(key) {
+  const entry = key ? crmData.find(p => p.key === key) : null;
+  document.getElementById('crmEditTitle').textContent = entry ? 'Карточка участника' : 'Новый лид';
+  document.getElementById('crmKey').value = key || '';
+  document.getElementById('crmName').value = entry?.name || '';
+  document.getElementById('crmEmail').value = entry?.email || '';
+  document.getElementById('crmTelegram').value = entry?.telegram || '';
+  document.getElementById('crmNote').value = entry?.note || '';
+  document.getElementById('crmPaymentDate').value = entry?.paymentDate || '';
+  document.getElementById('crmStatus').value = entry?.status || 'lead';
+  document.getElementById('crmDeleteBtn').style.display = entry ? 'inline-block' : 'none';
+  document.getElementById('crmEditMsg').textContent = '';
+
+  const statsBlock = document.getElementById('crmStatsBlock');
+  if (entry?.tgId) {
+    statsBlock.style.display = 'block';
+    document.getElementById('crmStatsContent').innerHTML = '<div style="grid-column:1/-1;color:var(--text3)">Загрузка...</div>';
+    fetch('/api/admin/user-stats?userId=' + entry.tgId, { headers: aHeaders() }).then(r => r.json()).then(stats => {
+      const daysInCore = entry.enrolledAt ? Math.floor((Date.now() - entry.enrolledAt) / 86400000) : null;
+      document.getElementById('crmStatsContent').innerHTML = \`
+        <div><b>\${entry.launches ?? 0}</b><br>заходов</div>
+        <div><b>\${stats.progress?.ai ?? 0}</b><br>мод. ИИ</div>
+        <div><b>\${stats.progress?.funnels ?? 0}</b><br>мод. Воронки</div>
+        <div><b>\${stats.tasks?.ai ?? 0}</b><br>зад. ИИ</div>
+        <div><b>\${stats.tasks?.funnels ?? 0}</b><br>зад. Воронки</div>
+        <div><b>\${stats.questions ?? 0}</b><br>вопросов</div>
+        \${daysInCore !== null ? \`<div><b>\${daysInCore}</b><br>дней в ядре</div>\` : ''}
+      \`;
+    }).catch(() => { document.getElementById('crmStatsContent').innerHTML = '<div style="grid-column:1/-1;color:var(--text3)">Нет данных</div>'; });
+  } else {
+    statsBlock.style.display = 'none';
+  }
+
+  loadCRMWorkshops(entry?.tgId || key);
+
+  document.getElementById('crmEditModal').classList.add('open');
+}
+
+function closeCRMEdit() {
+  document.getElementById('crmEditModal').classList.remove('open');
+}
+
+async function saveCRMEdit() {
+  const key = document.getElementById('crmKey').value;
+  const email = document.getElementById('crmEmail').value.trim();
+  const fields = {
+    name: document.getElementById('crmName').value.trim(),
+    email: email || null,
+    telegram: document.getElementById('crmTelegram').value.trim().replace(/^@/, ''),
+    note: document.getElementById('crmNote').value.trim(),
+    paymentDate: document.getElementById('crmPaymentDate').value || null,
+    status: document.getElementById('crmStatus').value
+  };
+  const msg = document.getElementById('crmEditMsg');
+
+  try {
+    if (!key) {
+      // Новый лид
+      const res = await fetch('/api/admin/crm', {
+        method: 'POST', headers: aHeaders(),
+        body: JSON.stringify({ action: 'add-lead', ...fields })
+      }).then(r => r.json());
+      if (!res.ok) { msg.className = 'msg err'; msg.textContent = res.error || 'Ошибка'; return; }
+      if (fields.status !== 'lead') {
+        await fetch('/api/admin/crm', { method: 'POST', headers: aHeaders(), body: JSON.stringify({ action: 'set-status', key: res.key, status: fields.status, email: fields.email }) });
+      }
+    } else {
+      const entry = crmData.find(p => p.key === key);
+      await fetch('/api/admin/crm', { method: 'POST', headers: aHeaders(), body: JSON.stringify({ action: 'save', key, fields }) });
+      if (entry && entry.status !== fields.status) {
+        await fetch('/api/admin/crm', { method: 'POST', headers: aHeaders(), body: JSON.stringify({ action: 'set-status', key, status: fields.status, email: fields.email }) });
       }
     }
+    msg.className = 'msg ok'; msg.textContent = 'Сохранено';
+    closeCRMEdit();
+    loadCRM();
+  } catch(e) { msg.className = 'msg err'; msg.textContent = 'Ошибка подключения'; }
+}
 
-    // Рендерим таблицу сразу (с пустыми данными)
-    filterParticipants(document.getElementById('participantSearch')?.value || '');
+async function deleteCRMEntry() {
+  const key = document.getElementById('crmKey').value;
+  if (!key) return;
+  if (!confirm('Удалить карточку из CRM? Доступ пользователя (если есть) затронут не будет.')) return;
+  await fetch('/api/admin/crm', { method: 'POST', headers: aHeaders(), body: JSON.stringify({ action: 'delete', key }) });
+  closeCRMEdit();
+  loadCRM();
+}
 
-    // Асинхронно подгружаем статистику для каждого email
-    for (const email of emails) {
-      loadUserStats(email);
-    }
+// ── Посещения воркшопов (ручной учёт, можно задним числом) ──────
+async function loadCRMWorkshops(userId) {
+  const el = document.getElementById('crmWorkshopList');
+  if (!userId) { el.innerHTML = '<div style="color:var(--text3);font-size:12px">Доступно после привязки Telegram ID</div>'; return; }
+  try {
+    const data = await fetch('/api/admin/workshop-attendance?userId=' + userId, { headers: aHeaders() }).then(r => r.json());
+    const records = data.records || [];
+    el.innerHTML = records.length
+      ? records.map(r => \`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
+          <div><b>\${escapeAdminHtml(r.title)}</b> <span style="color:var(--text3)">· \${escapeAdminHtml(r.date)}</span>\${r.note ? \` — \${escapeAdminHtml(r.note)}\` : ''}</div>
+          <button class="btn btn-ghost btn-sm" onclick="deleteCRMWorkshop('\${userId}','\${r.id}')">✕</button>
+        </div>\`).join('')
+      : '<div style="color:var(--text3);font-size:12px">Посещений не отмечено</div>';
+  } catch(e) { el.innerHTML = '<div style="color:var(--text3);font-size:12px">Ошибка загрузки</div>'; }
+}
+
+async function addCRMWorkshop() {
+  const key = document.getElementById('crmKey').value;
+  const entry = crmData.find(p => p.key === key);
+  const userId = entry?.tgId;
+  if (!userId) { alert('Сначала привяжи участника к Telegram (должен быть tgId)'); return; }
+  const title = document.getElementById('crmWorkshopTitle').value.trim();
+  const date = document.getElementById('crmWorkshopDate').value;
+  if (!title || !date) { alert('Укажи название и дату (можно задним числом)'); return; }
+  await fetch('/api/admin/workshop-attendance', {
+    method: 'POST', headers: aHeaders(),
+    body: JSON.stringify({ userId, title, date })
+  });
+  document.getElementById('crmWorkshopTitle').value = '';
+  document.getElementById('crmWorkshopDate').value = '';
+  loadCRMWorkshops(userId);
+}
+
+async function deleteCRMWorkshop(userId, id) {
+  await fetch('/api/admin/workshop-attendance', {
+    method: 'POST', headers: aHeaders(),
+    body: JSON.stringify({ userId, deleteId: id })
+  });
+  loadCRMWorkshops(userId);
+}
+
+async function loadParticipants() {
+  try {
+    loadCRM();
+
+    const data = await fetch('/api/admin/participants', { headers: aHeaders() }).then(r => r.json());
+    window.stoppedUsers = data.stopped || [];
 
     // Pending
     let pendHtml = '';
@@ -7090,127 +7900,6 @@ async function loadParticipants() {
     document.getElementById('botUsersList').innerHTML = botHtml || '<p style="color:var(--text3);font-size:13px">Нет пользователей</p>';
 
   } catch(e) { console.error(e); }
-}
-
-async function loadUserStats(email) {
-  const safeId = email.replace(/[@.]/g, '_');
-  try {
-    const { userId } = await fetch('/api/admin/userid-by-email?email=' + encodeURIComponent(email), { headers: aHeaders() }).then(r => r.json());
-    
-    if (!userId) {
-      // Нет userId - показываем прочерки
-      const usernameCell = document.getElementById('us-username-' + safeId);
-      if (usernameCell) usernameCell.textContent = '—';
-      
-      const idCell = document.getElementById('us-id-' + safeId);
-      if (idCell) idCell.textContent = '—';
-      
-      document.getElementById('us-launches-' + safeId).textContent = '0';
-      document.getElementById('us-questions-' + safeId).textContent = '0';
-      document.getElementById('us-ai-mod-' + safeId).textContent = '0';
-      document.getElementById('us-ai-task-' + safeId).textContent = '0';
-      document.getElementById('us-fun-mod-' + safeId).textContent = '0';
-      document.getElementById('us-fun-task-' + safeId).textContent = '0';
-      return;
-    }
-
-    // Получаем данные пользователя
-    const userKV = await fetch('/api/admin/user-by-id?userId=' + userId, { headers: aHeaders() }).then(r => r.json());
-    
-    // ⭐ ОБНОВЛЯЕМ ЯЧЕЙКИ НАПРЯМУЮ ⭐
-    const usernameCell = document.getElementById('us-username-' + safeId);
-    if (usernameCell) {
-      usernameCell.textContent = userKV.username ? '@' + userKV.username : '—';
-    }
-    
-    const idCell = document.getElementById('us-id-' + safeId);
-    if (idCell) {
-      idCell.textContent = userId;
-    }
-
-    const stats = await fetch('/api/admin/user-stats?userId=' + userId, { headers: aHeaders() }).then(r => r.json());
-    
-    // Обновляем остальные ячейки
-    document.getElementById('us-launches-' + safeId).textContent = stats.launches ?? 0;
-    document.getElementById('us-questions-' + safeId).textContent = stats.questions ?? 0;
-    document.getElementById('us-ai-mod-' + safeId).textContent = stats.progress?.ai ?? 0;
-    document.getElementById('us-ai-task-' + safeId).textContent = stats.tasks?.ai ?? 0;
-    document.getElementById('us-fun-mod-' + safeId).textContent = stats.progress?.funnels ?? 0;
-    document.getElementById('us-fun-task-' + safeId).textContent = stats.tasks?.funnels ?? 0;
-    
-    // Обновляем дату оплаты
-    const paymentInput = document.getElementById('us-payment-' + safeId);
-    if (paymentInput && stats.payment) {
-      let paymentDate = stats.payment;
-      if (paymentDate && paymentDate.includes('.')) {
-        const parts = paymentDate.split('.');
-        paymentDate = \`\${parts[2]}-\${parts[1]}-\${parts[0]}\`;
-      }
-      paymentInput.value = paymentDate;
-    }
-    
-    // Обновляем данные в массиве (для фильтрации)
-    const entry = allParticipantsData.find(p => p.email === email);
-    if (entry) {
-      entry.username = userKV.username || '';
-      entry.userId = userId;
-      entry.payment = stats.payment || '';
-    }
-    
-  } catch(e) { 
-    console.error('loadUserStats error for', email, e);
-  }
-}
-
-async function savePayment(email, date) {
-  if (!date || !date.trim()) return;
-  
-  try {
-    // Сначала пробуем найти userId
-    let userId = null;
-    try {
-      const userRes = await fetch('/api/admin/userid-by-email?email=' + encodeURIComponent(email), { headers: aHeaders() });
-      const userData = await userRes.json();
-      userId = userData.userId;
-    } catch(e) {}
-    
-    // Если userId не найден - сохраняем payment через email напрямую
-    const payload = { email, date: date };
-    if (userId) {
-      payload.userId = userId;
-    }
-    
-    const response = await fetch('/api/admin/set-payment', {
-      method: 'POST', 
-      headers: aHeaders(),
-      body: JSON.stringify(payload)
-    });
-    
-    if (!response.ok) {
-      throw new Error('Ошибка сервера');
-    }
-    
-    // Визуальная обратная связь
-    const safeId = email.replace(/[@.]/g, '_');
-    const input = document.getElementById('us-payment-' + safeId);
-    if (input) { 
-      input.style.borderColor = 'var(--success)'; 
-      setTimeout(() => input.style.borderColor = '', 1500); 
-    }
-    
-    // Обновляем локальные данные
-    const entry = allParticipantsData.find(p => p.email === email);
-    if (entry) entry.payment = date;
-    
-  } catch(e) { 
-    console.error('savePayment error', e);
-    const safeId = email.replace(/[@.]/g, '_');
-    const input = document.getElementById('us-payment-' + safeId);
-    if (input) { 
-      input.style.borderColor = 'var(--danger)'; 
-      setTimeout(() => input.style.borderColor = '', 1500); 
-    }
-  }
 }
 
 async function addEmail() {
@@ -7343,41 +8032,20 @@ function renderModuleList(modules) {
     const lockLabel = mod.available ? '<span style="color:var(--success);font-size:11px">● Доступен</span>' : '<span style="color:var(--text3);font-size:11px">● Заблокирован</span>';
     const modTasks = tasks.filter(t => t.moduleId === mod.id);
 
-    let tasksHtml = modTasks.map(t => 
-      \`<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
-        <span style="color:var(--text2)">\${t.title}</span>
-        <div style="display:flex;gap:4px">
-          <button class="btn btn-ghost btn-sm" onclick="editTask('\${t.id}')">✎</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteTask('\${t.id}')">✕</button>
-        </div>
-      </div>\`
-    ).join('');
-
     html += \`<div class="module-item">
       <div class="module-item-top">
         <div>
           <div style="font-size:10px;color:var(--text3);margin-bottom:2px">МОДУЛЬ \${i+1}</div>
           <div class="module-item-title">\${mod.title}</div>
-          <div style="margin-top:4px">\${lockLabel}</div>
+          <div style="margin-top:4px">\${lockLabel} \${modTasks.length ? \`<span style="color:var(--text3);font-size:11px"> · \${modTasks.length} \${modTasks.length === 1 ? 'задание' : 'заданий'}</span>\` : ''}</div>
         </div>
         <div class="module-item-actions">
-          <button class="btn btn-ghost btn-sm" onclick="addTaskForModule('\${mod.id}')">+ задание</button>
           <button class="btn btn-ghost btn-sm" onclick="editModule('\${mod.id}')">Изменить</button>
         </div>
       </div>
-      \${modTasks.length > 0 ? \`<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">\${tasksHtml}</div>\` : ''}
     </div>\`;
   });
   document.getElementById('moduleList').innerHTML = html || '<p style="color:var(--text3);font-size:13px">Нет модулей</p>';
-}
-
-function addTaskForModule(moduleId) {
-  document.getElementById('taskModalTitle').textContent = 'Новая задача';
-  document.getElementById('tId').value = 'task_' + Date.now();
-  document.getElementById('tTitle').value = '';
-  document.getElementById('tDesc').value = '';
-  fillModuleSelect(moduleId); // предвыбрать нужный модуль
-  document.getElementById('taskModal').classList.add('open');
 }
 
 function editModule(modId) {
@@ -7393,10 +8061,21 @@ function editModule(modId) {
   document.getElementById('mEmbed').value = mod.embedUrl || '';
   document.getElementById('mAvailable').checked = mod.available || false;
 
-  const filesStr = (mod.files || []).map(f => f.name + '|' + f.url).join(';;');
-document.getElementById('mFiles').value = filesStr;
-document.getElementById('mTimecodes').value = (mod.timecodes || []).map(t => t.time + ' ' + t.label).join(';');
+  const tcRows = document.getElementById('mTimecodesRows');
+  tcRows.innerHTML = '';
+  (mod.timecodes || []).forEach(t => addTimecodeRow(t.time, t.label));
 
+  const fRows = document.getElementById('mFilesRows');
+  fRows.innerHTML = '';
+  (mod.files || []).forEach(f => addFileRow(f.name, f.url));
+
+  window._moduleDeletedTaskIds = [];
+  const tRows = document.getElementById('mTasksRows');
+  tRows.innerHTML = '';
+  const modTasks = (window._currentTasks || []).filter(t => t.moduleId === mod.id);
+  modTasks.forEach(t => addModuleTaskRow(t.id, t.title, t.description));
+
+  document.getElementById('mDeleteBtn').style.display = 'inline-block';
   document.getElementById('moduleMsg').textContent = '';
   document.getElementById('moduleModal').classList.add('open');
 }
@@ -7423,21 +8102,19 @@ async function saveModule() {
   const desc = document.getElementById('mDesc').value.trim();
   const embed = document.getElementById('mEmbed').value.trim();
   const available = document.getElementById('mAvailable').checked;
-  const filesRaw = document.getElementById('mFiles').value.trim();
   const msg = document.getElementById('moduleMsg');
 
   if (!title) { msg.className='msg err'; msg.textContent='Введи название'; return; }
 
-  const files = filesRaw ? filesRaw.split(';;').filter(Boolean).map(line => {
-  const parts = line.split('|');
-  return { name: (parts[0] || '').trim(), url: (parts[1] || '').trim() };
-}).filter(f => f.name && f.url) : [];
+  const files = Array.from(document.querySelectorAll('#mFilesRows > div')).map(row => ({
+    name: row.querySelector('.mf-name').value.trim(),
+    url: row.querySelector('.mf-url').value.trim()
+  })).filter(f => f.name && f.url);
 
-  const timecodesRaw = document.getElementById('mTimecodes').value.trim();
-const timecodes = timecodesRaw ? timecodesRaw.split(';').filter(Boolean).map(line => {
-  const m = line.trim().match(/^(\\d{1,2}:\\d{2}(?::\\d{2})?)\\s+(.+)$/);
-  return m ? { time: m[1], label: m[2] } : null;
-}).filter(Boolean) : [];
+  const timecodes = Array.from(document.querySelectorAll('#mTimecodesRows > div')).map(row => ({
+    time: row.querySelector('.tc-time').value.trim(),
+    label: row.querySelector('.tc-label').value.trim()
+  })).filter(t => t.time && t.label);
 
   const module = { id: modId, title, description: desc, embedUrl: embed, files, timecodes, available };
 
@@ -7446,10 +8123,53 @@ const timecodes = timecodesRaw ? timecodesRaw.split(';').filter(Boolean).map(lin
       method: 'POST', headers: aHeaders(),
       body: JSON.stringify({ programId: adminProgram, module })
     });
+
+    // Синхронизировать задания модуля прямо из того же окна редактирования
+    const taskRows = Array.from(document.querySelectorAll('#mTasksRows > .module-task-row'));
+    for (const row of taskRows) {
+      const tTitle = row.querySelector('.mt-title').value.trim();
+      if (!tTitle) continue;
+      const task = {
+        id: row.dataset.taskId || ('task_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7)),
+        title: tTitle,
+        description: row.querySelector('.mt-desc').value.trim(),
+        moduleId: modId
+      };
+      await fetch('/api/admin/save-task', {
+        method: 'POST', headers: aHeaders(),
+        body: JSON.stringify({ programId: adminProgram, task })
+      });
+    }
+    for (const taskId of (window._moduleDeletedTaskIds || [])) {
+      await fetch('/api/admin/delete-task', {
+        method: 'POST', headers: aHeaders(),
+        body: JSON.stringify({ programId: adminProgram, taskId })
+      });
+    }
+    window._moduleDeletedTaskIds = [];
+
     msg.className = 'msg ok'; msg.textContent = 'Сохранено!';
     loadProgramAdmin(adminProgram);
     setTimeout(() => closeModal(), 800);
   } catch(e) { msg.className = 'msg err'; msg.textContent = 'Ошибка'; }
+}
+
+async function deleteModuleFromModal() {
+  const modId = document.getElementById('mId').value;
+  if (!modId) return;
+  if (!confirm('Удалить модуль? Задания модуля останутся, но потеряют привязку к нему.')) return;
+  try {
+    const res = await fetch('/api/admin/delete-module', {
+      method: 'POST', headers: aHeaders(),
+      body: JSON.stringify({ programId: adminProgram, moduleId: modId })
+    }).then(r => r.json());
+    if (res.ok) {
+      adminProgramData[adminProgram] = res.program;
+      showAdminToast('Модуль удалён');
+      closeModal();
+      loadProgramAdmin(adminProgram);
+    } else alert('Ошибка удаления');
+  } catch(e) { alert('Ошибка подключения'); }
 }
 
 function closeModal() {
@@ -7631,10 +8351,72 @@ async function loadCoffeeAdmin() {
  
     // Участники
     renderCoffeeParticipantsTable(coffeeParticipantsAll);
- 
+
+    // История
+    loadCoffeeHistory();
+
   } catch(e) { console.error('loadCoffeeAdmin', e); }
 }
- 
+
+async function generateCoffeePairsAuto() {
+  if (!confirm('Сформировать пары автоматически на текущую неделю? Система постарается не повторять партнёров с прошлых недель. Уже отправленные пары изменить нельзя.')) return;
+  try {
+    const res = await fetch('/api/admin/coffee/generate', {
+      method: 'POST', headers: aHeaders(), body: JSON.stringify({})
+    }).then(r => r.json());
+    if (res.ok) {
+      const unmatchedCount = res.round?.unmatched?.length || 0;
+      showAdminToast('Пары сформированы' + (unmatchedCount ? \` (без пары остался: \${unmatchedCount})\` : ''));
+      loadCoffeeAdmin();
+    } else alert(res.error || 'Ошибка');
+  } catch(e) { alert('Ошибка подключения'); }
+}
+
+async function loadCoffeeHistory() {
+  const el = document.getElementById('coffee-history-list');
+  if (!el) return;
+  try {
+    const data = await fetch('/api/admin/coffee/history', { headers: aHeaders() }).then(r => r.json());
+    if (!data.ok) { el.innerHTML = '<div style="color:var(--text3);font-size:13px">Не удалось загрузить историю</div>'; return; }
+    renderCoffeeHistory(data.weeks || []);
+  } catch(e) { el.innerHTML = '<div style="color:var(--text3);font-size:13px">Ошибка загрузки</div>'; }
+}
+
+function renderCoffeeHistory(weeks) {
+  const el = document.getElementById('coffee-history-list');
+  if (!weeks.length) { el.innerHTML = '<div style="color:var(--text3);font-size:13px">История пуста</div>'; return; }
+  el.innerHTML = weeks.map((w, wi) => {
+    const rows = w.pairs.map(p => {
+      const ra = p.ratingA ? \`★\${p.ratingA.stars}\${p.ratingA.complaint ? ' 🚩' : ''}\` : '—';
+      const rb = p.ratingB ? \`★\${p.ratingB.stars}\${p.ratingB.complaint ? ' 🚩' : ''}\` : '—';
+      return \`<tr>
+        <td style="font-size:12px">\${escapeAdminHtml(p.nameA)}</td>
+        <td style="color:var(--text3);font-size:11px">\${ra}</td>
+        <td style="color:var(--text3);text-align:center">↔</td>
+        <td style="font-size:12px">\${escapeAdminHtml(p.nameB)}</td>
+        <td style="color:var(--text3);font-size:11px">\${rb}</td>
+      </tr>\`;
+    }).join('');
+    return \`
+      <div style="border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden">
+        <div onclick="toggleCoffeeHistoryWeek(\${wi})" style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;background:rgba(255,255,255,0.02)">
+          <div style="font-size:13px;font-weight:500">\${escapeAdminHtml(w.weekId)} \${w.auto ? '<span style="color:var(--text3);font-size:11px">· авто</span>' : ''}</div>
+          <div style="font-size:11px;color:var(--text3)">\${w.pairs.length} пар \${w.sentAt ? '· отправлено' : '· не отправлено'}</div>
+        </div>
+        <div id="coffee-history-week-\${wi}" style="display:none;padding:8px 14px 14px">
+          <table style="width:100%;border-collapse:collapse">\${rows}</table>
+        </div>
+      </div>
+    \`;
+  }).join('');
+}
+
+function toggleCoffeeHistoryWeek(i) {
+  const row = document.getElementById('coffee-history-week-' + i);
+  if (!row) return;
+  row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+
 function getParticipantName(tgId, participants) {
   const p = participants.find(x => String(x.tgId) === String(tgId));
   return p ? (p.name || p.tgId) : tgId;
@@ -7722,14 +8504,14 @@ async function resolveComplaint(idx, fromId, weekId) {
  
 async function ignoreComplaint(idx) {
   if (!confirm('Пометить жалобу как решённую без переназначения?')) return;
-
-  const complaints = coffeeAdminData?.complaints || [];
-  if (complaints[idx]) complaints[idx].resolved = true;
-
-  // Эндпоинта PATCH нет — отправляем через reassign-логику или добавь отдельный эндпоинт
-  // Временно: просто перерисовать без серверного сохранения (жалоба вернётся при reload)
-  showAdminToast('Жалоба скрыта (без сохранения на сервере)');
-  renderCoffeeComplaints(complaints, coffeeParticipantsAll);
+  try {
+    const res = await fetch('/api/admin/coffee/ignore-complaint', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...aHeaders() },
+      body: JSON.stringify({ index: idx })
+    }).then(r => r.json());
+    if (res.ok) { showAdminToast('Жалоба закрыта'); loadCoffeeAdmin(); }
+    else alert('Ошибка');
+  } catch(e) { alert('Ошибка подключения'); }
 }
  
 function renderCoffeeParticipantsTable(participants) {
