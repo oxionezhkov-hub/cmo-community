@@ -9511,229 +9511,255 @@ function getQuiz3HTML() {
 <title>Диалог с нутрициологом — Growth Autopilot</title>
 <style>
   :root{
-    --violet:#7C3AED;
-    --magenta:#D946EF;
-    --blue:#3B82F6;
-    --bg:#F6F4FC;
+    --moss:#2F4A38;
+    --moss-light:#4C7357;
+    --sand:#F6F1E7;
     --card:#FFFFFF;
-    --text:#1F2937;
-    --muted:#6B7280;
-    --ok:#16A34A;
-    --warn:#D97706;
-    --bad:#DC2626;
-    --grad: linear-gradient(135deg, var(--violet), var(--magenta));
-    --radius: 22px;
+    --line:#E7DFCE;
+    --text:#22281F;
+    --muted:#6E7568;
+    --clay:#BE7A4B;
+    --clay-light:#E4A876;
+    --good:#3F7D5C;
+    --good-bg:#EEF4EE;
+    --warn:#A8762A;
+    --warn-bg:#FAF2E3;
+    --bad:#AE5039;
+    --bad-bg:#FAECE7;
+    --grad: linear-gradient(135deg, var(--moss), var(--moss-light));
+    --radius: 20px;
+    --shadow: 0 10px 30px rgba(47,74,56,.10);
   }
   *{box-sizing:border-box; margin:0; padding:0;}
   html,body{height:100%;}
   body{
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background: var(--bg);
+    background: var(--sand);
+    background-image: radial-gradient(circle at 12% 8%, rgba(190,122,75,.07), transparent 42%), radial-gradient(circle at 88% 92%, rgba(47,74,56,.08), transparent 40%);
     color: var(--text);
-    min-height:100vh;
+    height:100%;
     display:flex;
-    align-items:flex-start;
+    align-items:center;
     justify-content:center;
     padding:16px;
   }
   .app{
     width:100%;
     max-width:460px;
-    min-height:640px;
+    height:min(760px, 100dvh - 32px);
     background:var(--card);
     border-radius: var(--radius);
     overflow:hidden;
     position:relative;
     display:flex;
     flex-direction:column;
-    box-shadow: 0 8px 30px rgba(124,58,237,0.08);
+    box-shadow: var(--shadow);
+    border:1px solid var(--line);
   }
   .screen{
     display:none;
     flex-direction:column;
     flex:1;
-    padding:28px 24px 24px;
+    min-height:0;
+    padding:26px 22px 20px;
     animation: fadeIn .35s ease;
   }
   .screen.active{display:flex;}
   @keyframes fadeIn{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
 
   .brand{
-    font-size:13px;
+    font-size:11.5px;
     font-weight:700;
-    letter-spacing:.04em;
-    color:var(--violet);
+    letter-spacing:.09em;
+    color:var(--clay);
     text-transform:uppercase;
-    margin-bottom:8px;
+    margin-bottom:10px;
   }
+
+  svg.ic{ display:block; flex:none; }
 
   /* ---- Cover ---- */
   #screen-cover{ justify-content:center; text-align:center; }
   .cover-badge{
-    width:72px; height:72px; margin:0 auto 20px;
-    border-radius:20px;
+    width:64px; height:64px; margin:0 auto 22px;
+    border-radius:18px;
     background:var(--grad);
     display:flex; align-items:center; justify-content:center;
-    font-size:32px;
+    color:#fff;
+    box-shadow: var(--shadow);
   }
-  .cover-title{ font-size:25px; font-weight:800; line-height:1.25; margin-bottom:12px; }
-  .cover-sub{ font-size:15px; color:var(--muted); line-height:1.5; margin-bottom:26px; }
-  .cover-points{ text-align:left; margin-bottom:28px; display:flex; flex-direction:column; gap:10px; }
-  .cover-point{ display:flex; align-items:flex-start; gap:10px; font-size:14px; color:var(--text); }
-  .cover-point .dot{ flex:none; width:22px; height:22px; border-radius:50%; background:rgba(124,58,237,.12); color:var(--violet); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; }
-  .cover-author{ font-size:12.5px; color:var(--muted); margin-top:16px; }
+  .cover-title{ font-family:Georgia,'Iowan Old Style','Palatino Linotype',serif; font-size:26px; font-weight:600; line-height:1.28; margin-bottom:12px; letter-spacing:-.01em; }
+  .cover-sub{ font-size:14.5px; color:var(--muted); line-height:1.55; margin-bottom:28px; }
+  .cover-points{ text-align:left; margin-bottom:30px; display:flex; flex-direction:column; gap:13px; }
+  .cover-point{ display:flex; align-items:flex-start; gap:12px; font-size:13.5px; color:var(--text); line-height:1.45; }
+  .cover-point .dot{ flex:none; width:26px; height:26px; border-radius:50%; background:var(--good-bg); color:var(--moss); display:flex; align-items:center; justify-content:center; }
+  .cover-author{ font-size:12px; color:var(--muted); margin-top:18px; }
+  .cover-author b{ color:var(--text); font-weight:700; }
 
   .btn{
     border:none; cursor:pointer;
-    padding:16px 20px;
-    border-radius:16px;
-    font-size:16px; font-weight:700;
+    padding:15px 20px;
+    border-radius:15px;
+    font-size:15.5px; font-weight:700;
     font-family:inherit;
     transition:transform .15s ease, box-shadow .15s ease, opacity .15s ease;
     -webkit-tap-highlight-color: transparent;
   }
   .btn:active{ transform:scale(0.97); }
-  .btn-primary{ background:var(--grad); color:#fff; box-shadow:0 8px 20px rgba(124,58,237,.28); width:100%; }
-  .btn-primary:hover{ box-shadow:0 10px 26px rgba(124,58,237,.36); }
-  .btn-ghost{ background:transparent; color:var(--muted); font-weight:600; font-size:14px; padding:10px; }
+  .btn-primary{ background:var(--grad); color:#fff; box-shadow:0 10px 22px rgba(47,74,56,.24); width:100%; }
+  .btn-primary:hover{ box-shadow:0 12px 26px rgba(47,74,56,.3); }
+  .btn-ghost{ background:transparent; color:var(--muted); font-weight:600; font-size:13.5px; padding:10px; border:1.5px solid var(--line); border-radius:14px; }
   .btn:disabled{ opacity:.5; cursor:not-allowed; }
 
   /* ---- Q1 goal buttons ---- */
-  .goal-list{ display:flex; flex-direction:column; gap:12px; margin-top:6px; }
+  .goal-list{ display:flex; flex-direction:column; gap:11px; margin-top:8px; }
   .goal-btn{
-    text-align:left; background:#FBFAFE; border:1.5px solid #EFEAFB; border-radius:16px;
-    padding:16px 18px; font-size:15px; font-weight:700; color:var(--text); cursor:pointer;
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    text-align:left; background:var(--sand); border:1.5px solid var(--line); border-radius:15px;
+    padding:15px 17px; font-size:14.5px; font-weight:700; color:var(--text); cursor:pointer;
     transition:border-color .15s ease, background .15s ease, transform .15s ease;
   }
+  .goal-btn .arrow{ color:var(--muted); transition:transform .15s ease, color .15s ease; }
   .goal-btn:active{ transform:scale(0.98); }
-  .goal-btn:hover{ border-color:var(--violet); background:rgba(124,58,237,.05); }
+  .goal-btn:hover{ border-color:var(--moss-light); background:var(--good-bg); }
+  .goal-btn:hover .arrow{ color:var(--moss); transform:translateX(2px); }
 
   /* ---- Chat ---- */
   #screen-chat{ padding-bottom:16px; }
-  .chat-scroll{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; display:flex; flex-direction:column; gap:12px; padding:4px 2px 10px; }
-  .bubble{ max-width:84%; padding:12px 15px; border-radius:16px; font-size:14.5px; line-height:1.5; animation:fadeIn .3s ease; }
-  .bubble-ai{ align-self:flex-start; background:#FBFAFE; border:1px solid #EFEAFB; border-bottom-left-radius:4px; }
-  .bubble-user{ align-self:flex-end; background:var(--grad); color:#fff; border-bottom-right-radius:4px; }
-  .bubble-note{ align-self:flex-start; font-size:12px; color:var(--bad); background:rgba(220,38,38,.06); border:1px solid rgba(220,38,38,.18); border-bottom-left-radius:4px; }
-  .typing{ align-self:flex-start; display:flex; gap:4px; padding:14px 16px; background:#FBFAFE; border:1px solid #EFEAFB; border-radius:16px; border-bottom-left-radius:4px; }
-  .typing span{ width:6px; height:6px; border-radius:50%; background:var(--violet); opacity:.4; animation:typingBounce 1s infinite ease-in-out; }
+  .qprogress{ display:flex; gap:6px; margin-bottom:16px; flex:none; }
+  .qprogress-dot{ flex:1; height:3px; border-radius:2px; background:var(--line); }
+  .qprogress-dot.done{ background:var(--grad); }
+
+  .chat-scroll{ flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; display:flex; flex-direction:column; gap:10px; padding:2px 2px 8px; }
+  .chat-scroll::-webkit-scrollbar{ width:4px; }
+  .chat-scroll::-webkit-scrollbar-thumb{ background:var(--line); border-radius:4px; }
+
+  .bubble-row{ display:flex; align-items:flex-end; gap:8px; animation:fadeIn .3s ease; }
+  .bubble-row.user{ justify-content:flex-end; }
+  .bubble-avatar{ flex:none; width:26px; height:26px; border-radius:50%; background:var(--grad); color:#fff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; font-family:Georgia,serif; }
+  .bubble{ max-width:76%; padding:11px 14px; border-radius:16px; font-size:14px; line-height:1.5; }
+  .bubble-ai{ background:var(--sand); border:1px solid var(--line); border-bottom-left-radius:4px; }
+  .bubble-user{ background:var(--grad); color:#fff; border-bottom-right-radius:4px; }
+  .bubble-note{ background:var(--bad-bg); color:var(--bad); border:1px solid rgba(174,80,57,.22); border-bottom-left-radius:4px; font-size:12.5px; }
+  .typing-row{ display:flex; align-items:flex-end; gap:8px; }
+  .typing{ display:flex; gap:4px; padding:13px 15px; background:var(--sand); border:1px solid var(--line); border-radius:16px; border-bottom-left-radius:4px; }
+  .typing span{ width:5px; height:5px; border-radius:50%; background:var(--moss-light); opacity:.4; animation:typingBounce 1s infinite ease-in-out; }
   .typing span:nth-child(2){ animation-delay:.15s; }
   .typing span:nth-child(3){ animation-delay:.3s; }
   @keyframes typingBounce{ 0%,60%,100%{ transform:translateY(0); opacity:.4; } 30%{ transform:translateY(-4px); opacity:1; } }
 
-  .qprogress{ display:flex; gap:6px; margin-bottom:14px; }
-  .qprogress-dot{ flex:1; height:4px; border-radius:2px; background:#EDE9FE; }
-  .qprogress-dot.done{ background:var(--grad); }
-
-  .input-tabs{ display:flex; gap:8px; margin-top:14px; margin-bottom:10px; }
-  .input-tab{ flex:1; text-align:center; padding:9px; border-radius:12px; font-size:13px; font-weight:700; background:#FBFAFE; border:1.5px solid #EFEAFB; color:var(--muted); cursor:pointer; }
-  .input-tab.active{ background:rgba(124,58,237,.08); border-color:var(--violet); color:var(--violet); }
-
-  .input-panel{ display:none; }
-  .input-panel.active{ display:block; }
-  .text-row{ display:flex; gap:8px; align-items:flex-end; }
-  .text-row textarea{
-    flex:1; padding:12px 14px; border-radius:14px; border:1.5px solid #E9E4F7; background:#FBFAFE;
-    font-size:14.5px; font-family:inherit; color:var(--text); resize:none; min-height:46px; max-height:120px;
+  /* ---- Input bar: text <-> voice merged into one shell + one action button ---- */
+  .chat-inputbar{ display:flex; align-items:flex-end; gap:8px; margin-top:14px; flex:none; }
+  .inputbar-shell{
+    flex:1; min-width:0; border-radius:16px; border:1.5px solid var(--line); background:var(--sand);
+    transition:border-color .15s ease;
   }
-  .text-row textarea:focus{ outline:none; border-color:var(--violet); }
-  .send-btn{ flex:none; width:46px; height:46px; border-radius:14px; background:var(--grad); color:#fff; border:none; font-size:18px; cursor:pointer; }
-  .send-btn:disabled{ opacity:.5; }
+  .inputbar-shell:focus-within{ border-color:var(--moss-light); }
+  .inputbar-text{
+    display:block; width:100%; border:none; background:transparent; outline:none;
+    padding:13px 15px; font-size:14.5px; font-family:inherit; color:var(--text);
+    resize:none; min-height:46px; max-height:120px; line-height:1.4;
+  }
+  .inputbar-text.hidden{ display:none; }
+  .inputbar-voice{ display:none; align-items:center; gap:12px; padding:12px 15px; min-height:46px; }
+  .inputbar-voice.active{ display:flex; }
+  .voice-wave{ display:flex; align-items:center; gap:3px; height:22px; flex:none; }
+  .voice-wave span{ width:3px; border-radius:2px; background:var(--clay); height:5px; opacity:.55; }
+  .voice-wave.live span{ animation:wave 0.9s infinite ease-in-out; opacity:1; }
+  .voice-wave span:nth-child(1){ animation-delay:0s; } .voice-wave span:nth-child(2){ animation-delay:.1s; }
+  .voice-wave span:nth-child(3){ animation-delay:.2s; } .voice-wave span:nth-child(4){ animation-delay:.3s; }
+  .voice-wave span:nth-child(5){ animation-delay:.15s; } .voice-wave span:nth-child(6){ animation-delay:.05s; }
+  .voice-wave span:nth-child(7){ animation-delay:.25s; }
+  @keyframes wave{ 0%,100%{ height:5px; } 50%{ height:20px; } }
+  .voice-live-status{ font-size:13px; color:var(--muted); font-weight:600; }
 
-  .voice-panel{ text-align:center; padding:8px 0 2px; }
-  .mic-btn{
-    width:72px; height:72px; border-radius:50%; border:none; cursor:pointer;
-    background:var(--grad); color:#fff; font-size:28px; margin:0 auto 12px;
+  .inputbar-action{
+    flex:none; width:46px; height:46px; border-radius:14px; border:none; cursor:pointer;
     display:flex; align-items:center; justify-content:center;
-    box-shadow:0 8px 20px rgba(124,58,237,.28);
-    transition:transform .15s ease;
-    position:relative;
+    background:var(--sand); border:1.5px solid var(--line); color:var(--muted);
+    transition:background .15s ease, border-color .15s ease, color .15s ease, transform .15s ease, box-shadow .15s ease;
   }
-  .mic-btn.recording{ animation:micPulse 1.2s infinite; }
-  @keyframes micPulse{ 0%{ box-shadow:0 0 0 0 rgba(217,70,239,.45);} 70%{ box-shadow:0 0 0 18px rgba(217,70,239,0);} 100%{ box-shadow:0 0 0 0 rgba(217,70,239,0);} }
-  .waveform{ display:flex; align-items:center; justify-content:center; gap:3px; height:28px; margin-bottom:10px; }
-  .waveform span{ width:3px; border-radius:2px; background:var(--violet); height:6px; opacity:.35; }
-  .waveform.live span{ animation:wave 0.9s infinite ease-in-out; opacity:1; }
-  .waveform span:nth-child(1){ animation-delay:0s; }
-  .waveform span:nth-child(2){ animation-delay:.1s; }
-  .waveform span:nth-child(3){ animation-delay:.2s; }
-  .waveform span:nth-child(4){ animation-delay:.3s; }
-  .waveform span:nth-child(5){ animation-delay:.4s; }
-  .waveform span:nth-child(6){ animation-delay:.3s; }
-  .waveform span:nth-child(7){ animation-delay:.2s; }
-  .waveform span:nth-child(8){ animation-delay:.1s; }
-  .waveform span:nth-child(9){ animation-delay:0s; }
-  @keyframes wave{ 0%,100%{ height:6px; } 50%{ height:26px; } }
-  .voice-status{ font-size:13px; color:var(--muted); min-height:18px; }
-  .voice-fallback{ font-size:12px; color:var(--bad); margin-top:8px; display:none; }
+  .inputbar-action:active{ transform:scale(0.94); }
+  .inputbar-action.is-send{ background:var(--grad); border-color:transparent; color:#fff; box-shadow:0 8px 18px rgba(47,74,56,.24); }
+  .inputbar-action.is-recording{ background:var(--clay); border-color:transparent; color:#fff; animation:micPulse 1.4s infinite; }
+  @keyframes micPulse{ 0%{ box-shadow:0 0 0 0 rgba(190,122,75,.4);} 70%{ box-shadow:0 0 0 14px rgba(190,122,75,0);} 100%{ box-shadow:0 0 0 0 rgba(190,122,75,0);} }
+  .inputbar-action:disabled{ opacity:.5; cursor:not-allowed; }
+
+  .voice-fallback{ font-size:12px; color:var(--bad); margin-top:8px; display:none; flex:none; }
   .voice-fallback.show{ display:block; }
 
   /* ---- Analyzing ---- */
   #screen-analyzing{ justify-content:center; align-items:center; text-align:center; }
-  .spinner{
-    width:56px; height:56px; border-radius:50%;
-    border:4px solid #EDE9FE; border-top-color:var(--violet);
-    animation:spin 1s linear infinite; margin-bottom:26px;
-  }
-  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .spinner-ring{ margin-bottom:26px; }
+  .spinner-ring circle{ transform-origin:center; }
   .analyze-lines{ display:flex; flex-direction:column; gap:14px; align-items:flex-start; text-align:left; }
-  .analyze-line{ display:flex; align-items:center; gap:10px; font-size:14.5px; color:var(--muted); opacity:0; transform:translateX(-6px); transition:opacity .35s ease, transform .35s ease, color .2s ease; }
+  .analyze-line{ display:flex; align-items:center; gap:10px; font-size:14px; color:var(--muted); opacity:0; transform:translateX(-6px); transition:opacity .35s ease, transform .35s ease, color .2s ease; }
   .analyze-line.show{ opacity:1; transform:translateX(0); }
   .analyze-line.done{ color:var(--text); }
-  .analyze-check{ flex:none; width:20px; height:20px; border-radius:50%; background:#EDE9FE; color:var(--violet); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; opacity:0; transform:scale(.5); transition:opacity .25s ease, transform .25s ease, background .25s ease, color .25s ease; }
+  .analyze-check{ flex:none; width:20px; height:20px; border-radius:50%; background:var(--good-bg); color:var(--moss); display:flex; align-items:center; justify-content:center; opacity:0; transform:scale(.5); transition:opacity .25s ease, transform .25s ease, background .25s ease, color .25s ease; }
   .analyze-line.done .analyze-check{ opacity:1; transform:scale(1); background:var(--grad); color:#fff; }
 
   /* ---- Form (contact, hard gate) ---- */
   .form-scroll{ overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch; }
   .field{ margin-bottom:14px; }
-  .field label{ display:block; font-size:12.5px; font-weight:700; color:var(--muted); margin-bottom:6px; }
+  .field label{ display:block; font-size:12px; font-weight:700; color:var(--muted); margin-bottom:6px; }
   .field input, .field textarea{
-    width:100%; padding:14px 16px; border-radius:14px;
-    border:1.5px solid #E9E4F7; background:#FBFAFE;
-    font-size:15px; font-family:inherit; color:var(--text);
+    width:100%; padding:13px 15px; border-radius:14px;
+    border:1.5px solid var(--line); background:var(--sand);
+    font-size:14.5px; font-family:inherit; color:var(--text);
     transition:border-color .15s ease;
     resize:vertical;
   }
-  .field input:focus, .field textarea:focus{ outline:none; border-color:var(--violet); }
-  .field-error{ font-size:12px; color:var(--bad); margin-top:5px; display:none; }
+  .field input:focus, .field textarea:focus{ outline:none; border-color:var(--moss-light); }
+  .field-error{ font-size:11.5px; color:var(--bad); margin-top:5px; display:none; }
   .field.invalid input, .field.invalid textarea{ border-color:var(--bad); }
   .field.invalid .field-error{ display:block; }
-  .form-note{ font-size:11.5px; color:var(--muted); text-align:center; margin-top:14px; line-height:1.5; }
+  .form-note{ font-size:11px; color:var(--muted); text-align:center; margin-top:14px; line-height:1.5; }
 
-  /* ---- Result ---- */
+  /* ---- Result: premium editorial layout ---- */
   #screen-result{ padding-top:22px; }
   .result-scroll{ overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch; padding-bottom:6px; }
-  .result-title{ font-size:20px; font-weight:800; text-align:center; margin-bottom:2px; }
-  .result-tier{ text-align:center; font-size:13px; font-weight:700; color:var(--violet); text-transform:uppercase; letter-spacing:.03em; margin-bottom:18px; }
+  .result-eyebrow{ font-size:11.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--clay); text-align:center; margin-bottom:6px; }
+  .result-title{ font-family:Georgia,'Iowan Old Style','Palatino Linotype',serif; font-size:23px; font-weight:600; text-align:center; margin-bottom:20px; letter-spacing:-.01em; }
 
-  .gauge-wrap{ display:flex; justify-content:center; margin-bottom:20px; position:relative; }
-  .gauge-num{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:34px; font-weight:800; }
-  .gauge-num span{ font-size:16px; font-weight:700; color:var(--muted); }
+  .score-card{ background:var(--grad); border-radius:18px; padding:18px 20px; margin-bottom:16px; color:#fff; display:flex; align-items:center; gap:16px; }
+  .score-num{ font-family:Georgia,serif; font-size:34px; font-weight:700; line-height:1; flex:none; }
+  .score-num span{ font-size:15px; font-weight:600; opacity:.75; }
+  .score-meter{ flex:1; }
+  .score-tag{ font-size:13px; font-weight:700; margin-bottom:8px; }
+  .score-track{ height:6px; border-radius:4px; background:rgba(255,255,255,.25); overflow:hidden; }
+  .score-fill{ height:100%; border-radius:4px; background:#fff; width:0%; transition:width 1s cubic-bezier(.22,.9,.3,1); }
 
-  .verdict-block{ background:#FBFAFE; border:1px solid #EFEAFB; border-radius:18px; padding:16px 18px; margin-bottom:18px; font-size:14.5px; line-height:1.55; color:var(--text); }
+  .verdict-block{
+    background:var(--sand); border-left:3px solid var(--clay); border-radius:0 14px 14px 0;
+    padding:15px 17px; margin-bottom:18px; font-family:Georgia,'Iowan Old Style',serif; font-style:italic;
+    font-size:14.5px; line-height:1.6; color:var(--text);
+  }
 
-  .result-card{ border:1.5px solid #EFEAFB; border-radius:18px; padding:16px 18px; margin-bottom:14px; display:flex; gap:12px; align-items:flex-start; }
-  .result-card.good{ background:rgba(22,163,74,.05); border-color:rgba(22,163,74,.22); }
-  .result-card.warning{ background:rgba(217,119,6,.05); border-color:rgba(217,119,6,.22); }
-  .result-card.bad{ background:rgba(220,38,38,.05); border-color:rgba(220,38,38,.22); }
-  .result-card-icon{ flex:none; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; }
-  .result-card.good .result-card-icon{ background:rgba(22,163,74,.15); }
-  .result-card.warning .result-card-icon{ background:rgba(217,119,6,.15); }
-  .result-card.bad .result-card-icon{ background:rgba(220,38,38,.15); }
-  .result-card-title{ font-size:14.5px; font-weight:800; margin-bottom:4px; }
-  .result-card-text{ font-size:13.5px; line-height:1.5; color:var(--text); }
+  .result-cards{ display:flex; flex-direction:column; gap:10px; margin-bottom:18px; }
+  .result-card{ border:1.5px solid var(--line); border-left-width:3px; border-radius:14px; padding:14px 16px; background:var(--card); }
+  .result-card.good{ border-left-color:var(--good); }
+  .result-card.warning{ border-left-color:var(--warn); }
+  .result-card.bad{ border-left-color:var(--bad); }
+  .result-card-head{ display:flex; align-items:center; gap:8px; margin-bottom:5px; }
+  .result-card-icon{ flex:none; width:20px; height:20px; display:flex; align-items:center; justify-content:center; }
+  .result-card.good .result-card-icon{ color:var(--good); }
+  .result-card.warning .result-card-icon{ color:var(--warn); }
+  .result-card.bad .result-card-icon{ color:var(--bad); }
+  .result-card-title{ font-size:13.5px; font-weight:800; }
+  .result-card-text{ font-size:13px; line-height:1.5; color:var(--muted); }
 
-  .steps-block{ background:#FBFAFE; border:1px solid #EFEAFB; border-radius:18px; padding:18px; margin-bottom:18px; }
-  .steps-title{ font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); margin-bottom:12px; }
-  .step-row{ display:flex; gap:10px; align-items:flex-start; font-size:14px; line-height:1.5; margin-bottom:10px; }
+  .steps-block{ background:var(--sand); border:1px solid var(--line); border-radius:16px; padding:17px; margin-bottom:18px; }
+  .steps-title{ font-size:11.5px; font-weight:800; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); margin-bottom:13px; }
+  .step-row{ display:flex; gap:11px; align-items:flex-start; font-size:13.5px; line-height:1.5; margin-bottom:11px; }
   .step-row:last-child{ margin-bottom:0; }
-  .step-num{ flex:none; width:22px; height:22px; border-radius:50%; background:var(--grad); color:#fff; font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center; }
+  .step-icon{ flex:none; width:20px; height:20px; color:var(--moss); margin-top:1px; }
 
   .cta-block{ text-align:center; margin-top:6px; }
-  .cta-title{ font-size:17px; font-weight:800; margin-bottom:6px; }
-  .cta-sub{ font-size:13.5px; color:var(--muted); margin-bottom:16px; line-height:1.5; }
+  .cta-title{ font-family:Georgia,serif; font-size:16.5px; font-weight:600; margin-bottom:6px; }
+  .cta-sub{ font-size:13px; color:var(--muted); margin-bottom:16px; line-height:1.5; }
 
-  .error-note{ font-size:12.5px; color:var(--bad); text-align:center; margin-top:12px; display:none; }
+  .error-note{ font-size:12px; color:var(--bad); text-align:center; margin-top:12px; display:none; }
   .error-note.show{ display:block; }
 </style>
 </head>
@@ -9743,28 +9769,30 @@ function getQuiz3HTML() {
   <!-- 1. Cover -->
   <div class="screen active" id="screen-cover">
     <div class="brand">Growth Autopilot</div>
-    <div class="cover-badge">🥗</div>
-    <div class="cover-title">Персональный разбор твоего рациона от нутрициолога</div>
-    <div class="cover-sub">2 минуты живого диалога — расскажи, как обычно питаешься, а Анна уточнит детали и соберёт персональный разбор.</div>
+    <div class="cover-badge">
+      <svg class="ic" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 4c-8 0-14 5-14 12 0 2.2.7 3.6 1.6 4.6M20 4c0 8-5 14-12 14-2.2 0-3.6-.7-4.6-1.6M20 4c-6 1-10 4-12 8"/></svg>
+    </div>
+    <div class="cover-title">Персональный разбор твоего рациона</div>
+    <div class="cover-sub">2 минуты живого диалога — расскажи, как обычно питаешься, а Анна уточнит детали и соберёт разбор именно под тебя.</div>
     <div class="cover-points">
-      <div class="cover-point"><span class="dot">1</span> Настоящий диалог, а не анкета — можно отвечать текстом или голосом</div>
-      <div class="cover-point"><span class="dot">2</span> Анна уточнит один раз, если ответ расплывчатый</div>
-      <div class="cover-point"><span class="dot">3</span> В конце — персональный разбор по 4 блокам и что сделать дальше</div>
+      <div class="cover-point"><span class="dot"><svg class="ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20"/></svg></span> Настоящий диалог, а не анкета — отвечай текстом или голосом</div>
+      <div class="cover-point"><span class="dot"><svg class="ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20"/></svg></span> Анна уточнит один раз, если ответ получится расплывчатым</div>
+      <div class="cover-point"><span class="dot"><svg class="ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20"/></svg></span> В конце — разбор по 4 блокам и понятные следующие шаги</div>
     </div>
     <button class="btn btn-primary" onclick="Quiz3.start()">Начать диалог</button>
-    <div class="cover-author">Ведёт Анна Светлова — нутрициолог</div>
+    <div class="cover-author">Ведёт <b>Анна Светлова</b> — нутрициолог</div>
   </div>
 
   <!-- 2. Q1: цель (кнопки) -->
   <div class="screen" id="screen-q1">
     <div class="brand">Growth Autopilot</div>
-    <div class="cover-title" style="font-size:21px; text-align:left;">Привет! Я Анна 👋</div>
-    <div class="cover-sub" style="text-align:left; margin-bottom:6px;">Для начала — какая у тебя сейчас цель?</div>
+    <div class="cover-title" style="font-size:22px; text-align:left;">Привет, я Анна</div>
+    <div class="cover-sub" style="text-align:left; margin-bottom:8px;">Для начала — какая у тебя сейчас цель?</div>
     <div class="goal-list">
-      <button class="goal-btn" onclick="Quiz3.chooseGoal('Похудение')">Похудение</button>
-      <button class="goal-btn" onclick="Quiz3.chooseGoal('Набор массы')">Набор массы</button>
-      <button class="goal-btn" onclick="Quiz3.chooseGoal('Поддержание веса')">Поддержание веса</button>
-      <button class="goal-btn" onclick="Quiz3.chooseGoal('Разобраться в питании')">Разобраться в питании</button>
+      <button class="goal-btn" onclick="Quiz3.chooseGoal('Похудение')"><span>Похудение</span><span class="arrow"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></span></button>
+      <button class="goal-btn" onclick="Quiz3.chooseGoal('Набор массы')"><span>Набор массы</span><span class="arrow"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></span></button>
+      <button class="goal-btn" onclick="Quiz3.chooseGoal('Поддержание веса')"><span>Поддержание веса</span><span class="arrow"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></span></button>
+      <button class="goal-btn" onclick="Quiz3.chooseGoal('Разобраться в питании')"><span>Разобраться в питании</span><span class="arrow"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></span></button>
     </div>
   </div>
 
@@ -9777,34 +9805,25 @@ function getQuiz3HTML() {
     </div>
     <div class="chat-scroll" id="chatScroll"></div>
 
-    <div class="input-tabs">
-      <div class="input-tab active" id="tabText" onclick="Quiz3.switchTab('text')">✏️ Написать</div>
-      <div class="input-tab" id="tabVoice" onclick="Quiz3.switchTab('voice')">🎙️ Голосом</div>
-    </div>
-
-    <div class="input-panel active" id="panelText">
-      <div class="text-row">
-        <textarea id="chatInput" placeholder="Напиши ответ…" rows="1"></textarea>
-        <button class="send-btn" id="sendBtn" onclick="Quiz3.sendText()">➤</button>
-      </div>
-    </div>
-
-    <div class="input-panel" id="panelVoice">
-      <div class="voice-panel">
-        <button class="mic-btn" id="micBtn" onclick="Quiz3.toggleVoice()">🎙️</button>
-        <div class="waveform" id="waveform">
-          <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+    <div class="chat-inputbar">
+      <div class="inputbar-shell">
+        <textarea id="chatInput" class="inputbar-text" placeholder="Напиши ответ…" rows="1"></textarea>
+        <div class="inputbar-voice" id="voiceShell">
+          <div class="voice-wave" id="voiceWave"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+          <div class="voice-live-status" id="voiceLiveStatus">Слушаю…</div>
         </div>
-        <div class="voice-status" id="voiceStatus">Нажми и говори</div>
-        <div class="voice-fallback" id="voiceFallback">Не удалось распознать голос — попробуй написать текстом.</div>
       </div>
+      <button class="inputbar-action" id="actionBtn" onclick="Quiz3.handleAction()" aria-label="Записать голосом">
+        <span id="actionIcon"></span>
+      </button>
     </div>
+    <div class="voice-fallback" id="voiceFallback"></div>
   </div>
 
   <!-- 4. Contact form (хард-гейт, до результата) -->
   <div class="screen" id="screen-contact">
     <div class="brand">Growth Autopilot</div>
-    <div class="cover-title" style="font-size:21px;">Куда прислать разбор?</div>
+    <div class="cover-title" style="font-size:22px;">Куда прислать разбор?</div>
     <div class="cover-sub" style="margin-bottom:22px;">Оставь контакт — и сразу увидишь персональный разбор своего рациона.</div>
 
     <div class="field" id="fieldName">
@@ -9824,37 +9843,36 @@ function getQuiz3HTML() {
 
   <!-- 5. Analyzing -->
   <div class="screen" id="screen-analyzing">
-    <div class="spinner"></div>
+    <svg class="spinner-ring" width="56" height="56" viewBox="0 0 56 56">
+      <circle cx="28" cy="28" r="23" fill="none" stroke="var(--line)" stroke-width="4"/>
+      <circle cx="28" cy="28" r="23" fill="none" stroke="var(--moss)" stroke-width="4" stroke-linecap="round" stroke-dasharray="90 200">
+        <animateTransform attributeName="transform" type="rotate" from="0 28 28" to="360 28 28" dur="1s" repeatCount="indefinite"/>
+      </circle>
+    </svg>
     <div class="analyze-lines" id="analyzeLines">
-      <div class="analyze-line" data-i="0"><span class="analyze-check">✓</span><span>Собираем весь диалог воедино</span></div>
-      <div class="analyze-line" data-i="1"><span class="analyze-check">✓</span><span>Анализируем режим, разнообразие и воду</span></div>
-      <div class="analyze-line" data-i="2"><span class="analyze-check">✓</span><span>Готовим персональный разбор</span></div>
+      <div class="analyze-line" data-i="0"><span class="analyze-check"><svg class="ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span>Собираем весь диалог воедино</span></div>
+      <div class="analyze-line" data-i="1"><span class="analyze-check"><svg class="ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span>Анализируем режим, разнообразие и воду</span></div>
+      <div class="analyze-line" data-i="2"><span class="analyze-check"><svg class="ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span><span>Готовим персональный разбор</span></div>
     </div>
   </div>
 
   <!-- 6. Result -->
   <div class="screen" id="screen-result">
     <div class="result-scroll">
+      <div class="result-eyebrow">Разбор от Анны Светловой</div>
       <div class="result-title">Твой разбор рациона готов</div>
-      <div class="result-tier">Разбор от Анны Светловой</div>
 
-      <div class="gauge-wrap">
-        <svg id="gaugeSvg" width="180" height="180" viewBox="0 0 180 180">
-          <circle cx="90" cy="90" r="78" fill="none" stroke="#EDE9FE" stroke-width="14"/>
-          <circle id="gaugeArc" cx="90" cy="90" r="78" fill="none" stroke="url(#gaugeGrad)" stroke-width="14" stroke-linecap="round" stroke-dasharray="490" stroke-dashoffset="490" transform="rotate(-90 90 90)"/>
-          <defs>
-            <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#7C3AED"/>
-              <stop offset="100%" stop-color="#D946EF"/>
-            </linearGradient>
-          </defs>
-        </svg>
-        <div class="gauge-num"><span id="gaugeNum">0</span><span>/10</span></div>
+      <div class="score-card">
+        <div class="score-num"><span id="gaugeNum">0</span><span>/10</span></div>
+        <div class="score-meter">
+          <div class="score-tag" id="scoreTag">Считаем баланс…</div>
+          <div class="score-track"><div class="score-fill" id="scoreFill"></div></div>
+        </div>
       </div>
 
       <div class="verdict-block" id="verdictText"></div>
 
-      <div id="resultCards"></div>
+      <div class="result-cards" id="resultCards"></div>
 
       <div class="steps-block">
         <div class="steps-title">Что сделать в первую очередь</div>
@@ -9862,9 +9880,9 @@ function getQuiz3HTML() {
       </div>
 
       <div class="cta-block">
-        <div class="cta-title">Спасибо, что прошёл диалог!</div>
+        <div class="cta-title">Спасибо, что прошёл диалог</div>
         <div class="cta-sub">Это демо-версия — в реальном проекте здесь могло быть приглашение на консультацию.</div>
-        <button class="btn btn-primary" onclick="Quiz3.restart()">Пройти ещё раз</button>
+        <button class="btn btn-ghost" style="width:100%;" onclick="Quiz3.restart()">Пройти ещё раз</button>
       </div>
     </div>
   </div>
@@ -9874,11 +9892,15 @@ function getQuiz3HTML() {
 <script>
 (function(){
 
-var STATUS_META = {
-  good: { icon: '✅', cls: 'good' },
-  warning: { icon: '⚠️', cls: 'warning' },
-  bad: { icon: '❌', cls: 'bad' }
+var ICONS = {
+  good: '<svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
+  warning: '<svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2L12 3z"/><path d="M12 10v4"/><circle cx="12" cy="17" r=".6" fill="currentColor" stroke="none"/></svg>',
+  bad: '<svg class="ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>'
 };
+var STEP_ICON = '<svg class="step-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2 4-4"/></svg>';
+var MIC_ICON = '<svg class="ic" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+var SEND_ICON = '<svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>';
+var STOP_ICON = '<svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
 
 var QUESTIONS = {
   2: "Расскажи, как обычно выглядит твой день в еде — что и когда ты ешь?",
@@ -9950,35 +9972,45 @@ var state = {
   followupUsed: false,
   resultPromise: null,
   recognition: null,
-  recording: false
+  recording: false,
+  finalTranscript: ''
 };
+
+function scrollChatToBottom(){
+  var scroll = $('chatScroll');
+  scroll.scrollTop = scroll.scrollHeight;
+}
 
 function addBubble(who, text){
   var scroll = $('chatScroll');
-  var div = document.createElement('div');
-  div.className = 'bubble ' + (who === 'ai' ? 'bubble-ai' : 'bubble-user');
-  div.textContent = text;
-  scroll.appendChild(div);
-  scroll.scrollTop = scroll.scrollHeight;
+  var row = document.createElement('div');
+  row.className = 'bubble-row ' + (who === 'ai' ? '' : 'user');
+  var avatar = who === 'ai' ? '<div class="bubble-avatar">АС</div>' : '';
+  var bubbleClass = who === 'ai' ? 'bubble-ai' : 'bubble-user';
+  row.innerHTML = avatar + '<div class="bubble ' + bubbleClass + '"></div>';
+  row.querySelector('.bubble').textContent = text;
+  scroll.appendChild(row);
+  scrollChatToBottom();
 }
 
 function addNote(text){
   var scroll = $('chatScroll');
-  var div = document.createElement('div');
-  div.className = 'bubble bubble-note';
-  div.textContent = text;
-  scroll.appendChild(div);
-  scroll.scrollTop = scroll.scrollHeight;
+  var row = document.createElement('div');
+  row.className = 'bubble-row';
+  row.innerHTML = '<div class="bubble-avatar">АС</div><div class="bubble bubble-note"></div>';
+  row.querySelector('.bubble').textContent = text;
+  scroll.appendChild(row);
+  scrollChatToBottom();
 }
 
 function showTyping(){
   var scroll = $('chatScroll');
-  var div = document.createElement('div');
-  div.className = 'typing';
-  div.id = 'typingIndicator';
-  div.innerHTML = '<span></span><span></span><span></span>';
-  scroll.appendChild(div);
-  scroll.scrollTop = scroll.scrollHeight;
+  var row = document.createElement('div');
+  row.className = 'typing-row';
+  row.id = 'typingIndicator';
+  row.innerHTML = '<div class="bubble-avatar">АС</div><div class="typing"><span></span><span></span><span></span></div>';
+  scroll.appendChild(row);
+  scrollChatToBottom();
 }
 
 function hideTyping(){
@@ -9986,10 +10018,40 @@ function hideTyping(){
   if (el) el.remove();
 }
 
+function updateActionButton(){
+  var btn = $('actionBtn');
+  var icon = $('actionIcon');
+  var hasText = $('chatInput').value.trim().length > 0;
+  btn.classList.remove('is-send', 'is-recording');
+  if (state.recording){
+    btn.classList.add('is-recording');
+    icon.innerHTML = STOP_ICON;
+    btn.setAttribute('aria-label', 'Остановить запись');
+  } else if (hasText){
+    btn.classList.add('is-send');
+    icon.innerHTML = SEND_ICON;
+    btn.setAttribute('aria-label', 'Отправить');
+  } else {
+    icon.innerHTML = MIC_ICON;
+    btn.setAttribute('aria-label', 'Записать голосом');
+  }
+}
+
 function setInputEnabled(enabled){
   $('chatInput').disabled = !enabled;
-  $('sendBtn').disabled = !enabled;
-  $('micBtn').disabled = !enabled;
+  $('actionBtn').disabled = !enabled;
+}
+
+function switchToTextShell(){
+  $('chatInput').classList.remove('hidden');
+  $('voiceShell').classList.remove('active');
+  $('voiceWave').classList.remove('live');
+}
+
+function switchToVoiceShell(){
+  $('chatInput').classList.add('hidden');
+  $('voiceShell').classList.add('active');
+  $('voiceWave').classList.add('live');
 }
 
 function updateProgress(){
@@ -10008,6 +10070,7 @@ function renderQuestion(n){
   state.messages.push({ role: 'assistant', content: text });
   setInputEnabled(true);
   $('chatInput').value = '';
+  updateActionButton();
   $('chatInput').focus();
 }
 
@@ -10040,6 +10103,7 @@ function handleAnswer(answerText){
       state.messages.push({ role: 'assistant', content: message || 'Можешь рассказать чуть подробнее?' });
       setInputEnabled(true);
       $('chatInput').value = '';
+      updateActionButton();
       $('chatInput').focus();
     } else {
       if (message){
@@ -10071,38 +10135,41 @@ function finishDialogue(){
   });
 }
 
+function scoreTag(score){
+  if (score >= 8) return 'Хороший баланс';
+  if (score >= 5) return 'Есть, что улучшить';
+  return 'Стоит пересмотреть режим';
+}
+
 function renderResult(data){
   var score = Math.max(1, Math.min(10, Math.round(Number(data.balance_score) || 5)));
 
   $('verdictText').textContent = data.summary || '';
+  $('scoreTag').textContent = scoreTag(score);
 
-  var circumference = 490;
-  var offset = circumference * (1 - score / 10);
-  var arc = $('gaugeArc');
-  arc.style.strokeDashoffset = String(circumference);
+  $('scoreFill').style.width = '0%';
   $('gaugeNum').textContent = '0';
   requestAnimationFrame(function(){
-    arc.style.transition = 'stroke-dashoffset 1s cubic-bezier(.22,.9,.3,1)';
-    arc.style.strokeDashoffset = String(offset);
+    $('scoreFill').style.width = (score * 10) + '%';
   });
   animateNumber($('gaugeNum'), 0, score, 1000);
 
   var cardsHtml = '';
   var blocks = Array.isArray(data.blocks) ? data.blocks : [];
   blocks.forEach(function(b){
-    var meta = STATUS_META[b.status] || STATUS_META.warning;
-    cardsHtml += '<div class="result-card ' + meta.cls + '">' +
-      '<div class="result-card-icon">' + meta.icon + '</div>' +
-      '<div><div class="result-card-title">' + escapeHtml(b.title || '') + '</div>' +
-      '<div class="result-card-text">' + escapeHtml(b.text || '') + '</div></div>' +
+    var status = ICONS[b.status] ? b.status : 'warning';
+    cardsHtml += '<div class="result-card ' + status + '">' +
+      '<div class="result-card-head"><div class="result-card-icon">' + ICONS[status] + '</div>' +
+      '<div class="result-card-title">' + escapeHtml(b.title || '') + '</div></div>' +
+      '<div class="result-card-text">' + escapeHtml(b.text || '') + '</div>' +
       '</div>';
   });
   $('resultCards').innerHTML = cardsHtml;
 
   var stepsHtml = '';
   var steps = Array.isArray(data.next_steps) ? data.next_steps : [];
-  steps.forEach(function(step, i){
-    stepsHtml += '<div class="step-row"><div class="step-num">' + (i + 1) + '</div><div>' + escapeHtml(step) + '</div></div>';
+  steps.forEach(function(step){
+    stepsHtml += '<div class="step-row">' + STEP_ICON + '<div>' + escapeHtml(step) + '</div></div>';
   });
   $('nextSteps').innerHTML = stepsHtml;
 }
@@ -10112,9 +10179,67 @@ function getRecognition(){
   if (!SR) return null;
   var rec = new SR();
   rec.lang = 'ru-RU';
-  rec.interimResults = false;
+  rec.continuous = true;
+  rec.interimResults = true;
   rec.maxAlternatives = 1;
   return rec;
+}
+
+function showVoiceFallback(text){
+  $('voiceFallback').textContent = text;
+  $('voiceFallback').classList.add('show');
+}
+
+function startRecording(){
+  var rec = getRecognition();
+  if (!rec){
+    showVoiceFallback('Голосовой ввод не поддерживается этим браузером — попробуй написать текстом.');
+    return;
+  }
+
+  $('voiceFallback').classList.remove('show');
+  state.recognition = rec;
+  state.recording = true;
+  state.finalTranscript = '';
+  switchToVoiceShell();
+  $('voiceLiveStatus').textContent = 'Слушаю…';
+  updateActionButton();
+
+  rec.onresult = function(e){
+    for (var i = e.resultIndex; i < e.results.length; i++){
+      if (e.results[i].isFinal) state.finalTranscript += e.results[i][0].transcript;
+    }
+  };
+
+  rec.onerror = function(evt){
+    if (evt && evt.error === 'no-speech') return; // не мешаем ждать дальше, пока не нажали стоп
+    showVoiceFallback('Не расслышала — тишина или шум. Попробуй ещё раз или напиши текстом.');
+  };
+
+  rec.onend = function(){
+    state.recording = false;
+    switchToTextShell();
+    updateActionButton();
+    var text = state.finalTranscript.trim();
+    if (text){
+      handleAnswer(text);
+    } else if (!document.getElementById('voiceFallback').classList.contains('show')) {
+      showVoiceFallback('Не удалось распознать голос — попробуй написать текстом.');
+    }
+  };
+
+  try {
+    rec.start();
+  } catch (err){
+    state.recording = false;
+    switchToTextShell();
+    updateActionButton();
+    showVoiceFallback('Не удалось запустить запись — попробуй написать текстом.');
+  }
+}
+
+function stopRecording(){
+  if (state.recognition) state.recognition.stop();
 }
 
 var Quiz3 = {
@@ -10131,78 +10256,17 @@ var Quiz3 = {
     renderQuestion(2);
   },
 
-  switchTab: function(tab){
-    var isText = tab === 'text';
-    $('tabText').classList.toggle('active', isText);
-    $('tabVoice').classList.toggle('active', !isText);
-    $('panelText').classList.toggle('active', isText);
-    $('panelVoice').classList.toggle('active', !isText);
-    if (!isText) {
-      $('voiceFallback').classList.remove('show');
-      $('voiceStatus').textContent = 'Нажми и говори';
-    }
-  },
-
-  sendText: function(){
-    var val = $('chatInput').value.trim();
-    if (!val) return;
-    handleAnswer(val);
-  },
-
-  toggleVoice: function(){
+  handleAction: function(){
     if (state.recording){
-      if (state.recognition) state.recognition.stop();
+      stopRecording();
       return;
     }
-    var rec = getRecognition();
-    if (!rec){
-      $('voiceFallback').textContent = 'Голосовой ввод не поддерживается этим браузером — попробуй написать текстом.';
-      $('voiceFallback').classList.add('show');
-      Quiz3.switchTab('text');
+    var val = $('chatInput').value.trim();
+    if (val){
+      handleAnswer(val);
       return;
     }
-
-    state.recognition = rec;
-    state.recording = true;
-    $('micBtn').classList.add('recording');
-    $('waveform').classList.add('live');
-    $('voiceStatus').textContent = 'Слушаю…';
-    $('voiceFallback').classList.remove('show');
-
-    rec.onresult = function(e){
-      var text = e.results && e.results[0] && e.results[0][0] ? e.results[0][0].transcript : '';
-      text = (text || '').trim();
-      if (text){
-        $('voiceStatus').textContent = 'Распознано: «' + text + '»';
-        handleAnswer(text);
-      } else {
-        $('voiceFallback').textContent = 'Не удалось распознать голос — попробуй написать текстом.';
-        $('voiceFallback').classList.add('show');
-      }
-    };
-
-    rec.onerror = function(){
-      $('voiceFallback').textContent = 'Не расслышала — тишина или шум. Попробуй ещё раз или напиши текстом.';
-      $('voiceFallback').classList.add('show');
-    };
-
-    rec.onend = function(){
-      state.recording = false;
-      $('micBtn').classList.remove('recording');
-      $('waveform').classList.remove('live');
-      if ($('voiceStatus').textContent === 'Слушаю…') $('voiceStatus').textContent = 'Нажми и говори';
-    };
-
-    try {
-      rec.start();
-    } catch (err){
-      state.recording = false;
-      $('micBtn').classList.remove('recording');
-      $('waveform').classList.remove('live');
-      $('voiceFallback').textContent = 'Не удалось запустить запись — попробуй написать текстом.';
-      $('voiceFallback').classList.add('show');
-      Quiz3.switchTab('text');
-    }
+    startRecording();
   },
 
   submitForm: function(){
@@ -10238,29 +10302,35 @@ var Quiz3 = {
   },
 
   restart: function(){
+    if (state.recognition && state.recording) { try { state.recognition.stop(); } catch(e){} }
     state.goal = null;
     state.currentQ = 2;
     state.messages = [];
     state.followupUsed = false;
     state.resultPromise = null;
+    state.recording = false;
+    state.finalTranscript = '';
     $('chatScroll').innerHTML = '';
     $('chatInput').value = '';
     $('inpName').value = '';
     $('inpContact').value = '';
     setInvalid('fieldName', false);
     setInvalid('fieldContact', false);
-    Quiz3.switchTab('text');
+    switchToTextShell();
+    $('voiceFallback').classList.remove('show');
     showScreen('screen-cover');
   }
 };
 
+$('chatInput').addEventListener('input', updateActionButton);
 $('chatInput').addEventListener('keydown', function(e){
   if (e.key === 'Enter' && !e.shiftKey){
     e.preventDefault();
-    Quiz3.sendText();
+    if (!state.recording && $('chatInput').value.trim()) handleAnswer($('chatInput').value.trim());
   }
 });
 
+updateActionButton();
 window.Quiz3 = Quiz3;
 })();
 </script>
