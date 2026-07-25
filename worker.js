@@ -8725,6 +8725,7 @@ function getQuiz2HTML() {
     --card:#FFFFFF;
     --text:#1F2937;
     --muted:#6B7280;
+    --border:#E9E4F7;
     --ok:#16A34A;
     --warn:#D97706;
     --bad:#DC2626;
@@ -8742,6 +8743,7 @@ function getQuiz2HTML() {
     align-items:flex-start;
     justify-content:center;
     padding:16px;
+    -webkit-font-smoothing:antialiased;
   }
   .app{
     width:100%;
@@ -8765,6 +8767,9 @@ function getQuiz2HTML() {
   .screen.active{display:flex;}
   @keyframes fadeIn{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
 
+  .icon{ display:inline-flex; flex:none; }
+  .icon svg{ display:block; }
+
   .brand{
     font-size:13px;
     font-weight:700;
@@ -8781,14 +8786,15 @@ function getQuiz2HTML() {
     border-radius:20px;
     background:var(--grad);
     display:flex; align-items:center; justify-content:center;
-    font-size:32px;
+    box-shadow:0 10px 24px rgba(124,58,237,.25);
   }
-  .cover-title{ font-size:25px; font-weight:800; line-height:1.25; margin-bottom:12px; }
-  .cover-sub{ font-size:15px; color:var(--muted); line-height:1.5; margin-bottom:26px; }
-  .cover-points{ text-align:left; margin-bottom:28px; display:flex; flex-direction:column; gap:10px; }
-  .cover-point{ display:flex; align-items:flex-start; gap:10px; font-size:14px; color:var(--text); }
-  .cover-point .dot{ flex:none; width:22px; height:22px; border-radius:50%; background:rgba(124,58,237,.12); color:var(--violet); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; }
-  .cover-author{ font-size:12.5px; color:var(--muted); margin-top:16px; }
+  .cover-title{ font-size:26px; font-weight:800; line-height:1.3; margin-bottom:12px; letter-spacing:-.01em; }
+  .cover-sub{ font-size:15px; color:var(--muted); line-height:1.55; margin-bottom:26px; }
+  .cover-points{ text-align:left; margin-bottom:26px; display:flex; flex-direction:column; gap:12px; }
+  .cover-point{ display:flex; align-items:center; gap:12px; font-size:14px; color:var(--text); line-height:1.4; }
+  .cover-point .dot{ flex:none; width:30px; height:30px; border-radius:10px; background:rgba(124,58,237,.10); color:var(--violet); display:flex; align-items:center; justify-content:center; }
+  .cover-author{ font-size:12.5px; color:var(--muted); margin-top:18px; display:flex; align-items:center; justify-content:center; gap:8px; }
+  .cover-author-badge{ width:26px; height:26px; border-radius:50%; background:var(--grad); flex:none; }
 
   .btn{
     border:none; cursor:pointer;
@@ -8798,31 +8804,42 @@ function getQuiz2HTML() {
     font-family:inherit;
     transition:transform .15s ease, box-shadow .15s ease, opacity .15s ease;
     -webkit-tap-highlight-color: transparent;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    text-decoration:none;
   }
   .btn:active{ transform:scale(0.97); }
   .btn-primary{ background:var(--grad); color:#fff; box-shadow:0 8px 20px rgba(124,58,237,.28); width:100%; }
   .btn-primary:hover{ box-shadow:0 10px 26px rgba(124,58,237,.36); }
-  .btn-ghost{ background:transparent; color:var(--muted); font-weight:600; font-size:14px; padding:10px; }
-  .btn:disabled{ opacity:.5; cursor:not-allowed; }
+  .btn-ghost{ background:transparent; color:var(--muted); font-weight:600; font-size:14px; padding:10px; width:auto; }
+  .btn:disabled{ opacity:.45; cursor:not-allowed; }
 
-  /* ---- Form ---- */
-  .form-scroll{ overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch; }
+  /* ---- Progress ---- */
+  .progress-wrap{ display:flex; align-items:center; gap:10px; margin-bottom:22px; }
+  .progress-track{ flex:1; height:6px; border-radius:6px; background:#EDE9FE; overflow:hidden; }
+  .progress-fill{ height:100%; border-radius:6px; background:var(--grad); width:0%; transition:width .4s ease; }
+  .progress-label{ font-size:12px; font-weight:700; color:var(--muted); flex:none; font-variant-numeric:tabular-nums; }
+
+  /* ---- Step (form question) ---- */
+  .step-scroll{ overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch; }
+  .q-text{ font-size:20px; font-weight:800; line-height:1.35; margin-bottom:8px; letter-spacing:-.01em; }
+  .q-hint{ font-size:13px; color:var(--muted); line-height:1.5; margin-bottom:18px; }
   .field{ margin-bottom:14px; }
   .field label{ display:block; font-size:12.5px; font-weight:700; color:var(--muted); margin-bottom:6px; }
   .field input, .field textarea{
     width:100%; padding:14px 16px; border-radius:14px;
-    border:1.5px solid #E9E4F7; background:#FBFAFE;
+    border:1.5px solid var(--border); background:#FBFAFE;
     font-size:15px; font-family:inherit; color:var(--text);
     transition:border-color .15s ease;
     resize:vertical;
   }
-  .field textarea{ min-height:96px; line-height:1.4; }
+  .field textarea{ min-height:88px; line-height:1.4; }
   .field input:focus, .field textarea:focus{ outline:none; border-color:var(--violet); }
   .field-hint{ font-size:11.5px; color:var(--muted); margin-top:5px; }
   .field-error{ font-size:12px; color:var(--bad); margin-top:5px; display:none; }
   .field.invalid input, .field.invalid textarea{ border-color:var(--bad); }
   .field.invalid .field-error{ display:block; }
-  .form-note{ font-size:11.5px; color:var(--muted); text-align:center; margin-top:14px; line-height:1.5; }
+  .q-footer{ display:flex; justify-content:space-between; align-items:center; margin-top:18px; min-height:38px; gap:10px; }
+  .q-footer .btn-primary{ flex:1; }
 
   /* ---- Analyzing ---- */
   #screen-analyzing{ justify-content:center; align-items:center; text-align:center; }
@@ -8836,17 +8853,22 @@ function getQuiz2HTML() {
   .analyze-line{ display:flex; align-items:center; gap:10px; font-size:14.5px; color:var(--muted); opacity:0; transform:translateX(-6px); transition:opacity .35s ease, transform .35s ease, color .2s ease; }
   .analyze-line.show{ opacity:1; transform:translateX(0); }
   .analyze-line.done{ color:var(--text); }
-  .analyze-check{ flex:none; width:20px; height:20px; border-radius:50%; background:#EDE9FE; color:var(--violet); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; opacity:0; transform:scale(.5); transition:opacity .25s ease, transform .25s ease, background .25s ease, color .25s ease; }
+  .analyze-check{ flex:none; width:20px; height:20px; border-radius:50%; background:#EDE9FE; color:var(--violet); display:flex; align-items:center; justify-content:center; opacity:0; transform:scale(.5); transition:opacity .25s ease, transform .25s ease, background .25s ease, color .25s ease; }
   .analyze-line.done .analyze-check{ opacity:1; transform:scale(1); background:var(--grad); color:#fff; }
+
+  /* ---- Contact form (gate before result) ---- */
+  .form-title{ font-size:21px; font-weight:800; margin-bottom:8px; letter-spacing:-.01em; }
+  .form-note{ font-size:11.5px; color:var(--muted); text-align:center; margin-top:14px; line-height:1.5; }
+  .form-actions{ display:flex; flex-direction:column; gap:8px; margin-top:4px; }
 
   /* ---- Result ---- */
   #screen-result{ padding-top:22px; }
   .result-scroll{ overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch; padding-bottom:6px; }
-  .result-title{ font-size:20px; font-weight:800; text-align:center; margin-bottom:2px; }
-  .result-tier{ text-align:center; font-size:13px; font-weight:700; color:var(--violet); text-transform:uppercase; letter-spacing:.03em; margin-bottom:18px; }
+  .result-title{ font-size:20px; font-weight:800; text-align:center; margin-bottom:2px; letter-spacing:-.01em; }
+  .result-tier{ text-align:center; font-size:13px; font-weight:700; color:var(--violet); text-transform:uppercase; letter-spacing:.04em; margin-bottom:18px; }
 
   .gauge-wrap{ display:flex; justify-content:center; margin-bottom:20px; position:relative; }
-  .gauge-num{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:34px; font-weight:800; }
+  .gauge-num{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:34px; font-weight:800; font-variant-numeric:tabular-nums; }
   .gauge-num span{ font-size:16px; font-weight:700; color:var(--muted); }
 
   .verdict-block{ background:#FBFAFE; border:1px solid #EFEAFB; border-radius:18px; padding:16px 18px; margin-bottom:18px; font-size:14.5px; line-height:1.55; color:var(--text); }
@@ -8855,32 +8877,23 @@ function getQuiz2HTML() {
   .result-card.good{ background:rgba(22,163,74,.05); border-color:rgba(22,163,74,.22); }
   .result-card.warning{ background:rgba(217,119,6,.05); border-color:rgba(217,119,6,.22); }
   .result-card.bad{ background:rgba(220,38,38,.05); border-color:rgba(220,38,38,.22); }
-  .result-card-icon{ flex:none; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; }
-  .result-card.good .result-card-icon{ background:rgba(22,163,74,.15); }
-  .result-card.warning .result-card-icon{ background:rgba(217,119,6,.15); }
-  .result-card.bad .result-card-icon{ background:rgba(220,38,38,.15); }
+  .result-card-icon{ flex:none; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+  .result-card.good .result-card-icon{ background:rgba(22,163,74,.15); color:var(--ok); }
+  .result-card.warning .result-card-icon{ background:rgba(217,119,6,.15); color:var(--warn); }
+  .result-card.bad .result-card-icon{ background:rgba(220,38,38,.15); color:var(--bad); }
   .result-card-title{ font-size:14.5px; font-weight:800; margin-bottom:4px; }
   .result-card-text{ font-size:13.5px; line-height:1.5; color:var(--text); }
 
   .steps-block{ background:#FBFAFE; border:1px solid #EFEAFB; border-radius:18px; padding:18px; margin-bottom:18px; }
-  .steps-title{ font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); margin-bottom:12px; }
+  .steps-title{ font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin-bottom:12px; }
   .step-row{ display:flex; gap:10px; align-items:flex-start; font-size:14px; line-height:1.5; margin-bottom:10px; }
   .step-row:last-child{ margin-bottom:0; }
-  .step-num{ flex:none; width:22px; height:22px; border-radius:50%; background:var(--grad); color:#fff; font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center; }
+  .step-num{ flex:none; width:22px; height:22px; border-radius:50%; background:var(--grad); color:#fff; font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center; font-variant-numeric:tabular-nums; }
 
   .cta-block{ text-align:center; margin-top:6px; }
-  .cta-title{ font-size:17px; font-weight:800; margin-bottom:6px; }
+  .cta-title{ font-size:17px; font-weight:800; margin-bottom:6px; letter-spacing:-.01em; }
   .cta-sub{ font-size:13.5px; color:var(--muted); margin-bottom:16px; line-height:1.5; }
-
-  /* ---- Thanks ---- */
-  #screen-thanks{ justify-content:center; align-items:center; text-align:center; }
-  .thanks-badge{ width:76px; height:76px; border-radius:50%; background:var(--grad); display:flex; align-items:center; justify-content:center; font-size:34px; margin-bottom:22px; animation:pop .4s ease; }
-  @keyframes pop{ 0%{ transform:scale(0.4); opacity:0;} 70%{ transform:scale(1.08);} 100%{ transform:scale(1); opacity:1;} }
-  .thanks-title{ font-size:21px; font-weight:800; margin-bottom:10px; }
-  .thanks-sub{ font-size:14.5px; color:var(--muted); line-height:1.55; margin-bottom:26px; }
-
-  .error-note{ font-size:12.5px; color:var(--bad); text-align:center; margin-top:12px; display:none; }
-  .error-note.show{ display:block; }
+  .cta-actions{ display:flex; flex-direction:column; gap:8px; }
 </style>
 </head>
 <body>
@@ -8889,56 +8902,77 @@ function getQuiz2HTML() {
   <!-- 1. Cover -->
   <div class="screen active" id="screen-cover">
     <div class="brand">Growth Autopilot</div>
-    <div class="cover-badge">🔍</div>
-    <div class="cover-title">Бесплатный разбор твоего лендинга</div>
-    <div class="cover-sub">Оставь ссылку на свою страницу — эксперт по воронкам разберёт, что мешает конвертить, и что делать в первую очередь.</div>
-    <div class="cover-points">
-      <div class="cover-point"><span class="dot">1</span> Реальный анализ вашей страницы, а не общий шаблон</div>
-      <div class="cover-point"><span class="dot">2</span> Оценка по 4 ключевым блокам: оффер, доверие, CTA, воронка</div>
-      <div class="cover-point"><span class="dot">3</span> Конкретные шаги, что улучшить в первую очередь</div>
+    <div class="cover-badge">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg>
     </div>
-    <button class="btn btn-primary" onclick="Quiz2.start()">Получить разбор (~30 сек)</button>
-    <div class="cover-author">Разбор проводит Максим Ильин — эксперт по воронкам и маркетингу</div>
+    <div class="cover-title">Бесплатный разбор твоего лендинга</div>
+    <div class="cover-sub">5 коротких вопросов о сайте — и эксперт по воронкам разберёт, что мешает конвертить, и что делать в первую очередь.</div>
+    <div class="cover-points">
+      <div class="cover-point"><span class="dot"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16M4 19V7l6-4 6 4v12"/><path d="M9 19v-5h4v5"/></svg></span> Реальный анализ вашей страницы, а не общий шаблон</div>
+      <div class="cover-point"><span class="dot"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18M8 4v5"/></svg></span> Оценка по 4 блокам: оффер, доверие, CTA, воронка</div>
+      <div class="cover-point"><span class="dot"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg></span> Конкретные шаги, что улучшить в первую очередь</div>
+    </div>
+    <button class="btn btn-primary" onclick="Quiz2.start()">Начать разбор (~1 минута)</button>
+    <div class="cover-author"><span class="cover-author-badge"></span> Разбор проводит Максим Ильин — эксперт по воронкам и маркетингу</div>
   </div>
 
-  <!-- 2. Form -->
-  <div class="screen" id="screen-form">
-    <div class="brand">Growth Autopilot</div>
-    <div class="cover-title" style="font-size:21px; text-align:left;">Расскажи о своём сайте</div>
-    <div class="cover-sub" style="text-align:left; margin-bottom:20px;">Чем точнее опишешь ситуацию — тем точнее будет разбор.</div>
-    <div class="form-scroll">
-      <div class="field" id="fieldUrl">
-        <label for="inpUrl">Ссылка на лендинг/сайт</label>
-        <input id="inpUrl" type="text" placeholder="https://example.com" autocomplete="url">
-        <div class="field-error">Вставьте ссылку на страницу для разбора</div>
-      </div>
-      <div class="field" id="fieldSituation">
-        <label for="inpSituation">Что за продукт и в чём подозреваете проблему?</label>
-        <textarea id="inpSituation" placeholder="Например: продаю онлайн-курс по продажам, веду трафик из Reels, после захода на сайт почти никто не оставляет заявку..."></textarea>
-        <div class="field-error">Опишите ситуацию хотя бы в паре предложений</div>
-      </div>
-      <div class="field" id="fieldMetrics">
-        <label for="inpMetrics">Цифры конверсии, если знаете (необязательно)</label>
-        <input id="inpMetrics" type="text" placeholder="Например: 500 переходов, 8 заявок за месяц">
-        <div class="field-hint">Если не знаете — просто оставьте пустым, разбор не будет их выдумывать</div>
+  <!-- 2. Step form (5 targeted questions) -->
+  <div class="screen" id="screen-step">
+    <div class="progress-wrap">
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-label" id="progressLabel">1/5</div>
+    </div>
+    <div class="step-scroll">
+      <div class="q-text" id="qText"></div>
+      <div class="q-hint" id="qHint"></div>
+      <div class="field" id="fieldStep">
+        <input id="inpStepInput" type="text" style="display:none;">
+        <textarea id="inpStepTextarea" style="display:none;"></textarea>
+        <div class="field-hint" id="qFieldHint" style="display:none;"></div>
+        <div class="field-error">Заполните поле, чтобы продолжить</div>
       </div>
     </div>
-    <button class="btn btn-primary" id="analyzeBtn" onclick="Quiz2.analyze()">Разобрать лендинг</button>
-    <button class="btn btn-ghost" style="width:100%; margin-top:6px;" onclick="Quiz2.backToCover()">← Назад</button>
-    <div class="error-note" id="analyzeError">Не получилось получить разбор. Попробуйте ещё раз.</div>
+    <div class="q-footer">
+      <button class="btn btn-ghost" id="stepBack" onclick="Quiz2.stepBack()">← Назад</button>
+      <button class="btn btn-primary" onclick="Quiz2.stepNext()">Далее</button>
+    </div>
   </div>
 
   <!-- 3. Analyzing -->
   <div class="screen" id="screen-analyzing">
     <div class="spinner"></div>
     <div class="analyze-lines" id="analyzeLines">
-      <div class="analyze-line" data-i="0"><span class="analyze-check">✓</span><span>Забираем страницу по ссылке</span></div>
-      <div class="analyze-line" data-i="1"><span class="analyze-check">✓</span><span>Изучаем оффер, доверие и призыв к действию</span></div>
-      <div class="analyze-line" data-i="2"><span class="analyze-check">✓</span><span>Формируем разбор от эксперта</span></div>
+      <div class="analyze-line" data-i="0"><span class="analyze-check"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg></span><span>Забираем страницу по ссылке</span></div>
+      <div class="analyze-line" data-i="1"><span class="analyze-check"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg></span><span>Изучаем оффер, доверие и призыв к действию</span></div>
+      <div class="analyze-line" data-i="2"><span class="analyze-check"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg></span><span>Формируем разбор от эксперта</span></div>
     </div>
   </div>
 
-  <!-- 4. Result -->
+  <!-- 4. Contact form (gate before result) -->
+  <div class="screen" id="screen-form">
+    <div class="brand">Growth Autopilot</div>
+    <div class="form-title">Разбор почти готов</div>
+    <div class="cover-sub" style="margin-bottom:22px;">Оставьте имя и контакт — сразу покажем разбор вашего лендинга и оценку.</div>
+
+    <div class="field" id="fieldName">
+      <label for="inpName">Имя</label>
+      <input id="inpName" type="text" placeholder="Как к вам обращаться?" autocomplete="name">
+      <div class="field-error">Введите имя (минимум 2 символа)</div>
+    </div>
+    <div class="field" id="fieldContact">
+      <label for="inpContact">Telegram или email</label>
+      <input id="inpContact" type="text" placeholder="@username или email@mail.com" autocomplete="email">
+      <div class="field-error">Введите корректный @telegram или email</div>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" id="submitBtn" onclick="Quiz2.submitForm()">Показать разбор</button>
+      <button class="btn btn-ghost" onclick="Quiz2.formBack()">← Назад</button>
+    </div>
+    <div class="form-note">Это демо-версия квиза: данные формы никуда не сохраняются и не отправляются на сервер — только имитация в рамках воркшопа.</div>
+  </div>
+
+  <!-- 5. Result -->
   <div class="screen" id="screen-result">
     <div class="result-scroll">
       <div class="result-title">Разбор лендинга готов</div>
@@ -8969,40 +9003,13 @@ function getQuiz2HTML() {
 
       <div class="cta-block">
         <div class="cta-title">Хотите подробную консультацию?</div>
-        <div class="cta-sub">Разберём вашу воронку целиком и составим план роста конверсии — бесплатно.</div>
-        <button class="btn btn-primary" onclick="Quiz2.goForm()">Оставить контакт</button>
+        <div class="cta-sub">Разберём вашу воронку целиком и составим план роста конверсии — бесплатно, в Telegram.</div>
+        <div class="cta-actions">
+          <a class="btn btn-primary" href="https://t.me/oleg_ezhkov" target="_blank" rel="noopener">Получить консультацию в Telegram</a>
+          <button class="btn btn-ghost" onclick="Quiz2.restart()">Разобрать ещё один сайт</button>
+        </div>
       </div>
     </div>
-  </div>
-
-  <!-- 5. Contact form -->
-  <div class="screen" id="screen-contact">
-    <div class="brand">Growth Autopilot</div>
-    <div class="cover-title" style="font-size:21px;">Куда прислать консультацию?</div>
-    <div class="cover-sub" style="margin-bottom:22px;">Оставьте контакт — эксперт свяжется, чтобы разобрать воронку подробнее.</div>
-
-    <div class="field" id="fieldName">
-      <label for="inpName">Имя</label>
-      <input id="inpName" type="text" placeholder="Как к вам обращаться?" autocomplete="name">
-      <div class="field-error">Введите имя (минимум 2 символа)</div>
-    </div>
-    <div class="field" id="fieldContact">
-      <label for="inpContact">Telegram или email</label>
-      <input id="inpContact" type="text" placeholder="@username или email@mail.com" autocomplete="email">
-      <div class="field-error">Введите корректный @telegram или email</div>
-    </div>
-
-    <button class="btn btn-primary" id="submitBtn" onclick="Quiz2.submitForm()">Отправить</button>
-    <button class="btn btn-ghost" style="width:100%; margin-top:6px;" onclick="Quiz2.backToResult()">← Вернуться к результату</button>
-    <div class="form-note">Это демо-версия квиза: данные формы никуда не сохраняются и не отправляются на сервер — только имитация отправки в рамках воркшопа.</div>
-  </div>
-
-  <!-- 6. Thanks -->
-  <div class="screen" id="screen-thanks">
-    <div class="thanks-badge">✓</div>
-    <div class="thanks-title">Отправлено!</div>
-    <div class="thanks-sub" id="thanksSub"></div>
-    <button class="btn btn-primary" onclick="Quiz2.restart()">Разобрать ещё один сайт</button>
   </div>
 
 </div>
@@ -9011,9 +9018,9 @@ function getQuiz2HTML() {
 (function(){
 
 var STATUS_META = {
-  good: { icon: '✅', cls: 'good' },
-  warning: { icon: '⚠️', cls: 'warning' },
-  bad: { icon: '❌', cls: 'bad' }
+  good: { cls: 'good', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg>' },
+  warning: { cls: 'warning', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17.5" r=".6" fill="currentColor" stroke="none"/></svg>' },
+  bad: { cls: 'bad', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>' }
 };
 
 // Локальная копия канонического ответа — второй уровень fallback на случай,
@@ -9034,6 +9041,49 @@ var LOCAL_FALLBACK = {
   ]
 };
 
+var STEPS = [
+  {
+    key: "url",
+    text: "На какой сайт или лендинг посмотреть?",
+    hint: "Вставьте прямую ссылку на страницу, куда ведёте трафик.",
+    type: "input",
+    placeholder: "https://example.com",
+    minLen: 4
+  },
+  {
+    key: "product",
+    text: "Что именно продаёте на этой странице?",
+    hint: "Продукт, услуга, курс — коротко, в двух-трёх словах.",
+    type: "input",
+    placeholder: "Например: онлайн-курс по продажам",
+    minLen: 2
+  },
+  {
+    key: "traffic",
+    text: "Откуда идёт трафик на страницу?",
+    hint: "Реклама, Reels, рассылка, органика — источник влияет на ожидания аудитории.",
+    type: "input",
+    placeholder: "Например: реклама в Reels и Telegram-каналы",
+    minLen: 2
+  },
+  {
+    key: "desired_action",
+    text: "Что должно произойти после того, как человек зашёл на страницу?",
+    hint: "Опишите ожидаемое действие — заявка, покупка, запись на созвон.",
+    type: "textarea",
+    placeholder: "Например: должен оставить заявку на бесплатную консультацию",
+    minLen: 6
+  },
+  {
+    key: "metrics",
+    text: "Знаете цифры конверсии? Если да — укажите",
+    hint: "Необязательно. Если не знаете — оставьте пустым, разбор не будет их выдумывать.",
+    type: "input",
+    placeholder: "Например: 500 переходов, 8 заявок за месяц",
+    minLen: 0
+  }
+];
+
 function $(id){ return document.getElementById(id); }
 
 function showScreen(id){
@@ -9052,29 +9102,78 @@ function validEmailOrTg(v){
   return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(v);
 }
 
-var lastResult = null;
+var state = {
+  step: 0,
+  answers: {},
+  analyzeReady: null,
+  contactDone: false
+};
+
+function renderStep(){
+  var q = STEPS[state.step];
+  $('progressLabel').textContent = (state.step + 1) + '/' + STEPS.length;
+  $('progressFill').style.width = Math.round(((state.step + 1) / STEPS.length) * 100) + '%';
+  $('qText').textContent = q.text;
+  $('qHint').textContent = q.hint;
+
+  var input = $('inpStepInput');
+  var textarea = $('inpStepTextarea');
+  var hintEl = $('qFieldHint');
+  setInvalid('fieldStep', false);
+
+  if (q.type === 'textarea') {
+    input.style.display = 'none';
+    textarea.style.display = 'block';
+    textarea.placeholder = q.placeholder;
+    textarea.value = state.answers[q.key] || '';
+  } else {
+    textarea.style.display = 'none';
+    input.style.display = 'block';
+    input.placeholder = q.placeholder;
+    input.value = state.answers[q.key] || '';
+  }
+  hintEl.style.display = 'none';
+
+  $('stepBack').style.visibility = state.step === 0 ? 'hidden' : 'visible';
+}
+
+function currentStepValue(){
+  var q = STEPS[state.step];
+  return (q.type === 'textarea' ? $('inpStepTextarea').value : $('inpStepInput').value).trim();
+}
 
 var Quiz2 = {
   start: function(){
-    showScreen('screen-form');
+    state.step = 0;
+    renderStep();
+    showScreen('screen-step');
   },
 
-  backToCover: function(){
-    showScreen('screen-cover');
+  stepBack: function(){
+    if (state.step === 0){ showScreen('screen-cover'); return; }
+    state.answers[STEPS[state.step].key] = currentStepValue();
+    state.step -= 1;
+    renderStep();
   },
 
-  analyze: function(){
-    var url = $('inpUrl').value.trim();
-    var situation = $('inpSituation').value.trim();
-    var metrics = $('inpMetrics').value.trim();
+  stepNext: function(){
+    var q = STEPS[state.step];
+    var val = currentStepValue();
+    if (val.length < q.minLen) {
+      setInvalid('fieldStep', true);
+      return;
+    }
+    state.answers[q.key] = val;
 
-    var urlOk = url.length > 3;
-    var situationOk = situation.length > 8;
-    setInvalid('fieldUrl', !urlOk);
-    setInvalid('fieldSituation', !situationOk);
-    if (!urlOk || !situationOk) return;
+    if (state.step < STEPS.length - 1) {
+      state.step += 1;
+      renderStep();
+      return;
+    }
+    Quiz2.runAnalysis();
+  },
 
-    $('analyzeError').classList.remove('show');
+  runAnalysis: function(){
     showScreen('screen-analyzing');
 
     var lines = document.querySelectorAll('.analyze-line');
@@ -9085,12 +9184,14 @@ var Quiz2 = {
       setTimeout(function(){ el.classList.add('done'); }, (delays[i] || 0) + 500);
     });
 
-    var minDelay = new Promise(function(resolve){ setTimeout(resolve, 2300); });
+    var situation = 'Продукт: ' + state.answers.product +
+      '. Источник трафика: ' + state.answers.traffic +
+      '. Ожидаемое действие после захода на страницу: ' + state.answers.desired_action + '.';
 
-    var fetchPromise = fetch('/api/quiz2-analyze', {
+    state.analyzeReady = fetch('/api/quiz2-analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: url, situation: situation, metrics: metrics })
+      body: JSON.stringify({ url: state.answers.url, situation: situation, metrics: state.answers.metrics || '' })
     }).then(function(res){
       if (!res.ok) throw new Error('bad response');
       return res.json();
@@ -9098,18 +9199,16 @@ var Quiz2 = {
       return LOCAL_FALLBACK;
     });
 
-    Promise.all([fetchPromise, minDelay]).then(function(vals){
-      renderResult(vals[0]);
-      showScreen('screen-result');
+    var minDelay = new Promise(function(resolve){ setTimeout(resolve, 2300); });
+    Promise.all([state.analyzeReady, minDelay]).then(function(){
+      showScreen('screen-form');
     });
   },
 
-  goForm: function(){
-    showScreen('screen-contact');
-  },
-
-  backToResult: function(){
-    showScreen('screen-result');
+  formBack: function(){
+    showScreen('screen-step');
+    state.step = STEPS.length - 1;
+    renderStep();
   },
 
   submitForm: function(){
@@ -9122,32 +9221,29 @@ var Quiz2 = {
     if (!nameOk || !contactOk) return;
 
     $('submitBtn').disabled = true;
-    $('submitBtn').textContent = 'Отправляем…';
-    setTimeout(function(){
+    $('submitBtn').textContent = 'Готовим разбор…';
+
+    Promise.resolve(state.analyzeReady).then(function(data){
       $('submitBtn').disabled = false;
-      $('submitBtn').textContent = 'Отправить';
-      $('thanksSub').textContent = 'Спасибо, ' + name + '! Это демо-версия: заявка нигде не сохранена, в реальном проекте здесь придёт уведомление эксперту.';
-      showScreen('screen-thanks');
-    }, 700);
+      $('submitBtn').textContent = 'Показать разбор';
+      renderResult(data || LOCAL_FALLBACK);
+      showScreen('screen-result');
+    });
   },
 
   restart: function(){
-    $('inpUrl').value = '';
-    $('inpSituation').value = '';
-    $('inpMetrics').value = '';
+    state.step = 0;
+    state.answers = {};
+    state.analyzeReady = null;
     $('inpName').value = '';
     $('inpContact').value = '';
-    setInvalid('fieldUrl', false);
-    setInvalid('fieldSituation', false);
     setInvalid('fieldName', false);
     setInvalid('fieldContact', false);
-    lastResult = null;
     showScreen('screen-cover');
   }
 };
 
 function renderResult(data){
-  lastResult = data;
   var score = Math.max(1, Math.min(10, Math.round(Number(data.score) || 5)));
 
   $('verdictText').textContent = data.verdict || '';
