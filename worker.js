@@ -25,6 +25,9 @@ export default {
     if (url.pathname === "/quiz1" || url.pathname === "/worker/quiz1") return serveQuiz1();
     if (url.pathname === "/quiz2" || url.pathname === "/worker/quiz2") return serveQuiz2();
     if (url.pathname === "/api/quiz2-analyze") return apiQuiz2Analyze(request, env);
+    if (url.pathname === "/quiz3" || url.pathname === "/worker/quiz3") return serveQuiz3();
+    if (url.pathname === "/api/quiz3-dialogue") return apiQuiz3Dialogue(request, env);
+    if (url.pathname === "/api/quiz3-result") return apiQuiz3Result(request, env);
     if (url.pathname === "/api/task-progress") return apiTaskProgress(request, env);
     if (url.pathname === "/api/auth-email") return apiAuthEmail(request, env);
     if (url.pathname === "/api/events") return apiEvents(request, env);
@@ -1447,6 +1450,183 @@ async function callClaudeQuiz2Json(env, { system, user }) {
       ) {
         return null;
       }
+      return parsed;
+    } catch (e) {
+      if (attempts >= 3) return null;
+    }
+  }
+  return null;
+}
+
+// ─── QUIZ 3: ДИАЛОГ С НУТРИЦИОЛОГОМ (многоходовой диалог, голос + текст) ───
+function serveQuiz3() {
+  return new Response(getQuiz3HTML(), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+// Фиксированные темы вопросов 2-4 — сам вопрос показывает фронт, сюда идёт
+// только смысловое описание темы, чтобы модель понимала, о чём именно речь.
+const QUIZ3_TOPICS = {
+  2: "текущий рацион в течение дня (что и когда обычно ест человек)",
+  3: "перекусы и режим приёмов пищи (регулярность, хаотичность)",
+  4: "вода и напитки, а также пищевые ограничения или непереносимости"
+};
+
+const QUIZ3_GUARDRAILS = `Правила, которые нельзя нарушать:
+- Никогда не называй конкретные цифры: калории, граммы БЖУ, дозировки нутриентов.
+- Никогда не говори языком диагноза или назначения ("у вас дефицит X", "вам нужно принимать Y") — только мягкие направляющие формулировки ("стоит обратить внимание на...", "попробуйте добавить...").
+- Давай только общие направляющие рекомендации, не конкретные протоколы питания.
+- Если в ответах пользователя есть признаки серьёзных проблем (расстройства пищевого поведения, экстремальные ограничения, тревожные медицинские жалобы) — мягко порекомендуй обратиться к живому специалисту вместо советов по питанию в этом направлении.
+- Ты вымышленный нутрициолог Анна Светлова в демо-продукте, тон тёплый, живой, без канцелярита.`;
+
+function quiz3DialogueSystemPrompt(questionIndex, goal) {
+  const topic = QUIZ3_TOPICS[questionIndex] || "рацион пользователя";
+  return `Ты — Анна Светлова, нутрициолог, ведёшь короткий диалог с пользователем о его питании.
+Цель пользователя: ${goal || "не указана"}.
+Сейчас разговор находится на вопросе про тему: "${topic}".
+Пользователь только что ответил на этот вопрос впервые — уточнение по этой теме ещё НЕ задавалось.
+Твоя задача — решить: нужен ли РОВНО ОДИН уточняющий вопрос, чтобы ответ стал содержательным (например, ответ расплывчатый вроде "ем более-менее нормально", слишком короткий или обходит суть), или ответа уже достаточно, чтобы двигаться дальше.
+Больше одного уточнения по этой теме задавать нельзя — если сомневаешься, лучше двигаться дальше.
+${QUIZ3_GUARDRAILS}
+Ответь СТРОГО в виде JSON без пояснений, markdown и \`\`\`json оболочки, ровно по схеме:
+{"action":"followup","message":"короткий тёплый уточняющий вопрос по теме"}
+или
+{"action":"advance","message":"короткая тёплая реакция на ответ пользователя в 1 фразу (без нового вопроса)"}
+"action" — строго "followup" или "advance". "message" — не длиннее 2 предложений.`;
+}
+
+const QUIZ3_DIALOGUE_FALLBACK = {
+  action: "advance",
+  message: "Поняла, спасибо! Это уже даёт хорошую картину.",
+  _fallback: true
+};
+
+async function apiQuiz3Dialogue(request, env) {
+  if (request.method !== "POST") return jsonResp({ error: "Method not allowed" }, 405);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResp({ error: "Некорректный JSON" }, 400);
+  }
+
+  const questionIndex = Number(body.questionIndex);
+  const goal = String(body.goal || "").trim();
+  const history = Array.isArray(body.history) ? body.history : [];
+
+  if (![2, 3, 4].includes(questionIndex) || !history.length) {
+    return jsonResp({ error: "Некорректные данные диалога" }, 400);
+  }
+
+  const system = quiz3DialogueSystemPrompt(questionIndex, goal);
+  const result = await callClaudeQuiz3Json(env, {
+    system,
+    messages: history,
+    validate: (p) => p && (p.action === "followup" || p.action === "advance") && typeof p.message === "string"
+  });
+
+  return jsonResp(result || QUIZ3_DIALOGUE_FALLBACK);
+}
+
+const QUIZ3_RESULT_SYSTEM_PROMPT = `Ты — Анна Светлова, нутрициолог. Пользователь только что прошёл с тобой короткий диалог о своём питании (цель + рацион + перекусы/режим + вода/ограничения, с уточнениями там, где было нужно).
+На основе всей истории диалога сформируй персональный разбор рациона.
+${QUIZ3_GUARDRAILS}
+Ответь СТРОГО в виде JSON без пояснений, markdown и \`\`\`json оболочки, ровно по схеме:
+{"summary":"короткое резюме текущего рациона в 1-2 предложения","balance_score":6,"blocks":[{"title":"Режим питания","status":"warning","text":"..."},{"title":"Разнообразие рациона","status":"good","text":"..."},{"title":"Вода и напитки","status":"bad","text":"..."},{"title":"Что учесть по цели","status":"warning","text":"..."}],"next_steps":["шаг 1","шаг 2","шаг 3"]}
+Правила: "balance_score" — целое число от 1 до 10. "status" у каждого блока — строго одно из "good"/"warning"/"bad". Блоков всегда ровно 4, именно с этими 4 заголовками и в этом порядке: "Режим питания", "Разнообразие рациона", "Вода и напитки", "Что учесть по цели" (последний блок — с учётом цели пользователя, без цифр и диагнозов). "next_steps" — 3 коротких направляющих пункта без конкретных цифр и протоколов.`;
+
+const QUIZ3_FALLBACK_RESULT = {
+  summary: "Питание в целом на плаву, но есть нерегулярность в режиме и мало внимания к воде — небольшие корректировки дадут заметный эффект.",
+  balance_score: 6,
+  blocks: [
+    { title: "Режим питания", status: "warning", text: "Приёмы пищи скорее хаотичные — время от времени случаются большие паузы, из-за которых потом сложнее контролировать голод." },
+    { title: "Разнообразие рациона", status: "good", text: "В рационе присутствуют разные группы продуктов, это хорошая база — важно сохранить это разнообразие и дальше." },
+    { title: "Вода и напитки", status: "bad", text: "Похоже, что чистой воды в течение дня пьётся мало, а её роль в самочувствии и аппетите часто недооценивают." },
+    { title: "Что учесть по цели", status: "warning", text: "Для выбранной цели стоит в первую очередь выровнять регулярность приёмов пищи — это даст больше эффекта, чем резкие ограничения." }
+  ],
+  next_steps: [
+    "Постараться есть примерно в одно и то же время, без больших пропусков",
+    "Держать под рукой воду и постепенно увеличивать её долю среди напитков за день",
+    "Добавить в рацион больше клетчатки — овощи, зелень, цельные продукты"
+  ],
+  _fallback: true
+};
+
+async function apiQuiz3Result(request, env) {
+  if (request.method !== "POST") return jsonResp({ error: "Method not allowed" }, 405);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResp({ error: "Некорректный JSON" }, 400);
+  }
+
+  const history = Array.isArray(body.history) ? body.history : [];
+  if (!history.length) return jsonResp({ error: "Нет истории диалога" }, 400);
+
+  const result = await callClaudeQuiz3Json(env, {
+    system: QUIZ3_RESULT_SYSTEM_PROMPT,
+    messages: history,
+    validate: (p) =>
+      p &&
+      typeof p.summary === "string" &&
+      typeof p.balance_score === "number" &&
+      Array.isArray(p.blocks) &&
+      Array.isArray(p.next_steps)
+  });
+
+  return jsonResp(result || QUIZ3_FALLBACK_RESULT);
+}
+
+// Общий вызов Claude для квиза 3: принимает уже готовый массив messages
+// (полная история диалога, как того требует архитектура — Worker не хранит
+// состояние сам, а получает весь контекст на каждый шаг).
+async function callClaudeQuiz3Json(env, { system, messages, validate }) {
+  if (!env.CLAUDE_API) return null;
+
+  const cleanMessages = messages
+    .filter(m => m && typeof m.content === "string" && m.content.trim())
+    .map(m => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.content.trim() }));
+
+  if (!cleanMessages.length) return null;
+
+  const reqBody = {
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 1200,
+    system,
+    messages: cleanMessages
+  };
+
+  let attempts = 0;
+  while (attempts < 3) {
+    attempts++;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 14000);
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": env.CLAUDE_API,
+          "anthropic-version": "2023-06-01"
+        },
+        body: JSON.stringify(reqBody)
+      });
+      clearTimeout(timeout);
+
+      if (res.status === 429 && attempts < 3) {
+        await new Promise(r => setTimeout(r, 1000 * attempts));
+        continue;
+      }
+      if (!res.ok) throw new Error(`Claude ${res.status}`);
+
+      const data = await res.json();
+      const text = data.content?.filter(b => b.type === "text")?.map(b => b.text)?.join("") ?? "";
+      const parsed = JSON.parse(text.replace(/```json\n?|\n?```/g, "").trim());
+
+      if (!validate(parsed)) return null;
       return parsed;
     } catch (e) {
       if (attempts >= 3) return null;
@@ -9203,6 +9383,773 @@ function escapeHtml(str){
 }
 
 window.Quiz2 = Quiz2;
+})();
+</script>
+</body>
+</html>`;
+}
+
+// ─── QUIZ 3 HTML: ДИАЛОГ С НУТРИЦИОЛОГОМ ──────────────────────────
+function getQuiz3HTML() {
+  return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Диалог с нутрициологом — Growth Autopilot</title>
+<style>
+  :root{
+    --violet:#7C3AED;
+    --magenta:#D946EF;
+    --blue:#3B82F6;
+    --bg:#F6F4FC;
+    --card:#FFFFFF;
+    --text:#1F2937;
+    --muted:#6B7280;
+    --ok:#16A34A;
+    --warn:#D97706;
+    --bad:#DC2626;
+    --grad: linear-gradient(135deg, var(--violet), var(--magenta));
+    --radius: 22px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height:100vh;
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+    padding:16px;
+  }
+  .app{
+    width:100%;
+    max-width:460px;
+    min-height:640px;
+    background:var(--card);
+    border-radius: var(--radius);
+    overflow:hidden;
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    box-shadow: 0 8px 30px rgba(124,58,237,0.08);
+  }
+  .screen{
+    display:none;
+    flex-direction:column;
+    flex:1;
+    padding:28px 24px 24px;
+    animation: fadeIn .35s ease;
+  }
+  .screen.active{display:flex;}
+  @keyframes fadeIn{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+
+  .brand{
+    font-size:13px;
+    font-weight:700;
+    letter-spacing:.04em;
+    color:var(--violet);
+    text-transform:uppercase;
+    margin-bottom:8px;
+  }
+
+  /* ---- Cover ---- */
+  #screen-cover{ justify-content:center; text-align:center; }
+  .cover-badge{
+    width:72px; height:72px; margin:0 auto 20px;
+    border-radius:20px;
+    background:var(--grad);
+    display:flex; align-items:center; justify-content:center;
+    font-size:32px;
+  }
+  .cover-title{ font-size:25px; font-weight:800; line-height:1.25; margin-bottom:12px; }
+  .cover-sub{ font-size:15px; color:var(--muted); line-height:1.5; margin-bottom:26px; }
+  .cover-points{ text-align:left; margin-bottom:28px; display:flex; flex-direction:column; gap:10px; }
+  .cover-point{ display:flex; align-items:flex-start; gap:10px; font-size:14px; color:var(--text); }
+  .cover-point .dot{ flex:none; width:22px; height:22px; border-radius:50%; background:rgba(124,58,237,.12); color:var(--violet); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; }
+  .cover-author{ font-size:12.5px; color:var(--muted); margin-top:16px; }
+
+  .btn{
+    border:none; cursor:pointer;
+    padding:16px 20px;
+    border-radius:16px;
+    font-size:16px; font-weight:700;
+    font-family:inherit;
+    transition:transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn:active{ transform:scale(0.97); }
+  .btn-primary{ background:var(--grad); color:#fff; box-shadow:0 8px 20px rgba(124,58,237,.28); width:100%; }
+  .btn-primary:hover{ box-shadow:0 10px 26px rgba(124,58,237,.36); }
+  .btn-ghost{ background:transparent; color:var(--muted); font-weight:600; font-size:14px; padding:10px; }
+  .btn:disabled{ opacity:.5; cursor:not-allowed; }
+
+  /* ---- Q1 goal buttons ---- */
+  .goal-list{ display:flex; flex-direction:column; gap:12px; margin-top:6px; }
+  .goal-btn{
+    text-align:left; background:#FBFAFE; border:1.5px solid #EFEAFB; border-radius:16px;
+    padding:16px 18px; font-size:15px; font-weight:700; color:var(--text); cursor:pointer;
+    transition:border-color .15s ease, background .15s ease, transform .15s ease;
+  }
+  .goal-btn:active{ transform:scale(0.98); }
+  .goal-btn:hover{ border-color:var(--violet); background:rgba(124,58,237,.05); }
+
+  /* ---- Chat ---- */
+  #screen-chat{ padding-bottom:16px; }
+  .chat-scroll{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; display:flex; flex-direction:column; gap:12px; padding:4px 2px 10px; }
+  .bubble{ max-width:84%; padding:12px 15px; border-radius:16px; font-size:14.5px; line-height:1.5; animation:fadeIn .3s ease; }
+  .bubble-ai{ align-self:flex-start; background:#FBFAFE; border:1px solid #EFEAFB; border-bottom-left-radius:4px; }
+  .bubble-user{ align-self:flex-end; background:var(--grad); color:#fff; border-bottom-right-radius:4px; }
+  .bubble-note{ align-self:flex-start; font-size:12px; color:var(--bad); background:rgba(220,38,38,.06); border:1px solid rgba(220,38,38,.18); border-bottom-left-radius:4px; }
+  .typing{ align-self:flex-start; display:flex; gap:4px; padding:14px 16px; background:#FBFAFE; border:1px solid #EFEAFB; border-radius:16px; border-bottom-left-radius:4px; }
+  .typing span{ width:6px; height:6px; border-radius:50%; background:var(--violet); opacity:.4; animation:typingBounce 1s infinite ease-in-out; }
+  .typing span:nth-child(2){ animation-delay:.15s; }
+  .typing span:nth-child(3){ animation-delay:.3s; }
+  @keyframes typingBounce{ 0%,60%,100%{ transform:translateY(0); opacity:.4; } 30%{ transform:translateY(-4px); opacity:1; } }
+
+  .qprogress{ display:flex; gap:6px; margin-bottom:14px; }
+  .qprogress-dot{ flex:1; height:4px; border-radius:2px; background:#EDE9FE; }
+  .qprogress-dot.done{ background:var(--grad); }
+
+  .input-tabs{ display:flex; gap:8px; margin-top:14px; margin-bottom:10px; }
+  .input-tab{ flex:1; text-align:center; padding:9px; border-radius:12px; font-size:13px; font-weight:700; background:#FBFAFE; border:1.5px solid #EFEAFB; color:var(--muted); cursor:pointer; }
+  .input-tab.active{ background:rgba(124,58,237,.08); border-color:var(--violet); color:var(--violet); }
+
+  .input-panel{ display:none; }
+  .input-panel.active{ display:block; }
+  .text-row{ display:flex; gap:8px; align-items:flex-end; }
+  .text-row textarea{
+    flex:1; padding:12px 14px; border-radius:14px; border:1.5px solid #E9E4F7; background:#FBFAFE;
+    font-size:14.5px; font-family:inherit; color:var(--text); resize:none; min-height:46px; max-height:120px;
+  }
+  .text-row textarea:focus{ outline:none; border-color:var(--violet); }
+  .send-btn{ flex:none; width:46px; height:46px; border-radius:14px; background:var(--grad); color:#fff; border:none; font-size:18px; cursor:pointer; }
+  .send-btn:disabled{ opacity:.5; }
+
+  .voice-panel{ text-align:center; padding:8px 0 2px; }
+  .mic-btn{
+    width:72px; height:72px; border-radius:50%; border:none; cursor:pointer;
+    background:var(--grad); color:#fff; font-size:28px; margin:0 auto 12px;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 8px 20px rgba(124,58,237,.28);
+    transition:transform .15s ease;
+    position:relative;
+  }
+  .mic-btn.recording{ animation:micPulse 1.2s infinite; }
+  @keyframes micPulse{ 0%{ box-shadow:0 0 0 0 rgba(217,70,239,.45);} 70%{ box-shadow:0 0 0 18px rgba(217,70,239,0);} 100%{ box-shadow:0 0 0 0 rgba(217,70,239,0);} }
+  .waveform{ display:flex; align-items:center; justify-content:center; gap:3px; height:28px; margin-bottom:10px; }
+  .waveform span{ width:3px; border-radius:2px; background:var(--violet); height:6px; opacity:.35; }
+  .waveform.live span{ animation:wave 0.9s infinite ease-in-out; opacity:1; }
+  .waveform span:nth-child(1){ animation-delay:0s; }
+  .waveform span:nth-child(2){ animation-delay:.1s; }
+  .waveform span:nth-child(3){ animation-delay:.2s; }
+  .waveform span:nth-child(4){ animation-delay:.3s; }
+  .waveform span:nth-child(5){ animation-delay:.4s; }
+  .waveform span:nth-child(6){ animation-delay:.3s; }
+  .waveform span:nth-child(7){ animation-delay:.2s; }
+  .waveform span:nth-child(8){ animation-delay:.1s; }
+  .waveform span:nth-child(9){ animation-delay:0s; }
+  @keyframes wave{ 0%,100%{ height:6px; } 50%{ height:26px; } }
+  .voice-status{ font-size:13px; color:var(--muted); min-height:18px; }
+  .voice-fallback{ font-size:12px; color:var(--bad); margin-top:8px; display:none; }
+  .voice-fallback.show{ display:block; }
+
+  /* ---- Analyzing ---- */
+  #screen-analyzing{ justify-content:center; align-items:center; text-align:center; }
+  .spinner{
+    width:56px; height:56px; border-radius:50%;
+    border:4px solid #EDE9FE; border-top-color:var(--violet);
+    animation:spin 1s linear infinite; margin-bottom:26px;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .analyze-lines{ display:flex; flex-direction:column; gap:14px; align-items:flex-start; text-align:left; }
+  .analyze-line{ display:flex; align-items:center; gap:10px; font-size:14.5px; color:var(--muted); opacity:0; transform:translateX(-6px); transition:opacity .35s ease, transform .35s ease, color .2s ease; }
+  .analyze-line.show{ opacity:1; transform:translateX(0); }
+  .analyze-line.done{ color:var(--text); }
+  .analyze-check{ flex:none; width:20px; height:20px; border-radius:50%; background:#EDE9FE; color:var(--violet); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; opacity:0; transform:scale(.5); transition:opacity .25s ease, transform .25s ease, background .25s ease, color .25s ease; }
+  .analyze-line.done .analyze-check{ opacity:1; transform:scale(1); background:var(--grad); color:#fff; }
+
+  /* ---- Form (contact, hard gate) ---- */
+  .form-scroll{ overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch; }
+  .field{ margin-bottom:14px; }
+  .field label{ display:block; font-size:12.5px; font-weight:700; color:var(--muted); margin-bottom:6px; }
+  .field input, .field textarea{
+    width:100%; padding:14px 16px; border-radius:14px;
+    border:1.5px solid #E9E4F7; background:#FBFAFE;
+    font-size:15px; font-family:inherit; color:var(--text);
+    transition:border-color .15s ease;
+    resize:vertical;
+  }
+  .field input:focus, .field textarea:focus{ outline:none; border-color:var(--violet); }
+  .field-error{ font-size:12px; color:var(--bad); margin-top:5px; display:none; }
+  .field.invalid input, .field.invalid textarea{ border-color:var(--bad); }
+  .field.invalid .field-error{ display:block; }
+  .form-note{ font-size:11.5px; color:var(--muted); text-align:center; margin-top:14px; line-height:1.5; }
+
+  /* ---- Result ---- */
+  #screen-result{ padding-top:22px; }
+  .result-scroll{ overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch; padding-bottom:6px; }
+  .result-title{ font-size:20px; font-weight:800; text-align:center; margin-bottom:2px; }
+  .result-tier{ text-align:center; font-size:13px; font-weight:700; color:var(--violet); text-transform:uppercase; letter-spacing:.03em; margin-bottom:18px; }
+
+  .gauge-wrap{ display:flex; justify-content:center; margin-bottom:20px; position:relative; }
+  .gauge-num{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:34px; font-weight:800; }
+  .gauge-num span{ font-size:16px; font-weight:700; color:var(--muted); }
+
+  .verdict-block{ background:#FBFAFE; border:1px solid #EFEAFB; border-radius:18px; padding:16px 18px; margin-bottom:18px; font-size:14.5px; line-height:1.55; color:var(--text); }
+
+  .result-card{ border:1.5px solid #EFEAFB; border-radius:18px; padding:16px 18px; margin-bottom:14px; display:flex; gap:12px; align-items:flex-start; }
+  .result-card.good{ background:rgba(22,163,74,.05); border-color:rgba(22,163,74,.22); }
+  .result-card.warning{ background:rgba(217,119,6,.05); border-color:rgba(217,119,6,.22); }
+  .result-card.bad{ background:rgba(220,38,38,.05); border-color:rgba(220,38,38,.22); }
+  .result-card-icon{ flex:none; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; }
+  .result-card.good .result-card-icon{ background:rgba(22,163,74,.15); }
+  .result-card.warning .result-card-icon{ background:rgba(217,119,6,.15); }
+  .result-card.bad .result-card-icon{ background:rgba(220,38,38,.15); }
+  .result-card-title{ font-size:14.5px; font-weight:800; margin-bottom:4px; }
+  .result-card-text{ font-size:13.5px; line-height:1.5; color:var(--text); }
+
+  .steps-block{ background:#FBFAFE; border:1px solid #EFEAFB; border-radius:18px; padding:18px; margin-bottom:18px; }
+  .steps-title{ font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); margin-bottom:12px; }
+  .step-row{ display:flex; gap:10px; align-items:flex-start; font-size:14px; line-height:1.5; margin-bottom:10px; }
+  .step-row:last-child{ margin-bottom:0; }
+  .step-num{ flex:none; width:22px; height:22px; border-radius:50%; background:var(--grad); color:#fff; font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center; }
+
+  .cta-block{ text-align:center; margin-top:6px; }
+  .cta-title{ font-size:17px; font-weight:800; margin-bottom:6px; }
+  .cta-sub{ font-size:13.5px; color:var(--muted); margin-bottom:16px; line-height:1.5; }
+
+  .error-note{ font-size:12.5px; color:var(--bad); text-align:center; margin-top:12px; display:none; }
+  .error-note.show{ display:block; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- 1. Cover -->
+  <div class="screen active" id="screen-cover">
+    <div class="brand">Growth Autopilot</div>
+    <div class="cover-badge">🥗</div>
+    <div class="cover-title">Персональный разбор твоего рациона от нутрициолога</div>
+    <div class="cover-sub">2 минуты живого диалога — расскажи, как обычно питаешься, а Анна уточнит детали и соберёт персональный разбор.</div>
+    <div class="cover-points">
+      <div class="cover-point"><span class="dot">1</span> Настоящий диалог, а не анкета — можно отвечать текстом или голосом</div>
+      <div class="cover-point"><span class="dot">2</span> Анна уточнит один раз, если ответ расплывчатый</div>
+      <div class="cover-point"><span class="dot">3</span> В конце — персональный разбор по 4 блокам и что сделать дальше</div>
+    </div>
+    <button class="btn btn-primary" onclick="Quiz3.start()">Начать диалог</button>
+    <div class="cover-author">Ведёт Анна Светлова — нутрициолог</div>
+  </div>
+
+  <!-- 2. Q1: цель (кнопки) -->
+  <div class="screen" id="screen-q1">
+    <div class="brand">Growth Autopilot</div>
+    <div class="cover-title" style="font-size:21px; text-align:left;">Привет! Я Анна 👋</div>
+    <div class="cover-sub" style="text-align:left; margin-bottom:6px;">Для начала — какая у тебя сейчас цель?</div>
+    <div class="goal-list">
+      <button class="goal-btn" onclick="Quiz3.chooseGoal('Похудение')">Похудение</button>
+      <button class="goal-btn" onclick="Quiz3.chooseGoal('Набор массы')">Набор массы</button>
+      <button class="goal-btn" onclick="Quiz3.chooseGoal('Поддержание веса')">Поддержание веса</button>
+      <button class="goal-btn" onclick="Quiz3.chooseGoal('Разобраться в питании')">Разобраться в питании</button>
+    </div>
+  </div>
+
+  <!-- 3. Диалог (вопросы 2-4) -->
+  <div class="screen" id="screen-chat">
+    <div class="qprogress" id="qProgress">
+      <div class="qprogress-dot" data-q="2"></div>
+      <div class="qprogress-dot" data-q="3"></div>
+      <div class="qprogress-dot" data-q="4"></div>
+    </div>
+    <div class="chat-scroll" id="chatScroll"></div>
+
+    <div class="input-tabs">
+      <div class="input-tab active" id="tabText" onclick="Quiz3.switchTab('text')">✏️ Написать</div>
+      <div class="input-tab" id="tabVoice" onclick="Quiz3.switchTab('voice')">🎙️ Голосом</div>
+    </div>
+
+    <div class="input-panel active" id="panelText">
+      <div class="text-row">
+        <textarea id="chatInput" placeholder="Напиши ответ…" rows="1"></textarea>
+        <button class="send-btn" id="sendBtn" onclick="Quiz3.sendText()">➤</button>
+      </div>
+    </div>
+
+    <div class="input-panel" id="panelVoice">
+      <div class="voice-panel">
+        <button class="mic-btn" id="micBtn" onclick="Quiz3.toggleVoice()">🎙️</button>
+        <div class="waveform" id="waveform">
+          <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+        </div>
+        <div class="voice-status" id="voiceStatus">Нажми и говори</div>
+        <div class="voice-fallback" id="voiceFallback">Не удалось распознать голос — попробуй написать текстом.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Contact form (хард-гейт, до результата) -->
+  <div class="screen" id="screen-contact">
+    <div class="brand">Growth Autopilot</div>
+    <div class="cover-title" style="font-size:21px;">Куда прислать разбор?</div>
+    <div class="cover-sub" style="margin-bottom:22px;">Оставь контакт — и сразу увидишь персональный разбор своего рациона.</div>
+
+    <div class="field" id="fieldName">
+      <label for="inpName">Имя</label>
+      <input id="inpName" type="text" placeholder="Как к тебе обращаться?" autocomplete="name">
+      <div class="field-error">Введите имя (минимум 2 символа)</div>
+    </div>
+    <div class="field" id="fieldContact">
+      <label for="inpContact">Telegram или email</label>
+      <input id="inpContact" type="text" placeholder="@username или email@mail.com" autocomplete="email">
+      <div class="field-error">Введите корректный @telegram или email</div>
+    </div>
+
+    <button class="btn btn-primary" id="submitBtn" onclick="Quiz3.submitForm()">Показать разбор</button>
+    <div class="form-note">Это демо-версия квиза: данные формы никуда не сохраняются — только имитация сбора контакта в рамках воркшопа.</div>
+  </div>
+
+  <!-- 5. Analyzing -->
+  <div class="screen" id="screen-analyzing">
+    <div class="spinner"></div>
+    <div class="analyze-lines" id="analyzeLines">
+      <div class="analyze-line" data-i="0"><span class="analyze-check">✓</span><span>Собираем весь диалог воедино</span></div>
+      <div class="analyze-line" data-i="1"><span class="analyze-check">✓</span><span>Анализируем режим, разнообразие и воду</span></div>
+      <div class="analyze-line" data-i="2"><span class="analyze-check">✓</span><span>Готовим персональный разбор</span></div>
+    </div>
+  </div>
+
+  <!-- 6. Result -->
+  <div class="screen" id="screen-result">
+    <div class="result-scroll">
+      <div class="result-title">Твой разбор рациона готов</div>
+      <div class="result-tier">Разбор от Анны Светловой</div>
+
+      <div class="gauge-wrap">
+        <svg id="gaugeSvg" width="180" height="180" viewBox="0 0 180 180">
+          <circle cx="90" cy="90" r="78" fill="none" stroke="#EDE9FE" stroke-width="14"/>
+          <circle id="gaugeArc" cx="90" cy="90" r="78" fill="none" stroke="url(#gaugeGrad)" stroke-width="14" stroke-linecap="round" stroke-dasharray="490" stroke-dashoffset="490" transform="rotate(-90 90 90)"/>
+          <defs>
+            <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#7C3AED"/>
+              <stop offset="100%" stop-color="#D946EF"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <div class="gauge-num"><span id="gaugeNum">0</span><span>/10</span></div>
+      </div>
+
+      <div class="verdict-block" id="verdictText"></div>
+
+      <div id="resultCards"></div>
+
+      <div class="steps-block">
+        <div class="steps-title">Что сделать в первую очередь</div>
+        <div id="nextSteps"></div>
+      </div>
+
+      <div class="cta-block">
+        <div class="cta-title">Спасибо, что прошёл диалог!</div>
+        <div class="cta-sub">Это демо-версия — в реальном проекте здесь могло быть приглашение на консультацию.</div>
+        <button class="btn btn-primary" onclick="Quiz3.restart()">Пройти ещё раз</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+
+var STATUS_META = {
+  good: { icon: '✅', cls: 'good' },
+  warning: { icon: '⚠️', cls: 'warning' },
+  bad: { icon: '❌', cls: 'bad' }
+};
+
+var QUESTIONS = {
+  2: "Расскажи, как обычно выглядит твой день в еде — что и когда ты ешь?",
+  3: "А как у тебя с перекусами и режимом приёмов пищи — есть чёткое расписание или скорее хаотично?",
+  4: "И последнее: сколько воды и других напитков пьёшь за день, и есть ли ограничения или непереносимости, о которых стоит знать?"
+};
+
+// Локальный запасной сценарий (уровень 2 fallback) — если Dialogue Worker
+// не отвечает, диалог всё равно продолжается по заготовленным репликам.
+var LOCAL_DIALOGUE_FALLBACK = { action: 'advance', message: 'Поняла, спасибо! Это уже даёт хорошую картину.', _fallback: true };
+
+var LOCAL_RESULT_FALLBACK = {
+  summary: "Питание в целом на плаву, но есть нерегулярность в режиме и мало внимания к воде — небольшие корректировки дадут заметный эффект.",
+  balance_score: 6,
+  blocks: [
+    { title: "Режим питания", status: "warning", text: "Приёмы пищи скорее хаотичные — время от времени случаются большие паузы." },
+    { title: "Разнообразие рациона", status: "good", text: "В рационе присутствуют разные группы продуктов — хорошая база." },
+    { title: "Вода и напитки", status: "bad", text: "Похоже, что чистой воды в течение дня пьётся мало." },
+    { title: "Что учесть по цели", status: "warning", text: "Стоит в первую очередь выровнять регулярность приёмов пищи." }
+  ],
+  next_steps: [
+    "Постараться есть примерно в одно и то же время",
+    "Держать под рукой воду и постепенно увеличивать её долю среди напитков",
+    "Добавить в рацион больше клетчатки — овощи, зелень, цельные продукты"
+  ]
+};
+
+function $(id){ return document.getElementById(id); }
+
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
+  $(id).classList.add('active');
+}
+
+function setInvalid(fieldId, invalid){
+  var el = $(fieldId);
+  if (invalid) el.classList.add('invalid'); else el.classList.remove('invalid');
+}
+
+function validEmailOrTg(v){
+  v = v.trim();
+  if (v.indexOf('@') === 0 && v.length > 2) return true;
+  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(v);
+}
+
+function escapeHtml(str){
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function animateNumber(el, from, to, duration){
+  var start = performance.now();
+  function tick(now){
+    var t = Math.min(1, (now - start) / duration);
+    var eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = String(Math.round(from + (to - from) * eased));
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+var state = {
+  goal: null,
+  currentQ: 2,
+  messages: [],       // {role:'user'|'assistant', content:'...'} — полная история для Dialogue Worker
+  followupUsed: false,
+  resultPromise: null,
+  recognition: null,
+  recording: false
+};
+
+function addBubble(who, text){
+  var scroll = $('chatScroll');
+  var div = document.createElement('div');
+  div.className = 'bubble ' + (who === 'ai' ? 'bubble-ai' : 'bubble-user');
+  div.textContent = text;
+  scroll.appendChild(div);
+  scroll.scrollTop = scroll.scrollHeight;
+}
+
+function addNote(text){
+  var scroll = $('chatScroll');
+  var div = document.createElement('div');
+  div.className = 'bubble bubble-note';
+  div.textContent = text;
+  scroll.appendChild(div);
+  scroll.scrollTop = scroll.scrollHeight;
+}
+
+function showTyping(){
+  var scroll = $('chatScroll');
+  var div = document.createElement('div');
+  div.className = 'typing';
+  div.id = 'typingIndicator';
+  div.innerHTML = '<span></span><span></span><span></span>';
+  scroll.appendChild(div);
+  scroll.scrollTop = scroll.scrollHeight;
+}
+
+function hideTyping(){
+  var el = $('typingIndicator');
+  if (el) el.remove();
+}
+
+function setInputEnabled(enabled){
+  $('chatInput').disabled = !enabled;
+  $('sendBtn').disabled = !enabled;
+  $('micBtn').disabled = !enabled;
+}
+
+function updateProgress(){
+  document.querySelectorAll('.qprogress-dot').forEach(function(dot){
+    var q = Number(dot.getAttribute('data-q'));
+    if (q < state.currentQ) dot.classList.add('done'); else dot.classList.remove('done');
+  });
+}
+
+function renderQuestion(n){
+  state.currentQ = n;
+  state.followupUsed = false;
+  updateProgress();
+  var text = QUESTIONS[n];
+  addBubble('ai', text);
+  state.messages.push({ role: 'assistant', content: text });
+  setInputEnabled(true);
+  $('chatInput').value = '';
+  $('chatInput').focus();
+}
+
+function handleAnswer(answerText){
+  addBubble('user', answerText);
+  state.messages.push({ role: 'user', content: answerText });
+  setInputEnabled(false);
+  showTyping();
+
+  fetch('/api/quiz3-dialogue', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ history: state.messages, questionIndex: state.currentQ, goal: state.goal })
+  }).then(function(res){
+    if (!res.ok) throw new Error('bad response');
+    return res.json();
+  }).catch(function(){
+    return LOCAL_DIALOGUE_FALLBACK;
+  }).then(function(data){
+    hideTyping();
+    var action = (data && (data.action === 'followup' || data.action === 'advance')) ? data.action : 'advance';
+    // Ровно одно уточнение на вопрос — если оно уже было, форсируем переход дальше.
+    if (action === 'followup' && state.followupUsed) action = 'advance';
+
+    var message = (data && typeof data.message === 'string' && data.message.trim()) ? data.message.trim() : '';
+
+    if (action === 'followup'){
+      state.followupUsed = true;
+      addBubble('ai', message || 'Можешь рассказать чуть подробнее?');
+      state.messages.push({ role: 'assistant', content: message || 'Можешь рассказать чуть подробнее?' });
+      setInputEnabled(true);
+      $('chatInput').value = '';
+      $('chatInput').focus();
+    } else {
+      if (message){
+        addBubble('ai', message);
+        state.messages.push({ role: 'assistant', content: message });
+      }
+      if (state.currentQ < 4){
+        setTimeout(function(){ renderQuestion(state.currentQ + 1); }, 350);
+      } else {
+        updateProgress();
+        finishDialogue();
+      }
+    }
+  });
+}
+
+function finishDialogue(){
+  // Хард-гейт: контакты показываем сразу, а разбор считаем параллельно в фоне.
+  showScreen('screen-contact');
+  state.resultPromise = fetch('/api/quiz3-result', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ history: state.messages })
+  }).then(function(res){
+    if (!res.ok) throw new Error('bad response');
+    return res.json();
+  }).catch(function(){
+    return LOCAL_RESULT_FALLBACK;
+  });
+}
+
+function renderResult(data){
+  var score = Math.max(1, Math.min(10, Math.round(Number(data.balance_score) || 5)));
+
+  $('verdictText').textContent = data.summary || '';
+
+  var circumference = 490;
+  var offset = circumference * (1 - score / 10);
+  var arc = $('gaugeArc');
+  arc.style.strokeDashoffset = String(circumference);
+  $('gaugeNum').textContent = '0';
+  requestAnimationFrame(function(){
+    arc.style.transition = 'stroke-dashoffset 1s cubic-bezier(.22,.9,.3,1)';
+    arc.style.strokeDashoffset = String(offset);
+  });
+  animateNumber($('gaugeNum'), 0, score, 1000);
+
+  var cardsHtml = '';
+  var blocks = Array.isArray(data.blocks) ? data.blocks : [];
+  blocks.forEach(function(b){
+    var meta = STATUS_META[b.status] || STATUS_META.warning;
+    cardsHtml += '<div class="result-card ' + meta.cls + '">' +
+      '<div class="result-card-icon">' + meta.icon + '</div>' +
+      '<div><div class="result-card-title">' + escapeHtml(b.title || '') + '</div>' +
+      '<div class="result-card-text">' + escapeHtml(b.text || '') + '</div></div>' +
+      '</div>';
+  });
+  $('resultCards').innerHTML = cardsHtml;
+
+  var stepsHtml = '';
+  var steps = Array.isArray(data.next_steps) ? data.next_steps : [];
+  steps.forEach(function(step, i){
+    stepsHtml += '<div class="step-row"><div class="step-num">' + (i + 1) + '</div><div>' + escapeHtml(step) + '</div></div>';
+  });
+  $('nextSteps').innerHTML = stepsHtml;
+}
+
+function getRecognition(){
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return null;
+  var rec = new SR();
+  rec.lang = 'ru-RU';
+  rec.interimResults = false;
+  rec.maxAlternatives = 1;
+  return rec;
+}
+
+var Quiz3 = {
+  start: function(){
+    showScreen('screen-q1');
+  },
+
+  chooseGoal: function(goal){
+    state.goal = goal;
+    state.messages = [{ role: 'user', content: 'Моя цель: ' + goal + '.' }];
+    state.currentQ = 2;
+    $('chatScroll').innerHTML = '';
+    showScreen('screen-chat');
+    renderQuestion(2);
+  },
+
+  switchTab: function(tab){
+    var isText = tab === 'text';
+    $('tabText').classList.toggle('active', isText);
+    $('tabVoice').classList.toggle('active', !isText);
+    $('panelText').classList.toggle('active', isText);
+    $('panelVoice').classList.toggle('active', !isText);
+    if (!isText) {
+      $('voiceFallback').classList.remove('show');
+      $('voiceStatus').textContent = 'Нажми и говори';
+    }
+  },
+
+  sendText: function(){
+    var val = $('chatInput').value.trim();
+    if (!val) return;
+    handleAnswer(val);
+  },
+
+  toggleVoice: function(){
+    if (state.recording){
+      if (state.recognition) state.recognition.stop();
+      return;
+    }
+    var rec = getRecognition();
+    if (!rec){
+      $('voiceFallback').textContent = 'Голосовой ввод не поддерживается этим браузером — попробуй написать текстом.';
+      $('voiceFallback').classList.add('show');
+      Quiz3.switchTab('text');
+      return;
+    }
+
+    state.recognition = rec;
+    state.recording = true;
+    $('micBtn').classList.add('recording');
+    $('waveform').classList.add('live');
+    $('voiceStatus').textContent = 'Слушаю…';
+    $('voiceFallback').classList.remove('show');
+
+    rec.onresult = function(e){
+      var text = e.results && e.results[0] && e.results[0][0] ? e.results[0][0].transcript : '';
+      text = (text || '').trim();
+      if (text){
+        $('voiceStatus').textContent = 'Распознано: «' + text + '»';
+        handleAnswer(text);
+      } else {
+        $('voiceFallback').textContent = 'Не удалось распознать голос — попробуй написать текстом.';
+        $('voiceFallback').classList.add('show');
+      }
+    };
+
+    rec.onerror = function(){
+      $('voiceFallback').textContent = 'Не расслышала — тишина или шум. Попробуй ещё раз или напиши текстом.';
+      $('voiceFallback').classList.add('show');
+    };
+
+    rec.onend = function(){
+      state.recording = false;
+      $('micBtn').classList.remove('recording');
+      $('waveform').classList.remove('live');
+      if ($('voiceStatus').textContent === 'Слушаю…') $('voiceStatus').textContent = 'Нажми и говори';
+    };
+
+    try {
+      rec.start();
+    } catch (err){
+      state.recording = false;
+      $('micBtn').classList.remove('recording');
+      $('waveform').classList.remove('live');
+      $('voiceFallback').textContent = 'Не удалось запустить запись — попробуй написать текстом.';
+      $('voiceFallback').classList.add('show');
+      Quiz3.switchTab('text');
+    }
+  },
+
+  submitForm: function(){
+    var name = $('inpName').value.trim();
+    var contact = $('inpContact').value.trim();
+    var nameOk = name.length >= 2;
+    var contactOk = validEmailOrTg(contact);
+    setInvalid('fieldName', !nameOk);
+    setInvalid('fieldContact', !contactOk);
+    if (!nameOk || !contactOk) return;
+
+    $('submitBtn').disabled = true;
+    $('submitBtn').textContent = 'Готовим разбор…';
+    showScreen('screen-analyzing');
+
+    var lines = document.querySelectorAll('.analyze-line');
+    lines.forEach(function(el){ el.classList.remove('show','done'); });
+    var delays = [200, 900, 1700];
+    lines.forEach(function(el, i){
+      setTimeout(function(){ el.classList.add('show'); }, delays[i] || 0);
+      setTimeout(function(){ el.classList.add('done'); }, (delays[i] || 0) + 500);
+    });
+
+    var minDelay = new Promise(function(resolve){ setTimeout(resolve, 2300); });
+    var resultPromise = state.resultPromise || Promise.resolve(LOCAL_RESULT_FALLBACK);
+
+    Promise.all([resultPromise, minDelay]).then(function(vals){
+      renderResult(vals[0] || LOCAL_RESULT_FALLBACK);
+      $('submitBtn').disabled = false;
+      $('submitBtn').textContent = 'Показать разбор';
+      showScreen('screen-result');
+    });
+  },
+
+  restart: function(){
+    state.goal = null;
+    state.currentQ = 2;
+    state.messages = [];
+    state.followupUsed = false;
+    state.resultPromise = null;
+    $('chatScroll').innerHTML = '';
+    $('chatInput').value = '';
+    $('inpName').value = '';
+    $('inpContact').value = '';
+    setInvalid('fieldName', false);
+    setInvalid('fieldContact', false);
+    Quiz3.switchTab('text');
+    showScreen('screen-cover');
+  }
+};
+
+$('chatInput').addEventListener('keydown', function(e){
+  if (e.key === 'Enter' && !e.shiftKey){
+    e.preventDefault();
+    Quiz3.sendText();
+  }
+});
+
+window.Quiz3 = Quiz3;
 })();
 </script>
 </body>
