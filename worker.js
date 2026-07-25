@@ -2454,7 +2454,7 @@ async function apiAdminWorkshopAttendance(request, env, url) {
 // CRM — УЧАСТНИКИ ПО СТАТУСАМ
 // ══════════════════════════════════════════════
 
-const CRM_STATUSES = ['lead', 'paid', 'active', 'paused', 'left'];
+const CRM_STATUSES = ['bot', 'lead', 'paid', 'active', 'paused', 'left'];
 
 async function crmSuspendAccess(env, email) {
   const stopped = await env.KV.get('users:stopped', 'json') || [];
@@ -2493,11 +2493,12 @@ async function apiAdminCRM(request, env, url) {
   if (!auth.includes("admin_session_" + ADMIN_PASSWORD)) return jsonResp({ error: "Unauthorized" }, 401);
 
   if (request.method === 'GET') {
-    const [approvedEmails, pending, stopped, crmKeys] = await Promise.all([
+    const [approvedEmails, pending, stopped, crmKeys, botKeys] = await Promise.all([
       env.KV.get('emails:approved', 'json').then(v => v || []),
       env.KV.get('pending:list', 'json').then(v => v || []),
       env.KV.get('users:stopped', 'json').then(v => v || []),
-      env.KV.list({ prefix: 'crm:' })
+      env.KV.list({ prefix: 'crm:' }),
+      env.KV.list({ prefix: 'botuser:' })
     ]);
     const crmRecords = {};
     await Promise.all(crmKeys.keys.map(async k => {
@@ -2511,6 +2512,7 @@ async function apiAdminCRM(request, env, url) {
     Object.values(crmRecords).forEach(r => { if (r.email) keySet.set(r.email.toLowerCase(), r.email); });
 
     const list = [];
+    const coveredTgIds = new Set();
 
     for (const [key, email] of keySet) {
       const crm = crmRecords[key] || {};
@@ -2522,23 +2524,24 @@ async function apiAdminCRM(request, env, url) {
       const tgId = crm.tgId || await env.KV.get(`email_to_user:${key}`);
       let userRec = null, botUser = null;
       if (tgId) {
+        coveredTgIds.add(String(tgId));
         [userRec, botUser] = await Promise.all([
           env.KV.get(`user:${tgId}`, 'json'),
           env.KV.get(`botuser:${tgId}`, 'json')
         ]);
       }
-      const paymentDate = crm.paymentDate || (tgId ? await env.KV.get(`userpayment:${tgId}`) : null);
       const launches = tgId ? (await env.KV.get(`userstat:${tgId}:launches`, 'json') || 0) : 0;
       const pendingEntry = pending.find(p => p.email.toLowerCase() === key);
 
       list.push({
         key, email,
         status,
+        isPending,
         name: crm.name || userRec?.name || botUser?.name || pendingEntry?.name || '',
         telegram: crm.telegram || botUser?.username || userRec?.username || '',
         note: crm.note || '',
         tgId: tgId || null,
-        paymentDate: paymentDate || null,
+        paidMonths: crm.paidMonths || [],
         enrolledAt: userRec?.enrolledAt || crm.createdAt || null,
         launches,
         updatedAt: crm.updatedAt || null
@@ -2548,13 +2551,32 @@ async function apiAdminCRM(request, env, url) {
     // Чистые лиды без email/аккаунта (добавленные вручную)
     for (const [key, r] of Object.entries(crmRecords)) {
       if (!r.email && !list.some(x => x.key === key)) {
+        if (r.tgId) coveredTgIds.add(String(r.tgId));
         list.push({
-          key, email: null, status: r.status || 'lead',
+          key, email: null, status: r.status || 'lead', isPending: false,
           name: r.name || '', telegram: r.telegram || '', note: r.note || '',
-          tgId: r.tgId || null, paymentDate: r.paymentDate || null,
+          tgId: r.tgId || null, paidMonths: r.paidMonths || [],
           enrolledAt: r.createdAt || null, launches: 0, updatedAt: r.updatedAt || null
         });
       }
+    }
+
+    // Пользователи, которые только написали боту, но не проходили email-верификацию —
+    // показываем как отдельный статус "Написал боту", а не отдельным списком.
+    for (const k of botKeys.keys) {
+      const tgId = k.name.replace('botuser:', '');
+      if (coveredTgIds.has(String(tgId))) continue;
+      const userRec = await env.KV.get(`user:${tgId}`, 'json');
+      if (userRec) continue; // уже прошёл email-флоу — представлен где-то выше
+      const crmKey = `tg_${tgId}`;
+      if (crmRecords[crmKey]) continue; // обработан в блоке выше как "чистый лид"
+      const botUser = await env.KV.get(k.name, 'json');
+      list.push({
+        key: crmKey, email: null, status: 'bot', isPending: false,
+        name: botUser?.name || '', telegram: botUser?.username || '', note: '',
+        tgId: Number(tgId) || tgId, paidMonths: [],
+        enrolledAt: botUser?.startedAt || null, launches: 0, updatedAt: null
+      });
     }
 
     return jsonResp({ ok: true, participants: list });
@@ -6580,20 +6602,26 @@ function getAdminHTML() {
   .toggle-thumb { position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; background: var(--text3); border-radius: 50%; transition: 0.2s; }
   .toggle input:checked ~ .toggle-thumb { transform: translateX(16px); background: var(--bg); }
 
+  .crm-board { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; align-items: flex-start; }
+  .crm-column { flex: 1; min-width: 200px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 12px; padding: 10px; }
+
   @media (max-width: 768px) {
   .sidebar { display: none; }
   .main-content { margin-left: 0; max-width: 100vw; padding: 20px 16px 80px; }
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
   .stats-row { grid-template-columns: 1fr 1fr; }
+  .crm-board { flex-direction: column; overflow-x: visible; }
+  .crm-column { min-width: 100%; }
 }
   .mnav-btn {
-  flex: 1;
+  flex: 0 0 auto;
+  min-width: 64px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 3px;
-  padding: 8px 2px;
+  padding: 8px 6px;
   background: transparent;
   border: none;
   color: rgba(255,255,255,0.25);
@@ -6707,8 +6735,8 @@ function getAdminHTML() {
               <button class="btn btn-w btn-sm" onclick="openCRMEdit(null)">+ Добавить</button>
             </div>
           </div>
-          <p style="font-size:12px;color:var(--text3);margin:4px 0 12px">Перетащи карточку в другую колонку, чтобы сменить статус. Клик по карточке открывает карточку участника.</p>
-          <div id="crm-board" style="display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;align-items:flex-start"></div>
+          <p style="font-size:12px;color:var(--text3);margin:4px 0 12px">Перетащи карточку в другую колонку (на компьютере) или выбери статус в выпадающем списке на карточке (на телефоне). Клик по карточке открывает подробную информацию.</p>
+          <div id="crm-board" class="crm-board"></div>
         </div>
 
         <div class="card" style="margin-bottom:12px">
@@ -6727,14 +6755,6 @@ function getAdminHTML() {
           </div>
           <div class="msg" id="addEmailMsg"></div>
         </div>
-        <div class="card">
-          <div class="card-title">Ожидают одобрения</div>
-          <div id="pendingTable"></div>
-        </div>
-        <div class="card">
-  <div class="card-title">Все пользователи бота</div>
-  <div id="botUsersList"></div>
-</div>
       </div>
 
       <!-- CRM EDIT MODAL -->
@@ -6746,6 +6766,7 @@ function getAdminHTML() {
             <div class="field"><label>Имя</label><input type="text" id="crmName" placeholder="Имя Фамилия"/></div>
             <div class="field"><label>Статус</label>
               <select id="crmStatus">
+                <option value="bot">Написал боту</option>
                 <option value="lead">Лид</option>
                 <option value="paid">Оплатил</option>
                 <option value="active">Активен</option>
@@ -6758,12 +6779,19 @@ function getAdminHTML() {
             <div class="field"><label>Email</label><input type="email" id="crmEmail" placeholder="email@example.com"/></div>
             <div class="field"><label>Telegram (без @)</label><input type="text" id="crmTelegram" placeholder="username"/></div>
           </div>
-          <div class="field"><label>Дата оплаты</label><input type="date" id="crmPaymentDate"/></div>
+          <div class="field" id="crmApproveWrap" style="display:none">
+            <button class="btn btn-w btn-sm" onclick="approveCRMEntry()">✅ Одобрить доступ (ожидает подтверждения)</button>
+          </div>
           <div class="field"><label>Примечание</label><textarea id="crmNote" rows="3" placeholder="Заметки по участнику..."></textarea></div>
 
           <div class="field" id="crmStatsBlock" style="display:none">
             <label>Статистика</label>
             <div id="crmStatsContent" style="font-size:12px;color:var(--text2);display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px"></div>
+          </div>
+
+          <div class="field">
+            <label>Факты оплаты (5 000 ₽ / месяц) — <span id="crmPaidSum">0 ₽</span></label>
+            <div id="crmPaidMonths" style="display:flex;flex-wrap:wrap;gap:6px"></div>
           </div>
 
           <div class="field">
@@ -7192,14 +7220,14 @@ function getAdminHTML() {
 </div>
 
 <nav id="mobileNav" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:200;background:rgba(13,13,13,0.97);backdrop-filter:blur(12px);border-top:1px solid rgba(255,255,255,0.08);padding:0 8px;padding-bottom:env(safe-area-inset-bottom,0px)">
-  <div style="display:flex">
+  <div style="display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch">
     <button class="mnav-btn active" id="mnav-dashboard" onclick="showPage('dashboard')">
       <span style="font-size:20px">⊞</span>
       <span>Дашборд</span>
     </button>
     <button class="mnav-btn" id="mnav-participants" onclick="showPage('participants')">
       <span style="font-size:20px">👤</span>
-      <span>Участники</span>
+      <span>CRM</span>
     </button>
     <button class="mnav-btn" id="mnav-notify" onclick="showPage('notify')">
       <span style="font-size:20px">📢</span>
@@ -7209,19 +7237,27 @@ function getAdminHTML() {
       <span style="font-size:20px">📚</span>
       <span>Программы</span>
     </button>
+    <button class="mnav-btn" id="mnav-coffee" onclick="showPage('coffee')">
+      <span style="font-size:20px">☕</span>
+      <span>Кофе</span>
+    </button>
+    <button class="mnav-btn" id="mnav-analytics" onclick="showPage('analytics')">
+      <span style="font-size:20px">📊</span>
+      <span>Аналитика</span>
+    </button>
     <button class="mnav-btn" id="mnav-questions" onclick="showPage('questions')">
       <span style="font-size:20px">❓</span>
       <span>Вопросы</span>
     </button>
-    <button class="mnav-btn" id="nl-events" onclick="showPage('events')">
+    <button class="mnav-btn" id="mnav-events" onclick="showPage('events')">
       <span style="font-size:20px">📅</span>
       <span>Мероприятия</span>
     </button>
-    <button class="mnav-btn" id="nl-admins" onclick="showPage('admins')">
+    <button class="mnav-btn" id="mnav-admins" onclick="showPage('admins')">
       <span style="font-size:20px">🔐</span>
       <span>Админы</span>
     </button>
-    <button class="mnav-btn" id="nl-kb" onclick="showPage('kb')">
+    <button class="mnav-btn" id="mnav-kb" onclick="showPage('kb')">
       <span style="font-size:20px">📚</span>
       <span>База знаний</span>
     </button>
@@ -7663,10 +7699,46 @@ async function approveFromDash(email) {
 
 // ── PARTICIPANTS ──────────────────────────────────────────────
 // ── CRM ───────────────────────────────────────────────────────
-const CRM_STATUS_LABELS = { lead: 'Лид', paid: 'Оплатил', active: 'Активен', paused: 'Пауза', left: 'Ушёл' };
-const CRM_STATUS_ORDER = ['lead', 'paid', 'active', 'paused', 'left'];
+const CRM_STATUS_LABELS = { bot: 'Написал боту', lead: 'Лид', paid: 'Оплатил', active: 'Активен', paused: 'Пауза', left: 'Ушёл' };
+const CRM_STATUS_ORDER = ['bot', 'lead', 'paid', 'active', 'paused', 'left'];
+const CRM_MONTH_PRICE = 5000;
 let crmData = [];
 let crmDraggedKey = null;
+
+function crmSumOf(paidMonths) {
+  return (paidMonths?.length || 0) * CRM_MONTH_PRICE;
+}
+
+function crmStatusSelectHTML(key, currentStatus) {
+  return \`<select onclick="event.stopPropagation()" onchange="crmQuickSetStatus('\${escapeAdminHtml(key)}', this.value)"
+    style="width:100%;margin-top:6px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:4px 6px;color:var(--text);font-size:11px">
+    \${CRM_STATUS_ORDER.map(s => \`<option value="\${s}" \${s === currentStatus ? 'selected' : ''}>\${CRM_STATUS_LABELS[s]}</option>\`).join('')}
+  </select>\`;
+}
+
+async function crmQuickSetStatus(key, status) {
+  const entry = crmData.find(p => p.key === key);
+  if (!entry || entry.status === status) return;
+  entry.status = status;
+  renderCRMBoard();
+  await fetch('/api/admin/crm', {
+    method: 'POST', headers: aHeaders(),
+    body: JSON.stringify({ action: 'set-status', key, status, email: entry.email })
+  });
+  showAdminToast('Статус обновлён: ' + CRM_STATUS_LABELS[status]);
+}
+
+function crmCopyEmail(event, email) {
+  event.stopPropagation();
+  if (!email) return;
+  navigator.clipboard?.writeText(email).then(() => showAdminToast('Email скопирован')).catch(() => showAdminToast('Не удалось скопировать'));
+}
+
+function crmOpenTelegram(event, telegram) {
+  event.stopPropagation();
+  if (!telegram) return;
+  window.open('https://t.me/' + telegram, '_blank');
+}
 
 async function loadCRM() {
   try {
@@ -7690,21 +7762,28 @@ function renderCRMBoard() {
 
   board.innerHTML = CRM_STATUS_ORDER.map(status => {
     const items = filtered.filter(p => p.status === status);
-    const cards = items.map(p => \`
+    const cards = items.map(p => {
+      const sum = crmSumOf(p.paidMonths);
+      return \`
       <div class="crm-card" draggable="true" data-key="\${escapeAdminHtml(p.key)}"
         ondragstart="crmDraggedKey='\${escapeAdminHtml(p.key)}';event.dataTransfer.effectAllowed='move'"
         onclick="openCRMEdit('\${escapeAdminHtml(p.key)}')"
         style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;cursor:pointer">
-        <div style="font-size:13px;font-weight:500">\${escapeAdminHtml(p.name || p.email || 'Без имени')}</div>
+        <div style="font-size:13px;font-weight:500">\${escapeAdminHtml(p.name || p.email || 'Без имени')}\${p.isPending ? ' <span style="color:#F5C842;font-size:10px">· ожидает</span>' : ''}</div>
         \${p.email ? \`<div style="font-size:11px;color:var(--text3);margin-top:2px">\${escapeAdminHtml(p.email)}</div>\` : ''}
         \${p.telegram ? \`<div style="font-size:11px;color:#6bffb8;margin-top:2px">@\${escapeAdminHtml(p.telegram)}</div>\` : ''}
-        \${p.paymentDate ? \`<div style="font-size:11px;color:var(--text3);margin-top:4px">💳 \${escapeAdminHtml(p.paymentDate)}</div>\` : ''}
-      </div>\`).join('');
+        \${sum ? \`<div style="font-size:11px;color:var(--text3);margin-top:4px">💰 \${sum.toLocaleString('ru')} ₽</div>\` : ''}
+        <div style="display:flex;gap:6px;margin-top:8px">
+          \${p.telegram ? \`<button onclick="crmOpenTelegram(event,'\${escapeAdminHtml(p.telegram)}')" class="btn btn-ghost btn-sm" style="flex:1;font-size:11px;padding:4px 6px" title="Открыть в Telegram">✈️ TG</button>\` : ''}
+          \${p.email ? \`<button onclick="crmCopyEmail(event,'\${escapeAdminHtml(p.email)}')" class="btn btn-ghost btn-sm" style="flex:1;font-size:11px;padding:4px 6px" title="Скопировать email">📋 Email</button>\` : ''}
+        </div>
+        \${crmStatusSelectHTML(p.key, p.status)}
+      </div>\`;
+    }).join('');
     return \`
       <div class="crm-column" data-status="\${status}"
         ondragover="event.preventDefault()"
-        ondrop="crmHandleDrop(event,'\${status}')"
-        style="flex:1;min-width:200px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:12px;padding:10px">
+        ondrop="crmHandleDrop(event,'\${status}')">
         <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text3);margin-bottom:10px;display:flex;justify-content:space-between">
           <span>\${CRM_STATUS_LABELS[status]}</span><span>\${items.length}</span>
         </div>
@@ -7737,10 +7816,13 @@ function openCRMEdit(key) {
   document.getElementById('crmEmail').value = entry?.email || '';
   document.getElementById('crmTelegram').value = entry?.telegram || '';
   document.getElementById('crmNote').value = entry?.note || '';
-  document.getElementById('crmPaymentDate').value = entry?.paymentDate || '';
   document.getElementById('crmStatus').value = entry?.status || 'lead';
   document.getElementById('crmDeleteBtn').style.display = entry ? 'inline-block' : 'none';
   document.getElementById('crmEditMsg').textContent = '';
+
+  document.getElementById('crmApproveWrap').style.display = entry?.isPending ? 'block' : 'none';
+
+  renderCRMPaidMonths(entry?.paidMonths || []);
 
   const statsBlock = document.getElementById('crmStatsBlock');
   if (entry?.tgId) {
@@ -7771,6 +7853,49 @@ function closeCRMEdit() {
   document.getElementById('crmEditModal').classList.remove('open');
 }
 
+let crmEditPaidMonths = [];
+
+// Показывает последние 18 месяцев (включая текущий) как переключаемые чипы
+function renderCRMPaidMonths(paidMonths) {
+  crmEditPaidMonths = [...(paidMonths || [])];
+  const el = document.getElementById('crmPaidMonths');
+  const now = new Date();
+  const months = [];
+  for (let i = 0; i < 18; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'));
+  }
+  const monthNames = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+  el.innerHTML = months.map(m => {
+    const [y, mo] = m.split('-');
+    const label = monthNames[parseInt(mo, 10) - 1] + ' ' + y;
+    const active = crmEditPaidMonths.includes(m);
+    return \`<button type="button" onclick="crmToggleMonth('\${m}')" data-month="\${m}"
+      style="padding:5px 10px;border-radius:16px;font-size:11px;cursor:pointer;border:1px solid \${active ? 'var(--success)' : 'var(--border)'};background:\${active ? 'rgba(0,189,98,0.15)' : 'var(--bg3)'};color:\${active ? 'var(--success)' : 'var(--text2)'}">\${label}</button>\`;
+  }).join('');
+  updateCRMPaidSum();
+}
+
+function crmToggleMonth(month) {
+  const idx = crmEditPaidMonths.indexOf(month);
+  if (idx >= 0) crmEditPaidMonths.splice(idx, 1);
+  else crmEditPaidMonths.push(month);
+  renderCRMPaidMonths(crmEditPaidMonths);
+}
+
+function updateCRMPaidSum() {
+  document.getElementById('crmPaidSum').textContent = crmSumOf(crmEditPaidMonths).toLocaleString('ru') + ' ₽';
+}
+
+async function approveCRMEntry() {
+  const email = document.getElementById('crmEmail').value.trim();
+  if (!email) { alert('Нет email для одобрения'); return; }
+  if (!confirm('Одобрить доступ для ' + email + '?')) return;
+  await approveEmail(email);
+  closeCRMEdit();
+  loadCRM();
+}
+
 async function saveCRMEdit() {
   const key = document.getElementById('crmKey').value;
   const email = document.getElementById('crmEmail').value.trim();
@@ -7779,7 +7904,7 @@ async function saveCRMEdit() {
     email: email || null,
     telegram: document.getElementById('crmTelegram').value.trim().replace(/^@/, ''),
     note: document.getElementById('crmNote').value.trim(),
-    paymentDate: document.getElementById('crmPaymentDate').value || null,
+    paidMonths: crmEditPaidMonths,
     status: document.getElementById('crmStatus').value
   };
   const msg = document.getElementById('crmEditMsg');
@@ -7862,43 +7987,8 @@ async function deleteCRMWorkshop(userId, id) {
 async function loadParticipants() {
   try {
     loadCRM();
-
     const data = await fetch('/api/admin/participants', { headers: aHeaders() }).then(r => r.json());
     window.stoppedUsers = data.stopped || [];
-
-    // Pending
-    let pendHtml = '';
-    (data.pending || []).forEach(p => {
-      const d = new Date(p.date).toLocaleDateString('ru');
-      pendHtml += \`<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
-        <div style="flex:1">
-          <div style="font-size:13px">\${p.email}</div>
-          <div style="font-size:11px;color:var(--text3)">\${p.name || ''} · TG: \${p.tgId || ''} · \${d}</div>
-        </div>
-        <button class="btn btn-ghost btn-sm" onclick="approveEmail('\${p.email}')">Одобрить</button>
-      </div>\`;
-    });
-    document.getElementById('pendingTable').innerHTML = pendHtml || '<p style="color:var(--text3);font-size:13px">Нет ожидающих</p>';
-
-    // Получить всех юзеров бота
-    const botData = await fetch('/api/admin/bot-users', { headers: aHeaders() }).then(r => r.json());
-
-    const usersWithoutEmail = [];
-    for (const u of (botData.users || [])) {
-      const userRecord = await fetch('/api/admin/user-by-id?userId=' + u.tgId, { headers: aHeaders() }).then(r => r.json()).catch(() => ({}));
-      if (!userRecord?.approved) usersWithoutEmail.push(u);
-    }
-    
-    let botHtml = '';
-    usersWithoutEmail.forEach(u => {
-      const d = new Date(u.startedAt).toLocaleDateString('ru');
-      botHtml += \`<div style="padding:10px 0;border-bottom:1px solid var(--border);font-size:13px">
-        <span>\${u.name || ''} \${u.lastName || ''}</span>
-        <span style="color:var(--text3)"> @\${u.username || '—'} · \${d}</span>
-      </div>\`;
-    });
-    document.getElementById('botUsersList').innerHTML = botHtml || '<p style="color:var(--text3);font-size:13px">Нет пользователей</p>';
-
   } catch(e) { console.error(e); }
 }
 
