@@ -7823,6 +7823,7 @@ function getQuiz1HTML() {
     --card:#FFFFFF;
     --text:#1F2937;
     --muted:#6B7280;
+    --border:#E9E4F7;
     --ok:#16A34A;
     --warn:#D97706;
     --grad: linear-gradient(135deg, var(--violet), var(--magenta));
@@ -7839,6 +7840,7 @@ function getQuiz1HTML() {
     align-items:flex-start;
     justify-content:center;
     padding:16px;
+    -webkit-font-smoothing:antialiased;
   }
   .app{
     width:100%;
@@ -7862,6 +7864,9 @@ function getQuiz1HTML() {
   .screen.active{display:flex;}
   @keyframes fadeIn{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
 
+  .icon{ display:inline-flex; flex:none; }
+  .icon svg{ display:block; }
+
   .brand{
     font-size:13px;
     font-weight:700;
@@ -7878,13 +7883,12 @@ function getQuiz1HTML() {
     border-radius:20px;
     background:var(--grad);
     display:flex; align-items:center; justify-content:center;
-    font-size:32px;
   }
-  .cover-title{ font-size:26px; font-weight:800; line-height:1.25; margin-bottom:12px; }
-  .cover-sub{ font-size:15px; color:var(--muted); line-height:1.5; margin-bottom:28px; }
-  .cover-points{ text-align:left; margin-bottom:28px; display:flex; flex-direction:column; gap:10px; }
-  .cover-point{ display:flex; align-items:flex-start; gap:10px; font-size:14px; color:var(--text); }
-  .cover-point .dot{ flex:none; width:22px; height:22px; border-radius:50%; background:rgba(124,58,237,.12); color:var(--violet); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; }
+  .cover-title{ font-size:26px; font-weight:800; line-height:1.3; margin-bottom:12px; letter-spacing:-.01em; }
+  .cover-sub{ font-size:15px; color:var(--muted); line-height:1.55; margin-bottom:26px; }
+  .cover-points{ text-align:left; margin-bottom:28px; display:flex; flex-direction:column; gap:12px; }
+  .cover-point{ display:flex; align-items:center; gap:12px; font-size:14px; color:var(--text); line-height:1.4; }
+  .cover-point .dot{ flex:none; width:30px; height:30px; border-radius:10px; background:rgba(124,58,237,.10); color:var(--violet); display:flex; align-items:center; justify-content:center; }
 
   .btn{
     border:none; cursor:pointer;
@@ -7894,29 +7898,32 @@ function getQuiz1HTML() {
     font-family:inherit;
     transition:transform .15s ease, box-shadow .15s ease, opacity .15s ease;
     -webkit-tap-highlight-color: transparent;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    text-decoration:none;
   }
   .btn:active{ transform:scale(0.97); }
   .btn-primary{ background:var(--grad); color:#fff; box-shadow:0 8px 20px rgba(124,58,237,.28); width:100%; }
   .btn-primary:hover{ box-shadow:0 10px 26px rgba(124,58,237,.36); }
-  .btn-ghost{ background:transparent; color:var(--muted); font-weight:600; font-size:14px; padding:10px; }
-  .btn:disabled{ opacity:.4; cursor:not-allowed; }
+  .btn-ghost{ background:transparent; color:var(--muted); font-weight:600; font-size:14px; padding:10px; width:auto; }
+  .btn:disabled{ opacity:.45; cursor:not-allowed; }
 
   /* ---- Progress ---- */
   .progress-wrap{ display:flex; align-items:center; gap:10px; margin-bottom:22px; }
   .progress-track{ flex:1; height:6px; border-radius:6px; background:#EDE9FE; overflow:hidden; }
   .progress-fill{ height:100%; border-radius:6px; background:var(--grad); width:0%; transition:width .4s ease; }
-  .progress-label{ font-size:12px; font-weight:700; color:var(--muted); flex:none; }
+  .progress-label{ font-size:12px; font-weight:700; color:var(--muted); flex:none; font-variant-numeric:tabular-nums; }
 
   /* ---- Question ---- */
-  .q-text{ font-size:20px; font-weight:800; line-height:1.35; margin-bottom:20px; }
+  .q-text{ font-size:20px; font-weight:800; line-height:1.35; margin-bottom:20px; letter-spacing:-.01em; }
   .options{ display:flex; flex-direction:column; gap:10px; flex:1; }
   .option{
     text-align:left;
-    border:1.5px solid #E9E4F7;
+    border:1.5px solid var(--border);
     background:#FBFAFE;
     border-radius:16px;
     padding:15px 16px;
     font-size:14.5px;
+    line-height:1.4;
     font-weight:600;
     color:var(--text);
     cursor:pointer;
@@ -7925,7 +7932,7 @@ function getQuiz1HTML() {
   .option:active{ transform:scale(0.98); }
   .option:hover{ border-color:var(--violet); background:#F5F1FE; }
   .option.selected{ border-color:var(--violet); background:linear-gradient(135deg, rgba(124,58,237,.08), rgba(217,70,239,.08)); }
-  .q-footer{ display:flex; justify-content:space-between; align-items:center; margin-top:18px; }
+  .q-footer{ display:flex; justify-content:space-between; align-items:center; margin-top:18px; min-height:38px; }
 
   /* ---- Analyzing ---- */
   #screen-analyzing{ justify-content:center; align-items:center; text-align:center; }
@@ -7939,49 +7946,16 @@ function getQuiz1HTML() {
   .analyze-line{ display:flex; align-items:center; gap:10px; font-size:14.5px; color:var(--muted); opacity:0; transform:translateX(-6px); transition:opacity .35s ease, transform .35s ease, color .2s ease; }
   .analyze-line.show{ opacity:1; transform:translateX(0); }
   .analyze-line.done{ color:var(--text); }
-  .analyze-check{ flex:none; width:20px; height:20px; border-radius:50%; background:#EDE9FE; color:var(--violet); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; opacity:0; transform:scale(.5); transition:opacity .25s ease, transform .25s ease, background .25s ease, color .25s ease; }
+  .analyze-check{ flex:none; width:20px; height:20px; border-radius:50%; background:#EDE9FE; color:var(--violet); display:flex; align-items:center; justify-content:center; opacity:0; transform:scale(.5); transition:opacity .25s ease, transform .25s ease, background .25s ease, color .25s ease; }
   .analyze-line.done .analyze-check{ opacity:1; transform:scale(1); background:var(--grad); color:#fff; }
 
-  /* ---- Result ---- */
-  #screen-result{ padding-top:22px; }
-  .result-scroll{ overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch; padding-bottom:6px; }
-  .result-title{ font-size:20px; font-weight:800; text-align:center; margin-bottom:2px; }
-  .result-tier{ text-align:center; font-size:13px; font-weight:700; color:var(--violet); text-transform:uppercase; letter-spacing:.03em; margin-bottom:18px; }
-
-  .gauge-wrap{ display:flex; justify-content:center; margin-bottom:22px; position:relative; }
-  .gauge-num{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:34px; font-weight:800; }
-  .gauge-num span{ font-size:16px; font-weight:700; color:var(--muted); }
-
-  .card-block{ background:#FBFAFE; border:1px solid #EFEAFB; border-radius:18px; padding:18px; margin-bottom:16px; }
-  .card-title{ font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); margin-bottom:14px; }
-
-  .radar-wrap{ display:flex; justify-content:center; }
-
-  .bar-row{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
-  .bar-row:last-child{ margin-bottom:0; }
-  .bar-label{ display:flex; justify-content:space-between; font-size:13px; font-weight:700; }
-  .bar-track{ height:10px; border-radius:8px; background:#EDE9FE; overflow:hidden; }
-  .bar-fill{ height:100%; border-radius:8px; width:0%; transition:width 1.1s cubic-bezier(.22,.9,.3,1); }
-  .bar-fill.you{ background:var(--grad); }
-  .bar-fill.avg{ background:#C7D2FE; }
-
-  .rec-text p{ font-size:14px; line-height:1.6; color:var(--text); margin-bottom:10px; }
-  .rec-text p:last-child{ margin-bottom:0; }
-
-  .sw-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-  .sw-col-title{ font-size:12px; font-weight:800; margin-bottom:8px; }
-  .sw-item{ font-size:12.5px; line-height:1.4; margin-bottom:8px; display:flex; gap:6px; }
-
-  .cta-block{ text-align:center; margin-top:6px; }
-  .cta-title{ font-size:17px; font-weight:800; margin-bottom:6px; }
-  .cta-sub{ font-size:13.5px; color:var(--muted); margin-bottom:16px; line-height:1.5; }
-
-  /* ---- Form ---- */
+  /* ---- Form (contact gate) ---- */
+  .form-title{ font-size:21px; font-weight:800; margin-bottom:8px; letter-spacing:-.01em; }
   .field{ margin-bottom:14px; }
   .field label{ display:block; font-size:12.5px; font-weight:700; color:var(--muted); margin-bottom:6px; }
   .field input{
     width:100%; padding:14px 16px; border-radius:14px;
-    border:1.5px solid #E9E4F7; background:#FBFAFE;
+    border:1.5px solid var(--border); background:#FBFAFE;
     font-size:15px; font-family:inherit; color:var(--text);
     transition:border-color .15s ease;
   }
@@ -7990,13 +7964,44 @@ function getQuiz1HTML() {
   .field.invalid input{ border-color:#DC2626; }
   .field.invalid .field-error{ display:block; }
   .form-note{ font-size:11.5px; color:var(--muted); text-align:center; margin-top:14px; line-height:1.5; }
+  .form-actions{ display:flex; flex-direction:column; gap:8px; margin-top:4px; }
 
-  /* ---- Thanks ---- */
-  #screen-thanks{ justify-content:center; align-items:center; text-align:center; }
-  .thanks-badge{ width:76px; height:76px; border-radius:50%; background:var(--grad); display:flex; align-items:center; justify-content:center; font-size:34px; margin-bottom:22px; animation:pop .4s ease; }
-  @keyframes pop{ 0%{ transform:scale(0.4); opacity:0;} 70%{ transform:scale(1.08);} 100%{ transform:scale(1); opacity:1;} }
-  .thanks-title{ font-size:21px; font-weight:800; margin-bottom:10px; }
-  .thanks-sub{ font-size:14.5px; color:var(--muted); line-height:1.55; margin-bottom:26px; }
+  /* ---- Result ---- */
+  #screen-result{ padding-top:22px; }
+  .result-scroll{ overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch; padding-bottom:6px; }
+  .result-title{ font-size:20px; font-weight:800; text-align:center; margin-bottom:2px; letter-spacing:-.01em; }
+  .result-tier{ text-align:center; font-size:13px; font-weight:700; color:var(--violet); text-transform:uppercase; letter-spacing:.04em; margin-bottom:18px; }
+
+  .gauge-wrap{ display:flex; justify-content:center; margin-bottom:22px; position:relative; }
+  .gauge-num{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:34px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .gauge-num span{ font-size:16px; font-weight:700; color:var(--muted); }
+
+  .card-block{ background:#FBFAFE; border:1px solid #EFEAFB; border-radius:18px; padding:18px; margin-bottom:16px; }
+  .card-title{ font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin-bottom:14px; }
+
+  .radar-wrap{ display:flex; justify-content:center; }
+
+  .bar-row{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+  .bar-row:last-child{ margin-bottom:0; }
+  .bar-label{ display:flex; justify-content:space-between; font-size:13px; font-weight:700; }
+  .bar-label span:last-child{ font-variant-numeric:tabular-nums; }
+  .bar-track{ height:10px; border-radius:8px; background:#EDE9FE; overflow:hidden; }
+  .bar-fill{ height:100%; border-radius:8px; width:0%; transition:width 1.1s cubic-bezier(.22,.9,.3,1); }
+  .bar-fill.you{ background:var(--grad); }
+  .bar-fill.avg{ background:#C7D2FE; }
+
+  .rec-text p{ font-size:14px; line-height:1.6; color:var(--text); margin-bottom:10px; }
+  .rec-text p:last-child{ margin-bottom:0; }
+
+  .sw-grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .sw-col-title{ font-size:12px; font-weight:800; margin-bottom:10px; }
+  .sw-item{ font-size:12.5px; line-height:1.4; margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+  .sw-item:last-child{ margin-bottom:0; }
+
+  .cta-block{ text-align:center; margin-top:6px; }
+  .cta-title{ font-size:17px; font-weight:800; margin-bottom:6px; letter-spacing:-.01em; }
+  .cta-sub{ font-size:13.5px; color:var(--muted); margin-bottom:16px; line-height:1.5; }
+  .cta-actions{ display:flex; flex-direction:column; gap:8px; }
 
   @media (max-width:380px){
     .sw-grid{ grid-template-columns:1fr; }
@@ -8009,22 +8014,24 @@ function getQuiz1HTML() {
   <!-- 1. Cover -->
   <div class="screen active" id="screen-cover">
     <div class="brand">Growth Autopilot</div>
-    <div class="cover-badge">🚀</div>
-    <div class="cover-title">Узнайте свой AI Maturity Score</div>
-    <div class="cover-sub">5 вопросов — и вы увидите, насколько ваш маркетинг уже работает на автопилоте, а где вы всё ещё тратите время руками.</div>
-    <div class="cover-points">
-      <div class="cover-point"><span class="dot">%</span> Персональный процент зрелости + сравнение со средним по рынку</div>
-      <div class="cover-point"><span class="dot">◈</span> Радар сильных и слабых зон: контент, лидген, ресерч, автоматизация</div>
-      <div class="cover-point"><span class="dot">→</span> Конкретные следующие шаги под вашу ситуацию</div>
+    <div class="cover-badge">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 6"/><polyline points="15 6 21 6 21 12"/></svg>
     </div>
-    <button class="btn btn-primary" onclick="Quiz.start()">Пройти тест (2 минуты)</button>
+    <div class="cover-title">Узнайте свой AI Maturity Score</div>
+    <div class="cover-sub">10 вопросов — и вы увидите, насколько ваш маркетинг уже работает на автопилоте, а где вы всё ещё тратите время руками.</div>
+    <div class="cover-points">
+      <div class="cover-point"><span class="dot"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></span> Персональный процент зрелости + сравнение со средним по рынку</div>
+      <div class="cover-point"><span class="dot"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 7h7l-5.5 4.5L18.5 21 12 16.5 5.5 21l2-7.5L2 9h7z"/></svg></span> Радар сильных и слабых зон: контент, лидген, ресерч, автоматизация</div>
+      <div class="cover-point"><span class="dot"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg></span> Конкретные следующие шаги под вашу ситуацию</div>
+    </div>
+    <button class="btn btn-primary" onclick="Quiz.start()">Пройти тест (3 минуты)</button>
   </div>
 
   <!-- 2. Question -->
   <div class="screen" id="screen-question">
     <div class="progress-wrap">
       <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
-      <div class="progress-label" id="progressLabel">1/5</div>
+      <div class="progress-label" id="progressLabel">1/10</div>
     </div>
     <div class="q-text" id="qText"></div>
     <div class="options" id="qOptions"></div>
@@ -8038,13 +8045,37 @@ function getQuiz1HTML() {
   <div class="screen" id="screen-analyzing">
     <div class="spinner"></div>
     <div class="analyze-lines" id="analyzeLines">
-      <div class="analyze-line" data-i="0"><span class="analyze-check">✓</span><span>Считаем ваши ответы</span></div>
-      <div class="analyze-line" data-i="1"><span class="analyze-check">✓</span><span>Сравниваем с 500+ компаниями в нашей базе</span></div>
-      <div class="analyze-line" data-i="2"><span class="analyze-check">✓</span><span>Формируем персональные рекомендации</span></div>
+      <div class="analyze-line" data-i="0"><span class="analyze-check"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg></span><span>Считаем ваши ответы</span></div>
+      <div class="analyze-line" data-i="1"><span class="analyze-check"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg></span><span>Сравниваем с 500+ компаниями в нашей базе</span></div>
+      <div class="analyze-line" data-i="2"><span class="analyze-check"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg></span><span>Формируем персональные рекомендации</span></div>
     </div>
   </div>
 
-  <!-- 4. Result -->
+  <!-- 4. Contact form (gate before result) -->
+  <div class="screen" id="screen-form">
+    <div class="brand">Growth Autopilot</div>
+    <div class="form-title">Ваш результат готов</div>
+    <div class="cover-sub" style="margin-bottom:22px;">Оставьте имя и контакт — сразу покажем ваш AI Maturity Score и разбор по 4 направлениям.</div>
+
+    <div class="field" id="fieldName">
+      <label for="inpName">Имя</label>
+      <input id="inpName" type="text" placeholder="Как к вам обращаться?" autocomplete="name">
+      <div class="field-error">Введите имя (минимум 2 символа)</div>
+    </div>
+    <div class="field" id="fieldContact">
+      <label for="inpContact">Telegram или email</label>
+      <input id="inpContact" type="text" placeholder="@username или email@mail.com" autocomplete="email">
+      <div class="field-error">Введите корректный @telegram или email</div>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-primary" id="submitBtn" onclick="Quiz.submitForm()">Показать результат</button>
+      <button class="btn btn-ghost" onclick="Quiz.formBack()">← Назад к тесту</button>
+    </div>
+    <div class="form-note">Это демо-версия квиза: данные формы никуда не сохраняются и не отправляются на сервер — только имитация в рамках воркшопа.</div>
+  </div>
+
+  <!-- 5. Result -->
   <div class="screen" id="screen-result">
     <div class="result-scroll">
       <div class="result-title">Ваш AI Maturity Score готов</div>
@@ -8101,40 +8132,13 @@ function getQuiz1HTML() {
 
       <div class="cta-block">
         <div class="cta-title">Хотите полный разбор?</div>
-        <div class="cta-sub">Соберём PDF-отчёт с расширенными рекомендациями под вашу нишу — бесплатно.</div>
-        <button class="btn btn-primary" onclick="Quiz.goForm()">Получить PDF-отчёт</button>
+        <div class="cta-sub">Расширенный PDF-отчёт с рекомендациями под вашу нишу — у нас в Telegram, бесплатно.</div>
+        <div class="cta-actions">
+          <a class="btn btn-primary" href="https://t.me/oleg_ezhkov" target="_blank" rel="noopener">Получить в Telegram</a>
+          <button class="btn btn-ghost" onclick="Quiz.restart()">Пройти ещё раз</button>
+        </div>
       </div>
     </div>
-  </div>
-
-  <!-- 5. Form -->
-  <div class="screen" id="screen-form">
-    <div class="brand">Growth Autopilot</div>
-    <div class="cover-title" style="font-size:21px;">Куда прислать отчёт?</div>
-    <div class="cover-sub" style="margin-bottom:22px;">Оставьте контакт — пришлём расширенный PDF с рекомендациями под вашу нишу.</div>
-
-    <div class="field" id="fieldName">
-      <label for="inpName">Имя</label>
-      <input id="inpName" type="text" placeholder="Как к вам обращаться?" autocomplete="name">
-      <div class="field-error">Введите имя (минимум 2 символа)</div>
-    </div>
-    <div class="field" id="fieldContact">
-      <label for="inpContact">Telegram или email</label>
-      <input id="inpContact" type="text" placeholder="@username или email@mail.com" autocomplete="email">
-      <div class="field-error">Введите корректный @telegram или email</div>
-    </div>
-
-    <button class="btn btn-primary" id="submitBtn" onclick="Quiz.submitForm()">Получить PDF-отчёт</button>
-    <button class="btn btn-ghost" style="width:100%; margin-top:6px;" onclick="Quiz.backToResult()">← Вернуться к результату</button>
-    <div class="form-note">Это демо-версия квиза: данные формы никуда не сохраняются и не отправляются на сервер — только имитация отправки в рамках воркшопа.</div>
-  </div>
-
-  <!-- 6. Thanks -->
-  <div class="screen" id="screen-thanks">
-    <div class="thanks-badge">✓</div>
-    <div class="thanks-title">Отправлено!</div>
-    <div class="thanks-sub" id="thanksSub"></div>
-    <button class="btn btn-primary" onclick="Quiz.restart()">Пройти ещё раз</button>
   </div>
 
 </div>
@@ -8166,6 +8170,36 @@ var QUESTIONS = [
     { text:"8–15 часов", scores:{content:5,leadgen:5,research:5,automation:5} },
     { text:"3–8 часов", scores:{content:10,leadgen:10,research:10,automation:10} },
     { text:"Меньше 3 часов, остальное работает само", scores:{content:20,leadgen:15,research:15,automation:25} }
+  ]},
+  { text: "Как вы обрабатываете входящие заявки?", options: [
+    { text:"Отвечаю сам, когда доходят руки", scores:{content:0,leadgen:0,research:0,automation:0} },
+    { text:"Есть менеджер, отвечает вручную", scores:{content:0,leadgen:5,research:0,automation:0} },
+    { text:"Есть шаблоны ответов, но отправляем вручную", scores:{content:0,leadgen:10,research:0,automation:5} },
+    { text:"Есть чат-бот, который сам квалифицирует и передаёт менеджеру", scores:{content:0,leadgen:20,research:5,automation:15} }
+  ]},
+  { text: "Как устроена аналитика по рекламе и воронке?", options: [
+    { text:"Не смотрю цифры, просто трачу бюджет", scores:{content:0,leadgen:0,research:0,automation:0} },
+    { text:"Смотрю базовые метрики раз в месяц", scores:{content:0,leadgen:5,research:5,automation:0} },
+    { text:"Веду таблицу с ключевыми показателями вручную", scores:{content:0,leadgen:10,research:10,automation:5} },
+    { text:"Есть дашборд, который сам собирает данные и присылает отчёт", scores:{content:5,leadgen:15,research:20,automation:15} }
+  ]},
+  { text: "Как устроены рассылки (email/Telegram)?", options: [
+    { text:"Рассылок нет вообще", scores:{content:0,leadgen:0,research:0,automation:0} },
+    { text:"Изредка отправляю вручную из личного аккаунта", scores:{content:5,leadgen:5,research:0,automation:0} },
+    { text:"Есть сервис рассылок, но письма готовлю и шлю вручную", scores:{content:10,leadgen:10,research:0,automation:5} },
+    { text:"Есть цепочки писем, которые запускаются и работают сами", scores:{content:15,leadgen:20,research:5,automation:20} }
+  ]},
+  { text: "Кто закрывает вопросы и возражения до покупки?", options: [
+    { text:"Я лично, в переписке, каждый раз заново", scores:{content:0,leadgen:0,research:0,automation:0} },
+    { text:"Менеджер отвечает по памяти, своими словами", scores:{content:0,leadgen:5,research:0,automation:0} },
+    { text:"Есть база ответов, менеджер копирует вручную", scores:{content:5,leadgen:10,research:5,automation:5} },
+    { text:"ИИ-ассистент сам отвечает на большинство типовых вопросов", scores:{content:10,leadgen:20,research:10,automation:20} }
+  ]},
+  { text: "Как часто обновляется контент-стратегия и план публикаций?", options: [
+    { text:"Публикую, когда придёт вдохновение", scores:{content:0,leadgen:0,research:0,automation:0} },
+    { text:"Есть примерный план на неделю, часто съезжает", scores:{content:5,leadgen:0,research:5,automation:0} },
+    { text:"Планирую на месяц вперёд и слежу за результатами", scores:{content:10,leadgen:5,research:10,automation:5} },
+    { text:"Стратегия строится на данных и обновляется по тому, что заходит", scores:{content:20,leadgen:5,research:15,automation:15} }
   ]},
   { text: "Что сейчас болит сильнее всего?", pain:true, options: [
     { text:"Не хватает заявок/лидов", key:"leadgen" },
@@ -8200,6 +8234,9 @@ var TIERS = [
 
 var PAIN_LABEL = { leadgen:"Лидген", automation:"Автоматизация", system:"Система", learning:"Обучение/внедрение" };
 
+var ICON_CHECK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="8 12.5 11 15.5 16 9"/></svg>';
+var ICON_UP = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D97706" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="9.5 14.5 14.5 9.5"/><polyline points="10.5 9.5 14.5 9.5 14.5 13.5"/></svg>';
+
 var RECS = {
   manual: {
     leadgen: ["У вас старт с той же точки, что и у большинства — ручной контент есть, а системы, которая сама доводит подписчика до заявки, пока нет.","Прежде чем масштабировать трафик, стоит собрать простую воронку: лид-магнит → авто-прогрев → предложение. Даже базовая связка поднимает число заявок без роста бюджета на рекламу.","Начните с одного сценария — например, мини-курс или чат-бот с прогревом на 3-5 сообщений. Это займёт меньше времени, чем кажется, и сразу даст измеримый результат."],
@@ -8228,9 +8265,8 @@ var RECS = {
 };
 
 var state = {
-  step: 0, // index into QUESTIONS (0..4), or -1 for cover
+  step: 0, // index into QUESTIONS
   answers: [], // {scores?, key?}
-  analyzeTimers: [],
   result: null
 };
 
@@ -8249,8 +8285,6 @@ var Quiz = {
     renderQuestion();
   },
 
-  renderQuestion: renderQuestion,
-
   back: function(){
     if (state.step === 0){
       showScreen('screen-cover');
@@ -8261,12 +8295,10 @@ var Quiz = {
     renderQuestion();
   },
 
-  goForm: function(){
-    showScreen('screen-form');
-  },
-
-  backToResult: function(){
-    showScreen('screen-result');
+  formBack: function(){
+    state.step = QUESTIONS.length - 1;
+    showScreen('screen-question');
+    renderQuestion();
   },
 
   submitForm: function(){
@@ -8282,15 +8314,17 @@ var Quiz = {
     var btn = $('submitBtn');
     var original = btn.textContent;
     btn.disabled = true;
-    btn.textContent = 'Отправляем…';
+    btn.textContent = 'Считаем результат…';
 
-    // Имитация отправки — никакого реального запроса, данные нигде не сохраняются
+    // Демо: никакого реального запроса, данные нигде не сохраняются
     setTimeout(function(){
       btn.disabled = false;
       btn.textContent = original;
-      $('thanksSub').textContent = name + ', мы «отправили» бы расширенный PDF-отчёт на ' + contact + '. Это демо-режим: реальной отправки и сохранения данных нет — в проде здесь был бы вебхук в Telegram-бота или CRM.';
-      showScreen('screen-thanks');
-    }, 1400);
+      computeResult();
+      renderResult();
+      showScreen('screen-result');
+      animateResult();
+    }, 900);
   },
 
   restart: function(){
@@ -8311,7 +8345,6 @@ function renderQuestion(){
   $('progressLabel').textContent = (state.step+1) + '/' + total;
   $('progressFill').style.width = Math.round(((state.step) / total) * 100) + '%';
   $('qText').textContent = q.text;
-  $('qBack').style.visibility = 'visible';
 
   var wrap = $('qOptions');
   wrap.innerHTML = '';
@@ -8347,19 +8380,14 @@ function selectOption(i){
 
 function startAnalyzing(){
   showScreen('screen-analyzing');
-  document.querySelectorAll('.analyze-line').forEach(function(el){
-    el.classList.remove('show','done');
-  });
   var lines = document.querySelectorAll('.analyze-line');
+  lines.forEach(function(el){ el.classList.remove('show','done'); });
   lines.forEach(function(el, i){
     setTimeout(function(){ el.classList.add('show'); }, i * 800);
     setTimeout(function(){ el.classList.add('done'); }, i * 800 + 500);
   });
   setTimeout(function(){
-    computeResult();
-    renderResult();
-    showScreen('screen-result');
-    animateResult();
+    showScreen('screen-form');
   }, lines.length * 800 + 600);
 }
 
@@ -8397,8 +8425,8 @@ function renderResult(){
   var recParagraphs = RECS[r.tier.key][r.painKey];
   $('recText').innerHTML = recParagraphs.map(function(p){ return '<p>' + p + '</p>'; }).join('');
 
-  var goodHtml = r.good.map(function(c){ return '<div class="sw-item">✅ ' + CAT_LABEL[c] + '</div>'; }).join('');
-  var badHtml = r.bad.map(function(c){ return '<div class="sw-item">⚠️ ' + CAT_LABEL[c] + '</div>'; }).join('');
+  var goodHtml = r.good.map(function(c){ return '<div class="sw-item">' + ICON_CHECK + '<span>' + CAT_LABEL[c] + '</span></div>'; }).join('');
+  var badHtml = r.bad.map(function(c){ return '<div class="sw-item">' + ICON_UP + '<span>' + CAT_LABEL[c] + '</span></div>'; }).join('');
   $('swGood').innerHTML = goodHtml;
   $('swBad').innerHTML = badHtml;
 
