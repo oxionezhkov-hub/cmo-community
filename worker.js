@@ -1293,17 +1293,17 @@ const QUIZ2_SYSTEM_PROMPT = `Ты — Максим Ильин, опытный э
 Если текст сайта помечен как недоступный — делай анализ только по описанию ситуации от пользователя, честно опираясь на меньший объём данных, не притворяйся, что видел сайт.
 Если цифры конверсии не переданы — никогда не выдумывай их, опирайся только на текстовый анализ страницы и описание ситуации.
 Ответь СТРОГО в виде JSON без каких-либо пояснений до или после, без markdown-разметки и без \`\`\`json оболочки, ровно по такой схеме:
-{"verdict":"короткий вывод в 1-2 предложения","score":6,"blocks":[{"title":"Оффер","status":"warning","text":"..."},{"title":"Доверие / соц. доказательства","status":"bad","text":"..."},{"title":"Призыв к действию","status":"good","text":"..."},{"title":"Что происходит после лендинга","status":"warning","text":"..."}],"next_steps":["шаг 1","шаг 2","шаг 3"]}
-Правила: "score" — целое число от 1 до 10, общая оценка конвертящей способности страницы. "status" у каждого блока — строго одно из "good"/"warning"/"bad". Блоков всегда ровно 4, именно с этими 4 заголовками и в этом порядке: "Оффер", "Доверие / соц. доказательства", "Призыв к действию", "Что происходит после лендинга". "next_steps" — 3 коротких конкретных пункта, что сделать в первую очередь.`;
+{"verdict":"короткий вывод в 1-2 предложения","score":6,"blocks":[{"title":"Оффер","status":"warning","score":6,"text":"..."},{"title":"Доверие / соц. доказательства","status":"bad","score":3,"text":"..."},{"title":"Призыв к действию","status":"good","score":8,"text":"..."},{"title":"Что происходит после лендинга","status":"warning","score":5,"text":"..."}],"next_steps":["шаг 1","шаг 2","шаг 3"]}
+Правила: "score" на верхнем уровне — целое число от 1 до 10, общая оценка конвертящей способности страницы. У каждого блока — своё "score" от 1 до 10 именно по этому конкретному параметру (не обязано совпадать с общим score) и "status", строго одно из "good"/"warning"/"bad", согласованное с этим числом (8-10 → good, 4-7 → warning, 1-3 → bad). Блоков всегда ровно 4, именно с этими 4 заголовками и в этом порядке: "Оффер", "Доверие / соц. доказательства", "Призыв к действию", "Что происходит после лендинга". "next_steps" — 3 коротких конкретных пункта, что сделать в первую очередь.`;
 
 const QUIZ2_FALLBACK_RESULT = {
   verdict: "Сайт сейчас выглядит неплохо, но теряет часть заявок на переходе от интереса к действию — оффер размыт, а доверие почти ничем не подкреплено.",
   score: 5,
   blocks: [
-    { title: "Оффер", status: "warning", text: "Непонятно за 3 секунды, что именно вы предлагаете и кому это нужно прямо сейчас. Заголовок общий, выгода не сформулирована в цифрах или конкретном результате." },
-    { title: "Доверие / соц. доказательства", status: "bad", text: "На странице почти нет отзывов, кейсов, цифр или логотипов клиентов — читателю не на что опереться, чтобы поверить в результат." },
-    { title: "Призыв к действию", status: "warning", text: "Кнопка есть, но формулировка нейтральная ('Отправить', 'Узнать больше') — не создаёт ощущения срочности и не отвечает на вопрос 'а что будет дальше'." },
-    { title: "Что происходит после лендинга", status: "bad", text: "Не описано, что человек получит сразу после заявки — нет мгновенного ответа, письма или следующего шага, из-за чего часть лидов остывает." }
+    { title: "Оффер", status: "warning", score: 6, text: "Непонятно за 3 секунды, что именно вы предлагаете и кому это нужно прямо сейчас. Заголовок общий, выгода не сформулирована в цифрах или конкретном результате." },
+    { title: "Доверие / соц. доказательства", status: "bad", score: 3, text: "На странице почти нет отзывов, кейсов, цифр или логотипов клиентов — читателю не на что опереться, чтобы поверить в результат." },
+    { title: "Призыв к действию", status: "warning", score: 5, text: "Кнопка есть, но формулировка нейтральная ('Отправить', 'Узнать больше') — не создаёт ощущения срочности и не отвечает на вопрос 'а что будет дальше'." },
+    { title: "Что происходит после лендинга", status: "bad", score: 4, text: "Не описано, что человек получит сразу после заявки — нет мгновенного ответа, письма или следующего шага, из-за чего часть лидов остывает." }
   ],
   next_steps: [
     "Переписать первый экран: конкретная выгода + для кого + что нужно сделать",
@@ -8898,182 +8898,200 @@ function getQuiz2HTML() {
 <title>Разбор лендинга от эксперта — Growth Autopilot</title>
 <style>
   :root{
-    --violet:#7C3AED;
-    --magenta:#D946EF;
-    --blue:#3B82F6;
-    --bg:#F6F4FC;
-    --card:#FFFFFF;
-    --text:#1F2937;
-    --muted:#6B7280;
-    --border:#E9E4F7;
-    --ok:#16A34A;
+    --ink:#12101C;
+    --ink-soft:#3D3A4E;
+    --muted:#8B87A0;
+    --line:#E7E3F3;
+    --surface:#FFFFFF;
+    --sunken:#F7F5FC;
+    --accent1:#6D28D9;
+    --accent2:#EC4899;
+    --accent3:#F59E0B;
+    --grad: linear-gradient(120deg, var(--accent1), var(--accent2) 65%, var(--accent3));
+    --ok:#0F9D6B;
     --warn:#D97706;
-    --bad:#DC2626;
-    --grad: linear-gradient(135deg, var(--violet), var(--magenta));
-    --radius: 22px;
+    --bad:#E11D48;
+    --radius:26px;
   }
   *{box-sizing:border-box; margin:0; padding:0;}
   html,body{height:100%;}
   body{
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background: var(--bg);
-    color: var(--text);
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);
     min-height:100vh;
     display:flex;
     align-items:flex-start;
     justify-content:center;
-    padding:16px;
+    padding:26px 16px;
     -webkit-font-smoothing:antialiased;
+    background:
+      radial-gradient(560px 420px at 12% -6%, rgba(109,40,217,.16), transparent 60%),
+      radial-gradient(520px 420px at 108% 18%, rgba(236,72,153,.14), transparent 60%),
+      radial-gradient(600px 500px at 50% 118%, rgba(245,158,11,.10), transparent 60%),
+      #0E0B17;
+    background-attachment:fixed;
   }
   .app{
     width:100%;
-    max-width:460px;
-    min-height:640px;
-    background:var(--card);
-    border-radius: var(--radius);
+    max-width:440px;
+    min-height:660px;
+    background:var(--surface);
+    border-radius:var(--radius);
     overflow:hidden;
     position:relative;
     display:flex;
     flex-direction:column;
-    box-shadow: 0 8px 30px rgba(124,58,237,0.08);
+    box-shadow:0 30px 70px rgba(10,6,30,.45), 0 2px 0 rgba(255,255,255,.4) inset;
   }
   .screen{
     display:none;
     flex-direction:column;
     flex:1;
-    padding:28px 24px 24px;
-    animation: fadeIn .35s ease;
+    padding:30px 26px 26px;
+    animation:fadeIn .4s cubic-bezier(.22,.9,.3,1);
   }
   .screen.active{display:flex;}
-  @keyframes fadeIn{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+  @keyframes fadeIn{ from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);} }
 
-  .icon{ display:inline-flex; flex:none; }
-  .icon svg{ display:block; }
-
-  .brand{
-    font-size:13px;
-    font-weight:700;
-    letter-spacing:.04em;
-    color:var(--violet);
-    text-transform:uppercase;
-    margin-bottom:8px;
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:7px;
+    font-size:11.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--accent1); margin-bottom:14px;
   }
+  .eyebrow-dot{ width:6px; height:6px; border-radius:50%; background:var(--grad); }
 
   /* ---- Cover ---- */
-  #screen-cover{ justify-content:center; text-align:center; }
-  .cover-badge{
-    width:72px; height:72px; margin:0 auto 20px;
-    border-radius:20px;
+  #screen-cover{ justify-content:center; text-align:center; padding-top:36px; }
+  .cover-orb{
+    width:84px; height:84px; margin:0 auto 24px;
+    border-radius:26px;
     background:var(--grad);
     display:flex; align-items:center; justify-content:center;
-    box-shadow:0 10px 24px rgba(124,58,237,.25);
+    position:relative;
+    box-shadow:0 18px 34px rgba(109,40,217,.35);
+    transform:rotate(-6deg);
   }
-  .cover-title{ font-size:26px; font-weight:800; line-height:1.3; margin-bottom:12px; letter-spacing:-.01em; }
-  .cover-sub{ font-size:15px; color:var(--muted); line-height:1.55; margin-bottom:26px; }
-  .cover-points{ text-align:left; margin-bottom:26px; display:flex; flex-direction:column; gap:12px; }
-  .cover-point{ display:flex; align-items:center; gap:12px; font-size:14px; color:var(--text); line-height:1.4; }
-  .cover-point .dot{ flex:none; width:30px; height:30px; border-radius:10px; background:rgba(124,58,237,.10); color:var(--violet); display:flex; align-items:center; justify-content:center; }
-  .cover-author{ font-size:12.5px; color:var(--muted); margin-top:18px; display:flex; align-items:center; justify-content:center; gap:8px; }
-  .cover-author-badge{ width:26px; height:26px; border-radius:50%; background:var(--grad); flex:none; }
+  .cover-orb svg{ transform:rotate(6deg); }
+  .cover-title{ font-size:28px; font-weight:800; line-height:1.22; margin-bottom:14px; letter-spacing:-.02em; }
+  .cover-title em{ font-style:normal; background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .cover-sub{ font-size:15px; color:var(--ink-soft); line-height:1.6; margin-bottom:28px; }
+  .cover-points{ text-align:left; margin-bottom:8px; display:flex; flex-direction:column; gap:4px; }
+  .cover-point{ display:flex; align-items:flex-start; gap:14px; font-size:14px; color:var(--ink); line-height:1.45; padding:12px 4px; border-bottom:1px solid var(--line); }
+  .cover-point:last-child{ border-bottom:none; }
+  .cover-point .num{ flex:none; width:26px; height:26px; border-radius:9px; background:var(--sunken); color:var(--accent1); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; margin-top:1px; }
 
   .btn{
     border:none; cursor:pointer;
-    padding:16px 20px;
-    border-radius:16px;
-    font-size:16px; font-weight:700;
+    padding:17px 20px;
+    border-radius:17px;
+    font-size:15.5px; font-weight:700;
     font-family:inherit;
-    transition:transform .15s ease, box-shadow .15s ease, opacity .15s ease;
-    -webkit-tap-highlight-color: transparent;
+    transition:transform .15s ease, box-shadow .15s ease, opacity .15s ease, filter .15s ease;
+    -webkit-tap-highlight-color:transparent;
     display:flex; align-items:center; justify-content:center; gap:8px;
     text-decoration:none;
   }
-  .btn:active{ transform:scale(0.97); }
-  .btn-primary{ background:var(--grad); color:#fff; box-shadow:0 8px 20px rgba(124,58,237,.28); width:100%; }
-  .btn-primary:hover{ box-shadow:0 10px 26px rgba(124,58,237,.36); }
-  .btn-ghost{ background:transparent; color:var(--muted); font-weight:600; font-size:14px; padding:10px; width:auto; }
+  .btn:active{ transform:scale(0.96); }
+  .btn-primary{ background:var(--grad); color:#fff; box-shadow:0 14px 28px rgba(109,40,217,.30); width:100%; margin-top:22px; }
+  .btn-primary:hover{ filter:brightness(1.05); }
+  .btn-ghost{ background:var(--sunken); color:var(--ink-soft); font-weight:700; font-size:14px; padding:12px 16px; width:auto; }
+  .btn-ghost:hover{ background:var(--line); }
   .btn:disabled{ opacity:.45; cursor:not-allowed; }
 
   /* ---- Progress ---- */
-  .progress-wrap{ display:flex; align-items:center; gap:10px; margin-bottom:22px; }
-  .progress-track{ flex:1; height:6px; border-radius:6px; background:#EDE9FE; overflow:hidden; }
-  .progress-fill{ height:100%; border-radius:6px; background:var(--grad); width:0%; transition:width .4s ease; }
-  .progress-label{ font-size:12px; font-weight:700; color:var(--muted); flex:none; font-variant-numeric:tabular-nums; }
+  .progress-wrap{ display:flex; align-items:center; gap:10px; margin-bottom:26px; }
+  .progress-track{ flex:1; height:5px; border-radius:6px; background:var(--sunken); overflow:hidden; }
+  .progress-fill{ height:100%; border-radius:6px; background:var(--grad); width:0%; transition:width .45s cubic-bezier(.22,.9,.3,1); }
+  .progress-label{ font-size:12px; font-weight:800; color:var(--muted); flex:none; font-variant-numeric:tabular-nums; }
 
   /* ---- Step (form question) ---- */
   .step-scroll{ overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch; }
-  .q-text{ font-size:20px; font-weight:800; line-height:1.35; margin-bottom:8px; letter-spacing:-.01em; }
-  .q-hint{ font-size:13px; color:var(--muted); line-height:1.5; margin-bottom:18px; }
+  .q-text{ font-size:22px; font-weight:800; line-height:1.3; margin-bottom:10px; letter-spacing:-.015em; }
+  .q-hint{ font-size:13.5px; color:var(--muted); line-height:1.55; margin-bottom:20px; }
   .field{ margin-bottom:14px; }
-  .field label{ display:block; font-size:12.5px; font-weight:700; color:var(--muted); margin-bottom:6px; }
   .field input, .field textarea{
-    width:100%; padding:14px 16px; border-radius:14px;
-    border:1.5px solid var(--border); background:#FBFAFE;
-    font-size:15px; font-family:inherit; color:var(--text);
-    transition:border-color .15s ease;
+    width:100%; padding:16px 17px; border-radius:16px;
+    border:1.5px solid var(--line); background:var(--sunken);
+    font-size:15.5px; font-family:inherit; color:var(--ink);
+    transition:border-color .15s ease, background .15s ease;
     resize:vertical;
   }
-  .field textarea{ min-height:88px; line-height:1.4; }
-  .field input:focus, .field textarea:focus{ outline:none; border-color:var(--violet); }
-  .field-hint{ font-size:11.5px; color:var(--muted); margin-top:5px; }
-  .field-error{ font-size:12px; color:var(--bad); margin-top:5px; display:none; }
+  .field textarea{ min-height:100px; line-height:1.5; }
+  .field input:focus, .field textarea:focus{ outline:none; border-color:var(--accent1); background:#fff; }
+  .field-error{ font-size:12px; color:var(--bad); margin-top:7px; display:none; font-weight:600; }
   .field.invalid input, .field.invalid textarea{ border-color:var(--bad); }
   .field.invalid .field-error{ display:block; }
-  .q-footer{ display:flex; justify-content:space-between; align-items:center; margin-top:18px; min-height:38px; gap:10px; }
-  .q-footer .btn-primary{ flex:1; }
+
+  .q-footer{ display:flex; flex-direction:column; gap:10px; margin-top:20px; }
+  .q-footer-row{ display:flex; justify-content:center; }
+  .q-footer .btn-ghost{ align-self:center; padding:8px 14px; }
 
   /* ---- Analyzing ---- */
   #screen-analyzing{ justify-content:center; align-items:center; text-align:center; }
-  .spinner{
-    width:56px; height:56px; border-radius:50%;
-    border:4px solid #EDE9FE; border-top-color:var(--violet);
-    animation:spin 1s linear infinite; margin-bottom:26px;
-  }
+  .pulse-ring{ width:74px; height:74px; margin-bottom:30px; position:relative; }
+  .pulse-ring i{ position:absolute; inset:0; border-radius:50%; border:3px solid transparent; border-top-color:var(--accent1); border-right-color:var(--accent2); animation:spin 1.1s linear infinite; }
+  .pulse-ring i:nth-child(2){ inset:10px; border-top-color:var(--accent2); border-right-color:var(--accent3); animation-duration:.85s; animation-direction:reverse; opacity:.7; }
   @keyframes spin{ to{ transform:rotate(360deg); } }
-  .analyze-lines{ display:flex; flex-direction:column; gap:14px; align-items:flex-start; text-align:left; }
-  .analyze-line{ display:flex; align-items:center; gap:10px; font-size:14.5px; color:var(--muted); opacity:0; transform:translateX(-6px); transition:opacity .35s ease, transform .35s ease, color .2s ease; }
+  .analyze-lines{ display:flex; flex-direction:column; gap:16px; align-items:flex-start; text-align:left; }
+  .analyze-line{ display:flex; align-items:center; gap:12px; font-size:14.5px; color:var(--muted); opacity:0; transform:translateX(-8px); transition:opacity .4s ease, transform .4s ease, color .2s ease; }
   .analyze-line.show{ opacity:1; transform:translateX(0); }
-  .analyze-line.done{ color:var(--text); }
-  .analyze-check{ flex:none; width:20px; height:20px; border-radius:50%; background:#EDE9FE; color:var(--violet); display:flex; align-items:center; justify-content:center; opacity:0; transform:scale(.5); transition:opacity .25s ease, transform .25s ease, background .25s ease, color .25s ease; }
+  .analyze-line.done{ color:var(--ink); font-weight:600; }
+  .analyze-check{ flex:none; width:22px; height:22px; border-radius:50%; background:var(--sunken); color:var(--accent1); display:flex; align-items:center; justify-content:center; opacity:0; transform:scale(.5); transition:opacity .25s ease, transform .25s ease, background .25s ease, color .25s ease; }
   .analyze-line.done .analyze-check{ opacity:1; transform:scale(1); background:var(--grad); color:#fff; }
 
   /* ---- Contact form (gate before result) ---- */
-  .form-title{ font-size:21px; font-weight:800; margin-bottom:8px; letter-spacing:-.01em; }
-  .form-note{ font-size:11.5px; color:var(--muted); text-align:center; margin-top:14px; line-height:1.5; }
-  .form-actions{ display:flex; flex-direction:column; gap:8px; margin-top:4px; }
+  .form-title{ font-size:23px; font-weight:800; margin-bottom:8px; letter-spacing:-.015em; }
+  .form-note{ font-size:11.5px; color:var(--muted); text-align:center; margin-top:16px; line-height:1.55; }
 
   /* ---- Result ---- */
-  #screen-result{ padding-top:22px; }
+  #screen-result{ padding-top:28px; }
   .result-scroll{ overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch; padding-bottom:6px; }
-  .result-title{ font-size:20px; font-weight:800; text-align:center; margin-bottom:2px; letter-spacing:-.01em; }
-  .result-tier{ text-align:center; font-size:13px; font-weight:700; color:var(--violet); text-transform:uppercase; letter-spacing:.04em; margin-bottom:18px; }
+  .result-title{ font-size:22px; font-weight:800; margin-bottom:4px; letter-spacing:-.015em; }
+  .result-sub{ font-size:13px; color:var(--muted); margin-bottom:20px; }
 
-  .gauge-wrap{ display:flex; justify-content:center; margin-bottom:20px; position:relative; }
-  .gauge-num{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:34px; font-weight:800; font-variant-numeric:tabular-nums; }
-  .gauge-num span{ font-size:16px; font-weight:700; color:var(--muted); }
+  .score-pill{
+    display:inline-flex; align-items:baseline; gap:5px;
+    background:var(--grad); color:#fff; border-radius:14px;
+    padding:8px 14px; font-weight:800; font-size:14px; margin-bottom:16px;
+  }
+  .score-pill b{ font-size:19px; }
+  .score-pill span{ font-size:12px; opacity:.85; font-weight:700; }
 
-  .verdict-block{ background:#FBFAFE; border:1px solid #EFEAFB; border-radius:18px; padding:16px 18px; margin-bottom:18px; font-size:14.5px; line-height:1.55; color:var(--text); }
+  .verdict-block{ background:var(--sunken); border-radius:20px; padding:18px 19px; margin-bottom:20px; font-size:14.5px; line-height:1.6; color:var(--ink); border-left:4px solid var(--accent1); }
 
-  .result-card{ border:1.5px solid #EFEAFB; border-radius:18px; padding:16px 18px; margin-bottom:14px; display:flex; gap:12px; align-items:flex-start; }
-  .result-card.good{ background:rgba(22,163,74,.05); border-color:rgba(22,163,74,.22); }
-  .result-card.warning{ background:rgba(217,119,6,.05); border-color:rgba(217,119,6,.22); }
-  .result-card.bad{ background:rgba(220,38,38,.05); border-color:rgba(220,38,38,.22); }
-  .result-card-icon{ flex:none; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
-  .result-card.good .result-card-icon{ background:rgba(22,163,74,.15); color:var(--ok); }
-  .result-card.warning .result-card-icon{ background:rgba(217,119,6,.15); color:var(--warn); }
-  .result-card.bad .result-card-icon{ background:rgba(220,38,38,.15); color:var(--bad); }
-  .result-card-title{ font-size:14.5px; font-weight:800; margin-bottom:4px; }
-  .result-card-text{ font-size:13.5px; line-height:1.5; color:var(--text); }
+  .chart-block{ background:var(--surface); border:1.5px solid var(--line); border-radius:20px; padding:20px 19px; margin-bottom:16px; }
+  .chart-title{ font-size:12.5px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin-bottom:16px; }
+  .chart-row{ margin-bottom:16px; }
+  .chart-row:last-child{ margin-bottom:0; }
+  .chart-row-head{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:7px; }
+  .chart-row-label{ font-size:13.5px; font-weight:700; color:var(--ink); }
+  .chart-row-score{ font-size:13px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .chart-track{ height:9px; border-radius:8px; background:var(--sunken); overflow:hidden; }
+  .chart-fill{ height:100%; border-radius:8px; width:0%; transition:width 1s cubic-bezier(.22,.9,.3,1); }
+  .chart-fill.good{ background:var(--ok); }
+  .chart-fill.warning{ background:var(--warn); }
+  .chart-fill.bad{ background:var(--bad); }
 
-  .steps-block{ background:#FBFAFE; border:1px solid #EFEAFB; border-radius:18px; padding:18px; margin-bottom:18px; }
-  .steps-title{ font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin-bottom:12px; }
-  .step-row{ display:flex; gap:10px; align-items:flex-start; font-size:14px; line-height:1.5; margin-bottom:10px; }
+  .detail-card{ border-radius:18px; padding:16px 17px; margin-bottom:12px; border:1.5px solid var(--line); }
+  .detail-head{ display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+  .detail-icon{ flex:none; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
+  .detail-card.good .detail-icon{ background:rgba(15,157,107,.12); color:var(--ok); }
+  .detail-card.warning .detail-icon{ background:rgba(217,119,6,.12); color:var(--warn); }
+  .detail-card.bad .detail-icon{ background:rgba(225,29,72,.12); color:var(--bad); }
+  .detail-title{ font-size:14px; font-weight:800; }
+  .detail-text{ font-size:13.5px; line-height:1.55; color:var(--ink-soft); padding-left:34px; }
+
+  .steps-block{ background:var(--ink); color:#fff; border-radius:20px; padding:20px 19px; margin-bottom:20px; margin-top:16px; }
+  .steps-title{ font-size:12.5px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:rgba(255,255,255,.55); margin-bottom:14px; }
+  .step-row{ display:flex; gap:12px; align-items:flex-start; font-size:14px; line-height:1.55; margin-bottom:12px; }
   .step-row:last-child{ margin-bottom:0; }
-  .step-num{ flex:none; width:22px; height:22px; border-radius:50%; background:var(--grad); color:#fff; font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center; font-variant-numeric:tabular-nums; }
+  .step-num{ flex:none; width:24px; height:24px; border-radius:8px; background:var(--grad); color:#12101C; font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center; font-variant-numeric:tabular-nums; }
 
-  .cta-block{ text-align:center; margin-top:6px; }
-  .cta-title{ font-size:17px; font-weight:800; margin-bottom:6px; letter-spacing:-.01em; }
-  .cta-sub{ font-size:13.5px; color:var(--muted); margin-bottom:16px; line-height:1.5; }
-  .cta-actions{ display:flex; flex-direction:column; gap:8px; }
+  .cta-block{ text-align:center; margin-top:4px; }
+  .cta-title{ font-size:18px; font-weight:800; margin-bottom:6px; letter-spacing:-.01em; }
+  .cta-sub{ font-size:13.5px; color:var(--muted); margin-bottom:6px; line-height:1.55; }
+  .cta-actions{ display:flex; flex-direction:column; gap:10px; margin-top:14px; }
+  .cta-actions .btn-primary{ margin-top:0; }
 </style>
 </head>
 <body>
@@ -9081,19 +9099,17 @@ function getQuiz2HTML() {
 
   <!-- 1. Cover -->
   <div class="screen active" id="screen-cover">
-    <div class="brand">Growth Autopilot</div>
-    <div class="cover-badge">
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg>
+    <div class="cover-orb">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg>
     </div>
-    <div class="cover-title">Бесплатный разбор твоего лендинга</div>
-    <div class="cover-sub">5 коротких вопросов о сайте — и эксперт по воронкам разберёт, что мешает конвертить, и что делать в первую очередь.</div>
+    <div class="cover-title">Твой лендинг глазами <em>эксперта по воронкам</em></div>
+    <div class="cover-sub">5 коротких вопросов о сайте — и получишь честный разбор, что мешает конвертить и что исправить в первую очередь.</div>
     <div class="cover-points">
-      <div class="cover-point"><span class="dot"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16M4 19V7l6-4 6 4v12"/><path d="M9 19v-5h4v5"/></svg></span> Реальный анализ вашей страницы, а не общий шаблон</div>
-      <div class="cover-point"><span class="dot"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18M8 4v5"/></svg></span> Оценка по 4 блокам: оффер, доверие, CTA, воронка</div>
-      <div class="cover-point"><span class="dot"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg></span> Конкретные шаги, что улучшить в первую очередь</div>
+      <div class="cover-point"><span class="num">1</span> Реальный анализ вашей страницы, а не общий шаблон</div>
+      <div class="cover-point"><span class="num">2</span> Оценка по 4 параметрам на шкале от 1 до 10</div>
+      <div class="cover-point"><span class="num">3</span> Конкретные шаги, что улучшить в первую очередь</div>
     </div>
     <button class="btn btn-primary" onclick="Quiz2.start()">Начать разбор (~1 минута)</button>
-    <div class="cover-author"><span class="cover-author-badge"></span> Разбор проводит Максим Ильин — эксперт по воронкам и маркетингу</div>
   </div>
 
   <!-- 2. Step form (5 targeted questions) -->
@@ -9108,71 +9124,62 @@ function getQuiz2HTML() {
       <div class="field" id="fieldStep">
         <input id="inpStepInput" type="text" style="display:none;">
         <textarea id="inpStepTextarea" style="display:none;"></textarea>
-        <div class="field-hint" id="qFieldHint" style="display:none;"></div>
         <div class="field-error">Заполните поле, чтобы продолжить</div>
       </div>
     </div>
     <div class="q-footer">
-      <button class="btn btn-ghost" id="stepBack" onclick="Quiz2.stepBack()">← Назад</button>
-      <button class="btn btn-primary" onclick="Quiz2.stepNext()">Далее</button>
+      <button class="btn btn-primary" style="margin-top:0;" onclick="Quiz2.stepNext()">Далее</button>
+      <div class="q-footer-row" id="stepBackRow">
+        <button class="btn btn-ghost" id="stepBack" onclick="Quiz2.stepBack()">← Назад</button>
+      </div>
     </div>
   </div>
 
   <!-- 3. Analyzing -->
   <div class="screen" id="screen-analyzing">
-    <div class="spinner"></div>
+    <div class="pulse-ring"><i></i><i></i></div>
     <div class="analyze-lines" id="analyzeLines">
-      <div class="analyze-line" data-i="0"><span class="analyze-check"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg></span><span>Забираем страницу по ссылке</span></div>
-      <div class="analyze-line" data-i="1"><span class="analyze-check"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg></span><span>Изучаем оффер, доверие и призыв к действию</span></div>
-      <div class="analyze-line" data-i="2"><span class="analyze-check"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg></span><span>Формируем разбор от эксперта</span></div>
+      <div class="analyze-line" data-i="0"><span class="analyze-check"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg></span><span>Забираем страницу по ссылке</span></div>
+      <div class="analyze-line" data-i="1"><span class="analyze-check"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg></span><span>Изучаем оффер, доверие и призыв к действию</span></div>
+      <div class="analyze-line" data-i="2"><span class="analyze-check"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg></span><span>Формируем разбор от эксперта</span></div>
     </div>
   </div>
 
   <!-- 4. Contact form (gate before result) -->
   <div class="screen" id="screen-form">
-    <div class="brand">Growth Autopilot</div>
-    <div class="form-title">Разбор почти готов</div>
-    <div class="cover-sub" style="margin-bottom:22px;">Оставьте имя и контакт — сразу покажем разбор вашего лендинга и оценку.</div>
+    <div class="eyebrow"><span class="eyebrow-dot"></span>Разбор почти готов</div>
+    <div class="form-title">Куда показать результат?</div>
+    <div class="q-hint" style="margin-bottom:22px;">Оставьте имя и контакт — сразу откроем разбор вашего лендинга с оценкой по параметрам.</div>
 
     <div class="field" id="fieldName">
-      <label for="inpName">Имя</label>
       <input id="inpName" type="text" placeholder="Как к вам обращаться?" autocomplete="name">
       <div class="field-error">Введите имя (минимум 2 символа)</div>
     </div>
     <div class="field" id="fieldContact">
-      <label for="inpContact">Telegram или email</label>
-      <input id="inpContact" type="text" placeholder="@username или email@mail.com" autocomplete="email">
+      <input id="inpContact" type="text" placeholder="@username в Telegram или email" autocomplete="email">
       <div class="field-error">Введите корректный @telegram или email</div>
     </div>
 
-    <div class="form-actions">
-      <button class="btn btn-primary" id="submitBtn" onclick="Quiz2.submitForm()">Показать разбор</button>
-      <button class="btn btn-ghost" onclick="Quiz2.formBack()">← Назад</button>
-    </div>
+    <button class="btn btn-primary" id="submitBtn" onclick="Quiz2.submitForm()">Показать разбор</button>
+    <div class="q-footer-row" style="margin-top:10px;"><button class="btn btn-ghost" onclick="Quiz2.formBack()">← Назад</button></div>
     <div class="form-note">Это демо-версия квиза: данные формы никуда не сохраняются и не отправляются на сервер — только имитация в рамках воркшопа.</div>
   </div>
 
   <!-- 5. Result -->
   <div class="screen" id="screen-result">
     <div class="result-scroll">
+      <div class="eyebrow"><span class="eyebrow-dot"></span>AI-анализ от Максима Ильина</div>
       <div class="result-title">Разбор лендинга готов</div>
-      <div class="result-tier">AI-анализ от Максима Ильина</div>
+      <div class="result-sub" id="resultUrl"></div>
 
-      <div class="gauge-wrap">
-        <svg id="gaugeSvg" width="180" height="180" viewBox="0 0 180 180">
-          <circle cx="90" cy="90" r="78" fill="none" stroke="#EDE9FE" stroke-width="14"/>
-          <circle id="gaugeArc" cx="90" cy="90" r="78" fill="none" stroke="url(#gaugeGrad)" stroke-width="14" stroke-linecap="round" stroke-dasharray="490" stroke-dashoffset="490" transform="rotate(-90 90 90)"/>
-          <defs>
-            <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#7C3AED"/>
-              <stop offset="100%" stop-color="#D946EF"/>
-            </linearGradient>
-          </defs>
-        </svg>
-        <div class="gauge-num"><span id="gaugeNum">0</span><span>/10</span></div>
-      </div>
+      <div class="score-pill"><b id="scorePillNum">0</b><span>/ 10 общая оценка</span></div>
 
       <div class="verdict-block" id="verdictText"></div>
+
+      <div class="chart-block">
+        <div class="chart-title">Оценка по параметрам</div>
+        <div id="chartRows"></div>
+      </div>
 
       <div id="resultCards"></div>
 
@@ -9186,7 +9193,7 @@ function getQuiz2HTML() {
         <div class="cta-sub">Разберём вашу воронку целиком и составим план роста конверсии — бесплатно, в Telegram.</div>
         <div class="cta-actions">
           <a class="btn btn-primary" href="https://t.me/oleg_ezhkov" target="_blank" rel="noopener">Получить консультацию в Telegram</a>
-          <button class="btn btn-ghost" onclick="Quiz2.restart()">Разобрать ещё один сайт</button>
+          <button class="btn btn-ghost" style="align-self:center;" onclick="Quiz2.restart()">Разобрать ещё один сайт</button>
         </div>
       </div>
     </div>
@@ -9198,10 +9205,12 @@ function getQuiz2HTML() {
 (function(){
 
 var STATUS_META = {
-  good: { cls: 'good', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg>' },
-  warning: { cls: 'warning', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17.5" r=".6" fill="currentColor" stroke="none"/></svg>' },
-  bad: { cls: 'bad', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>' }
+  good: { cls: 'good', icon: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"/></svg>' },
+  warning: { cls: 'warning', icon: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17.5" r=".6" fill="currentColor" stroke="none"/></svg>' },
+  bad: { cls: 'bad', icon: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>' }
 };
+
+var STATUS_FALLBACK_SCORE = { good: 8, warning: 5, bad: 3 };
 
 // Локальная копия канонического ответа — второй уровень fallback на случай,
 // если сам запрос к нашему API не дошёл (сеть отвалилась у зрителя на эфире).
@@ -9209,10 +9218,10 @@ var LOCAL_FALLBACK = {
   verdict: "Сайт сейчас выглядит неплохо, но теряет часть заявок на переходе от интереса к действию — оффер размыт, а доверие почти ничем не подкреплено.",
   score: 5,
   blocks: [
-    { title: "Оффер", status: "warning", text: "Непонятно за 3 секунды, что именно вы предлагаете и кому это нужно прямо сейчас." },
-    { title: "Доверие / соц. доказательства", status: "bad", text: "На странице почти нет отзывов, кейсов и цифр — читателю не на что опереться." },
-    { title: "Призыв к действию", status: "warning", text: "Кнопка есть, но формулировка нейтральная и не создаёт ощущения срочности." },
-    { title: "Что происходит после лендинга", status: "bad", text: "Не описано, что человек получит сразу после заявки." }
+    { title: "Оффер", status: "warning", score: 6, text: "Непонятно за 3 секунды, что именно вы предлагаете и кому это нужно прямо сейчас." },
+    { title: "Доверие / соц. доказательства", status: "bad", score: 3, text: "На странице почти нет отзывов, кейсов и цифр — читателю не на что опереться." },
+    { title: "Призыв к действию", status: "warning", score: 5, text: "Кнопка есть, но формулировка нейтральная и не создаёт ощущения срочности." },
+    { title: "Что происходит после лендинга", status: "bad", score: 4, text: "Не описано, что человек получит сразу после заявки." }
   ],
   next_steps: [
     "Переписать первый экран: конкретная выгода + для кого + что нужно сделать",
@@ -9285,8 +9294,7 @@ function validEmailOrTg(v){
 var state = {
   step: 0,
   answers: {},
-  analyzeReady: null,
-  contactDone: false
+  analyzeReady: null
 };
 
 function renderStep(){
@@ -9298,7 +9306,6 @@ function renderStep(){
 
   var input = $('inpStepInput');
   var textarea = $('inpStepTextarea');
-  var hintEl = $('qFieldHint');
   setInvalid('fieldStep', false);
 
   if (q.type === 'textarea') {
@@ -9312,9 +9319,8 @@ function renderStep(){
     input.placeholder = q.placeholder;
     input.value = state.answers[q.key] || '';
   }
-  hintEl.style.display = 'none';
 
-  $('stepBack').style.visibility = state.step === 0 ? 'hidden' : 'visible';
+  $('stepBackRow').style.display = state.step === 0 ? 'none' : 'flex';
 }
 
 function currentStepValue(){
@@ -9426,27 +9432,37 @@ var Quiz2 = {
 function renderResult(data){
   var score = Math.max(1, Math.min(10, Math.round(Number(data.score) || 5)));
 
+  $('resultUrl').textContent = state.answers.url || '';
   $('verdictText').textContent = data.verdict || '';
+  $('scorePillNum').textContent = '0';
+  animateNumber($('scorePillNum'), 0, score, 900);
 
-  var circumference = 490;
-  var offset = circumference * (1 - score / 10);
-  var arc = $('gaugeArc');
-  arc.style.strokeDashoffset = String(circumference);
-  $('gaugeNum').textContent = '0';
-  requestAnimationFrame(function(){
-    arc.style.transition = 'stroke-dashoffset 1s cubic-bezier(.22,.9,.3,1)';
-    arc.style.strokeDashoffset = String(offset);
-  });
-  animateNumber($('gaugeNum'), 0, score, 1000);
-
-  var cardsHtml = '';
   var blocks = Array.isArray(data.blocks) ? data.blocks : [];
+
+  var chartHtml = '';
   blocks.forEach(function(b){
     var meta = STATUS_META[b.status] || STATUS_META.warning;
-    cardsHtml += '<div class="result-card ' + meta.cls + '">' +
-      '<div class="result-card-icon">' + meta.icon + '</div>' +
-      '<div><div class="result-card-title">' + escapeHtml(b.title || '') + '</div>' +
-      '<div class="result-card-text">' + escapeHtml(b.text || '') + '</div></div>' +
+    var bScore = Math.max(1, Math.min(10, Math.round(Number(b.score) || STATUS_FALLBACK_SCORE[meta.cls] || 5)));
+    chartHtml += '<div class="chart-row">' +
+      '<div class="chart-row-head"><span class="chart-row-label">' + escapeHtml(b.title || '') + '</span>' +
+      '<span class="chart-row-score" style="color:var(--' + (meta.cls === 'good' ? 'ok' : meta.cls) + ')">' + bScore + '/10</span></div>' +
+      '<div class="chart-track"><div class="chart-fill ' + meta.cls + '" data-w="' + (bScore * 10) + '"></div></div>' +
+      '</div>';
+  });
+  $('chartRows').innerHTML = chartHtml;
+  requestAnimationFrame(function(){
+    document.querySelectorAll('.chart-fill').forEach(function(el){
+      el.style.width = el.getAttribute('data-w') + '%';
+    });
+  });
+
+  var cardsHtml = '';
+  blocks.forEach(function(b){
+    var meta = STATUS_META[b.status] || STATUS_META.warning;
+    cardsHtml += '<div class="detail-card ' + meta.cls + '">' +
+      '<div class="detail-head"><div class="detail-icon">' + meta.icon + '</div>' +
+      '<div class="detail-title">' + escapeHtml(b.title || '') + '</div></div>' +
+      '<div class="detail-text">' + escapeHtml(b.text || '') + '</div>' +
       '</div>';
   });
   $('resultCards').innerHTML = cardsHtml;
