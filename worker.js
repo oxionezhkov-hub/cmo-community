@@ -22,6 +22,7 @@ export default {
     if (url.pathname.startsWith('/api/admin/coffee')) return apiAdminCoffee(request, env, url);
     if (url.pathname.startsWith("/api/admin/")) return apiAdminAction(request, env, url);
     if (url.pathname === "/" || url.pathname === "/app") return serveApp(env);
+    if (url.pathname === "/quiz1" || url.pathname === "/worker/quiz1") return serveQuiz1();
     if (url.pathname === "/api/task-progress") return apiTaskProgress(request, env);
     if (url.pathname === "/api/auth-email") return apiAuthEmail(request, env);
     if (url.pathname === "/api/events") return apiEvents(request, env);
@@ -1270,6 +1271,11 @@ async function initKBData(env) {
 // ─── MINI APP HTML ───────────────────────────────────────────
 async function serveApp(env) {
   return new Response(getMiniAppHTML(), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+// ─── QUIZ 1: AI MATURITY SCORE (Growth Autopilot, шаблонный, без ИИ) ──
+function serveQuiz1() {
+  return new Response(getQuiz1HTML(), { headers: { "Content-Type": "text/html; charset=utf-8" } });
 }
 
 // ══════════════════════════════════════════════
@@ -7795,6 +7801,703 @@ async function kbInitData() {
     msg.className = 'msg err';
   }
 }
+</script>
+</body>
+</html>`;
+}
+
+// ─── QUIZ 1 HTML/CSS/JS ─────────────────────────────────────
+function getQuiz1HTML() {
+  return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>AI Maturity Score — Growth Autopilot</title>
+<style>
+  :root{
+    --violet:#7C3AED;
+    --magenta:#D946EF;
+    --blue:#3B82F6;
+    --bg:#F6F4FC;
+    --card:#FFFFFF;
+    --text:#1F2937;
+    --muted:#6B7280;
+    --ok:#16A34A;
+    --warn:#D97706;
+    --grad: linear-gradient(135deg, var(--violet), var(--magenta));
+    --radius: 22px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height:100vh;
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+    padding:16px;
+  }
+  .app{
+    width:100%;
+    max-width:460px;
+    min-height:640px;
+    background:var(--card);
+    border-radius: var(--radius);
+    overflow:hidden;
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    box-shadow: 0 8px 30px rgba(124,58,237,0.08);
+  }
+  .screen{
+    display:none;
+    flex-direction:column;
+    flex:1;
+    padding:28px 24px 24px;
+    animation: fadeIn .35s ease;
+  }
+  .screen.active{display:flex;}
+  @keyframes fadeIn{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+
+  .brand{
+    font-size:13px;
+    font-weight:700;
+    letter-spacing:.04em;
+    color:var(--violet);
+    text-transform:uppercase;
+    margin-bottom:8px;
+  }
+
+  /* ---- Cover ---- */
+  #screen-cover{ justify-content:center; text-align:center; }
+  .cover-badge{
+    width:72px; height:72px; margin:0 auto 20px;
+    border-radius:20px;
+    background:var(--grad);
+    display:flex; align-items:center; justify-content:center;
+    font-size:32px;
+  }
+  .cover-title{ font-size:26px; font-weight:800; line-height:1.25; margin-bottom:12px; }
+  .cover-sub{ font-size:15px; color:var(--muted); line-height:1.5; margin-bottom:28px; }
+  .cover-points{ text-align:left; margin-bottom:28px; display:flex; flex-direction:column; gap:10px; }
+  .cover-point{ display:flex; align-items:flex-start; gap:10px; font-size:14px; color:var(--text); }
+  .cover-point .dot{ flex:none; width:22px; height:22px; border-radius:50%; background:rgba(124,58,237,.12); color:var(--violet); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; }
+
+  .btn{
+    border:none; cursor:pointer;
+    padding:16px 20px;
+    border-radius:16px;
+    font-size:16px; font-weight:700;
+    font-family:inherit;
+    transition:transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn:active{ transform:scale(0.97); }
+  .btn-primary{ background:var(--grad); color:#fff; box-shadow:0 8px 20px rgba(124,58,237,.28); width:100%; }
+  .btn-primary:hover{ box-shadow:0 10px 26px rgba(124,58,237,.36); }
+  .btn-ghost{ background:transparent; color:var(--muted); font-weight:600; font-size:14px; padding:10px; }
+  .btn:disabled{ opacity:.4; cursor:not-allowed; }
+
+  /* ---- Progress ---- */
+  .progress-wrap{ display:flex; align-items:center; gap:10px; margin-bottom:22px; }
+  .progress-track{ flex:1; height:6px; border-radius:6px; background:#EDE9FE; overflow:hidden; }
+  .progress-fill{ height:100%; border-radius:6px; background:var(--grad); width:0%; transition:width .4s ease; }
+  .progress-label{ font-size:12px; font-weight:700; color:var(--muted); flex:none; }
+
+  /* ---- Question ---- */
+  .q-text{ font-size:20px; font-weight:800; line-height:1.35; margin-bottom:20px; }
+  .options{ display:flex; flex-direction:column; gap:10px; flex:1; }
+  .option{
+    text-align:left;
+    border:1.5px solid #E9E4F7;
+    background:#FBFAFE;
+    border-radius:16px;
+    padding:15px 16px;
+    font-size:14.5px;
+    font-weight:600;
+    color:var(--text);
+    cursor:pointer;
+    transition:border-color .15s ease, background .15s ease, transform .1s ease;
+  }
+  .option:active{ transform:scale(0.98); }
+  .option:hover{ border-color:var(--violet); background:#F5F1FE; }
+  .option.selected{ border-color:var(--violet); background:linear-gradient(135deg, rgba(124,58,237,.08), rgba(217,70,239,.08)); }
+  .q-footer{ display:flex; justify-content:space-between; align-items:center; margin-top:18px; }
+
+  /* ---- Analyzing ---- */
+  #screen-analyzing{ justify-content:center; align-items:center; text-align:center; }
+  .spinner{
+    width:56px; height:56px; border-radius:50%;
+    border:4px solid #EDE9FE; border-top-color:var(--violet);
+    animation:spin 1s linear infinite; margin-bottom:26px;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .analyze-lines{ display:flex; flex-direction:column; gap:14px; align-items:flex-start; text-align:left; }
+  .analyze-line{ display:flex; align-items:center; gap:10px; font-size:14.5px; color:var(--muted); opacity:0; transform:translateX(-6px); transition:opacity .35s ease, transform .35s ease, color .2s ease; }
+  .analyze-line.show{ opacity:1; transform:translateX(0); }
+  .analyze-line.done{ color:var(--text); }
+  .analyze-check{ flex:none; width:20px; height:20px; border-radius:50%; background:#EDE9FE; color:var(--violet); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; opacity:0; transform:scale(.5); transition:opacity .25s ease, transform .25s ease, background .25s ease, color .25s ease; }
+  .analyze-line.done .analyze-check{ opacity:1; transform:scale(1); background:var(--grad); color:#fff; }
+
+  /* ---- Result ---- */
+  #screen-result{ padding-top:22px; }
+  .result-scroll{ overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch; padding-bottom:6px; }
+  .result-title{ font-size:20px; font-weight:800; text-align:center; margin-bottom:2px; }
+  .result-tier{ text-align:center; font-size:13px; font-weight:700; color:var(--violet); text-transform:uppercase; letter-spacing:.03em; margin-bottom:18px; }
+
+  .gauge-wrap{ display:flex; justify-content:center; margin-bottom:22px; position:relative; }
+  .gauge-num{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:34px; font-weight:800; }
+  .gauge-num span{ font-size:16px; font-weight:700; color:var(--muted); }
+
+  .card-block{ background:#FBFAFE; border:1px solid #EFEAFB; border-radius:18px; padding:18px; margin-bottom:16px; }
+  .card-title{ font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); margin-bottom:14px; }
+
+  .radar-wrap{ display:flex; justify-content:center; }
+
+  .bar-row{ display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+  .bar-row:last-child{ margin-bottom:0; }
+  .bar-label{ display:flex; justify-content:space-between; font-size:13px; font-weight:700; }
+  .bar-track{ height:10px; border-radius:8px; background:#EDE9FE; overflow:hidden; }
+  .bar-fill{ height:100%; border-radius:8px; width:0%; transition:width 1.1s cubic-bezier(.22,.9,.3,1); }
+  .bar-fill.you{ background:var(--grad); }
+  .bar-fill.avg{ background:#C7D2FE; }
+
+  .rec-text p{ font-size:14px; line-height:1.6; color:var(--text); margin-bottom:10px; }
+  .rec-text p:last-child{ margin-bottom:0; }
+
+  .sw-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .sw-col-title{ font-size:12px; font-weight:800; margin-bottom:8px; }
+  .sw-item{ font-size:12.5px; line-height:1.4; margin-bottom:8px; display:flex; gap:6px; }
+
+  .cta-block{ text-align:center; margin-top:6px; }
+  .cta-title{ font-size:17px; font-weight:800; margin-bottom:6px; }
+  .cta-sub{ font-size:13.5px; color:var(--muted); margin-bottom:16px; line-height:1.5; }
+
+  /* ---- Form ---- */
+  .field{ margin-bottom:14px; }
+  .field label{ display:block; font-size:12.5px; font-weight:700; color:var(--muted); margin-bottom:6px; }
+  .field input{
+    width:100%; padding:14px 16px; border-radius:14px;
+    border:1.5px solid #E9E4F7; background:#FBFAFE;
+    font-size:15px; font-family:inherit; color:var(--text);
+    transition:border-color .15s ease;
+  }
+  .field input:focus{ outline:none; border-color:var(--violet); }
+  .field-error{ font-size:12px; color:#DC2626; margin-top:5px; display:none; }
+  .field.invalid input{ border-color:#DC2626; }
+  .field.invalid .field-error{ display:block; }
+  .form-note{ font-size:11.5px; color:var(--muted); text-align:center; margin-top:14px; line-height:1.5; }
+
+  /* ---- Thanks ---- */
+  #screen-thanks{ justify-content:center; align-items:center; text-align:center; }
+  .thanks-badge{ width:76px; height:76px; border-radius:50%; background:var(--grad); display:flex; align-items:center; justify-content:center; font-size:34px; margin-bottom:22px; animation:pop .4s ease; }
+  @keyframes pop{ 0%{ transform:scale(0.4); opacity:0;} 70%{ transform:scale(1.08);} 100%{ transform:scale(1); opacity:1;} }
+  .thanks-title{ font-size:21px; font-weight:800; margin-bottom:10px; }
+  .thanks-sub{ font-size:14.5px; color:var(--muted); line-height:1.55; margin-bottom:26px; }
+
+  @media (max-width:380px){
+    .sw-grid{ grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- 1. Cover -->
+  <div class="screen active" id="screen-cover">
+    <div class="brand">Growth Autopilot</div>
+    <div class="cover-badge">🚀</div>
+    <div class="cover-title">Узнайте свой AI Maturity Score</div>
+    <div class="cover-sub">5 вопросов — и вы увидите, насколько ваш маркетинг уже работает на автопилоте, а где вы всё ещё тратите время руками.</div>
+    <div class="cover-points">
+      <div class="cover-point"><span class="dot">%</span> Персональный процент зрелости + сравнение со средним по рынку</div>
+      <div class="cover-point"><span class="dot">◈</span> Радар сильных и слабых зон: контент, лидген, ресерч, автоматизация</div>
+      <div class="cover-point"><span class="dot">→</span> Конкретные следующие шаги под вашу ситуацию</div>
+    </div>
+    <button class="btn btn-primary" onclick="Quiz.start()">Пройти тест (2 минуты)</button>
+  </div>
+
+  <!-- 2. Question -->
+  <div class="screen" id="screen-question">
+    <div class="progress-wrap">
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-label" id="progressLabel">1/5</div>
+    </div>
+    <div class="q-text" id="qText"></div>
+    <div class="options" id="qOptions"></div>
+    <div class="q-footer">
+      <button class="btn btn-ghost" id="qBack" onclick="Quiz.back()">← Назад</button>
+      <div></div>
+    </div>
+  </div>
+
+  <!-- 3. Analyzing -->
+  <div class="screen" id="screen-analyzing">
+    <div class="spinner"></div>
+    <div class="analyze-lines" id="analyzeLines">
+      <div class="analyze-line" data-i="0"><span class="analyze-check">✓</span><span>Считаем ваши ответы</span></div>
+      <div class="analyze-line" data-i="1"><span class="analyze-check">✓</span><span>Сравниваем с 500+ компаниями в нашей базе</span></div>
+      <div class="analyze-line" data-i="2"><span class="analyze-check">✓</span><span>Формируем персональные рекомендации</span></div>
+    </div>
+  </div>
+
+  <!-- 4. Result -->
+  <div class="screen" id="screen-result">
+    <div class="result-scroll">
+      <div class="result-title">Ваш AI Maturity Score готов</div>
+      <div class="result-tier" id="resultTierName"></div>
+
+      <div class="gauge-wrap">
+        <svg id="gaugeSvg" width="180" height="180" viewBox="0 0 180 180">
+          <circle cx="90" cy="90" r="78" fill="none" stroke="#EDE9FE" stroke-width="14"/>
+          <circle id="gaugeArc" cx="90" cy="90" r="78" fill="none" stroke="url(#gaugeGrad)" stroke-width="14" stroke-linecap="round" stroke-dasharray="490" stroke-dashoffset="490" transform="rotate(-90 90 90)"/>
+          <defs>
+            <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#7C3AED"/>
+              <stop offset="100%" stop-color="#D946EF"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <div class="gauge-num"><span id="gaugeNum">0</span><span>%</span></div>
+      </div>
+
+      <div class="card-block">
+        <div class="card-title">Профиль по 4 направлениям</div>
+        <div class="radar-wrap"><svg id="radarSvg" width="300" height="220" viewBox="0 0 300 220"></svg></div>
+      </div>
+
+      <div class="card-block">
+        <div class="card-title">Вы vs рынок</div>
+        <div class="bar-row">
+          <div class="bar-label"><span>Вы</span><span id="barYouLabel">0%</span></div>
+          <div class="bar-track"><div class="bar-fill you" id="barYou"></div></div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label"><span>Средний по рынку</span><span>58%</span></div>
+          <div class="bar-track"><div class="bar-fill avg" id="barAvg"></div></div>
+        </div>
+      </div>
+
+      <div class="card-block">
+        <div class="card-title">Что это значит для вас</div>
+        <div class="rec-text" id="recText"></div>
+      </div>
+
+      <div class="card-block">
+        <div class="sw-grid">
+          <div>
+            <div class="sw-col-title">Что уже хорошо</div>
+            <div id="swGood"></div>
+          </div>
+          <div>
+            <div class="sw-col-title">Что стоит подтянуть</div>
+            <div id="swBad"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cta-block">
+        <div class="cta-title">Хотите полный разбор?</div>
+        <div class="cta-sub">Соберём PDF-отчёт с расширенными рекомендациями под вашу нишу — бесплатно.</div>
+        <button class="btn btn-primary" onclick="Quiz.goForm()">Получить PDF-отчёт</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Form -->
+  <div class="screen" id="screen-form">
+    <div class="brand">Growth Autopilot</div>
+    <div class="cover-title" style="font-size:21px;">Куда прислать отчёт?</div>
+    <div class="cover-sub" style="margin-bottom:22px;">Оставьте контакт — пришлём расширенный PDF с рекомендациями под вашу нишу.</div>
+
+    <div class="field" id="fieldName">
+      <label for="inpName">Имя</label>
+      <input id="inpName" type="text" placeholder="Как к вам обращаться?" autocomplete="name">
+      <div class="field-error">Введите имя (минимум 2 символа)</div>
+    </div>
+    <div class="field" id="fieldContact">
+      <label for="inpContact">Telegram или email</label>
+      <input id="inpContact" type="text" placeholder="@username или email@mail.com" autocomplete="email">
+      <div class="field-error">Введите корректный @telegram или email</div>
+    </div>
+
+    <button class="btn btn-primary" id="submitBtn" onclick="Quiz.submitForm()">Получить PDF-отчёт</button>
+    <button class="btn btn-ghost" style="width:100%; margin-top:6px;" onclick="Quiz.backToResult()">← Вернуться к результату</button>
+    <div class="form-note">Это демо-версия квиза: данные формы никуда не сохраняются и не отправляются на сервер — только имитация отправки в рамках воркшопа.</div>
+  </div>
+
+  <!-- 6. Thanks -->
+  <div class="screen" id="screen-thanks">
+    <div class="thanks-badge">✓</div>
+    <div class="thanks-title">Отправлено!</div>
+    <div class="thanks-sub" id="thanksSub"></div>
+    <button class="btn btn-primary" onclick="Quiz.restart()">Пройти ещё раз</button>
+  </div>
+
+</div>
+
+<script>
+(function(){
+
+var QUESTIONS = [
+  { text: "Как сейчас у вас устроен контент?", options: [
+    { text:"Пишу/снимаю всё сам вручную", scores:{content:5,leadgen:0,research:0,automation:0} },
+    { text:"Есть SMM-щик/команда, делают руками", scores:{content:10,leadgen:0,research:0,automation:5} },
+    { text:"Иногда использую ChatGPT для идей/текстов", scores:{content:15,leadgen:0,research:5,automation:10} },
+    { text:"Есть отлаженная система генерации через ИИ", scores:{content:25,leadgen:0,research:15,automation:20} }
+  ]},
+  { text: "Как вы находите темы и следите за конкурентами?", options: [
+    { text:"Придумываю из головы / смотрю ленту", scores:{content:0,leadgen:0,research:5,automation:0} },
+    { text:"Раз в месяц смотрю, что у конкурентов заходит", scores:{content:5,leadgen:0,research:10,automation:5} },
+    { text:"Слежу за трендами вручную регулярно", scores:{content:10,leadgen:0,research:15,automation:10} },
+    { text:"Есть агент/сервис, который сам присылает тренды и разборы конкурентов", scores:{content:15,leadgen:5,research:25,automation:20} }
+  ]},
+  { text: "Что происходит с человеком после того, как он на вас подписался?", options: [
+    { text:"Ничего специального, просто видит посты", scores:{content:0,leadgen:0,research:0,automation:0} },
+    { text:"Иногда зову в личку/на созвон вручную", scores:{content:5,leadgen:10,research:0,automation:5} },
+    { text:"Есть лид-магнит, но дальше тишина", scores:{content:10,leadgen:15,research:0,automation:10} },
+    { text:"Есть выстроенная воронка/мини-курс с прогревом и автоматической продажей", scores:{content:15,leadgen:25,research:5,automation:20} }
+  ]},
+  { text: "Сколько часов в неделю у вас/команды уходит на маркетинг руками?", options: [
+    { text:"Больше 15 часов", scores:{content:0,leadgen:0,research:0,automation:0} },
+    { text:"8–15 часов", scores:{content:5,leadgen:5,research:5,automation:5} },
+    { text:"3–8 часов", scores:{content:10,leadgen:10,research:10,automation:10} },
+    { text:"Меньше 3 часов, остальное работает само", scores:{content:20,leadgen:15,research:15,automation:25} }
+  ]},
+  { text: "Что сейчас болит сильнее всего?", pain:true, options: [
+    { text:"Не хватает заявок/лидов", key:"leadgen" },
+    { text:"Трачу слишком много времени", key:"automation" },
+    { text:"Хаос, ничего не систематизировано", key:"system" },
+    { text:"Не понимаю, что вообще делать с ИИ", key:"learning" }
+  ]}
+];
+
+var CATS = ["content","leadgen","research","automation"];
+var CAT_LABEL = { content:"Контент", leadgen:"Лидген/Воронки", research:"Ресерч/Аналитика", automation:"Автоматизация" };
+
+var MAX_BY_CAT = {};
+CATS.forEach(function(cat){
+  var max = 0;
+  QUESTIONS.forEach(function(q){
+    if (q.pain) return;
+    var best = 0;
+    q.options.forEach(function(o){ if (o.scores[cat] > best) best = o.scores[cat]; });
+    max += best;
+  });
+  MAX_BY_CAT[cat] = max;
+});
+var MAX_TOTAL = CATS.reduce(function(s,c){ return s + MAX_BY_CAT[c]; }, 0);
+
+var TIERS = [
+  { key:"manual", min:0, max:25, name:"Ручной режим" },
+  { key:"partial", min:26, max:50, name:"Частичная автоматизация" },
+  { key:"advanced", min:51, max:75, name:"Продвинутый уровень" },
+  { key:"autopilot", min:76, max:100, name:"Автопилот" }
+];
+
+var PAIN_LABEL = { leadgen:"Лидген", automation:"Автоматизация", system:"Система", learning:"Обучение/внедрение" };
+
+var RECS = {
+  manual: {
+    leadgen: ["У вас старт с той же точки, что и у большинства — ручной контент есть, а системы, которая сама доводит подписчика до заявки, пока нет.","Прежде чем масштабировать трафик, стоит собрать простую воронку: лид-магнит → авто-прогрев → предложение. Даже базовая связка поднимает число заявок без роста бюджета на рекламу.","Начните с одного сценария — например, мини-курс или чат-бот с прогревом на 3-5 сообщений. Это займёт меньше времени, чем кажется, и сразу даст измеримый результат."],
+    automation: ["Сейчас почти всё держится на ручном труде — это нормальная стартовая точка, но именно она съедает больше всего часов в неделю.","Первый шаг — не автоматизировать всё сразу, а найти 1-2 самые повторяющиеся задачи (например, генерацию постов или сбор трендов) и снять их с себя через ИИ-инструменты.","Освободившееся время лучше вложить в стратегию и продажи — то, что пока нельзя делегировать роботу."],
+    system: ["Контент и продвижение существуют, но без единой системы — каждое действие требует ручного решения, что делать дальше.","Хаос на этом этапе — это не провал, а признак того, что процессы ещё не описаны. Даже простая таблица с шагами «пост → лид → воронка → продажа» уже наведёт порядок.","Дальше эти шаги можно один за другим переводить на автопилот — начиная с самого частого и самого утомительного."],
+    learning: ["Вы там, где ИИ пока воспринимается как что-то отдельное, а не как часть ежедневной работы — и это самая частая точка старта.","Начните с малого: используйте ИИ для одной конкретной задачи в неделю — черновик поста, анализ конкурента, план контента. Так формируется навык без перегрузки.","Через 2-3 недели такой практики вы увидите, какие процессы стоит доверить агентам полностью, а не по одной задаче."]
+  },
+  partial: {
+    leadgen: ["У вас уже есть контакт с аудиторией и первые точки касания — не хватает воронки, которая доводит человека до заявки без вашего участия.","Лид-магнит или мини-курс с автоматическим прогревом закроет именно этот разрыв: люди будут двигаться к покупке, даже пока вы заняты другим.","Следующий логичный шаг — подключить сценарий дожима для тех, кто не купил сразу, вместо того чтобы просто «забывать» о тёплых лидах."],
+    automation: ["Часть рутины уже снята с ваших рук — хороший знак. Но заметная доля времени всё ещё уходит на ручные действия, которые можно передать ИИ.","Следующий уровень — не точечные инструменты, а связка агентов: один собирает данные, второй готовит черновик, третий публикует. Это экономит не минуты, а часы в неделю.","Приоритет — процессы, которые повторяются чаще всего: именно там автоматизация окупается быстрее всего."],
+    system: ["База выстроена — есть контент, есть какая-то воронка, но между блоками много ручных склеек, из-за чего система работает рывками.","Стоит один раз описать весь путь клиента от первого касания до оплаты и найти 2-3 узких места, где вы вручную «дотягиваете» процесс.","Автоматизация именно этих точек даст максимальный эффект — не нужно перестраивать всё, достаточно закрыть слабые звенья."],
+    learning: ["Вы уже пробуете ИИ-инструменты точечно — это хороший этап, но пока каждое применение требует отдельного решения «а надо ли здесь ИИ».","Полезно свести уже опробованные инструменты в понятный список: что для контента, что для ресерча, что для воронки — и использовать их системно, а не от случая к случаю.","Дальше можно перейти от разовых промптов к постоянным сценариям — агентам, которые работают по расписанию, а не по вашей команде каждый раз."]
+  },
+  advanced: {
+    leadgen: ["Вы дальше 70% рынка: воронка уже приносит заявки, контент работает на привлечение, а не существует сам по себе.","Чтобы вырасти ещё, имеет смысл персонализировать сценарии под сегменты аудитории — не одна воронка для всех, а несколько веток под разные боли и уровни готовности к покупке.","Также стоит подключить аналитику по каждому шагу воронки, чтобы видеть, где именно теряются лиды, и точечно улучшать конверсию."],
+    automation: ["Большая часть рутины уже автоматизирована — вы близки к тому, чтобы маркетинг работал по большей части без вашего ежедневного участия.","Оставшиеся ручные точки обычно самые «неудобные» для автоматизации — например, персональная переписка или сложная аналитика. Именно там имеет смысл внедрять более гибких ИИ-агентов.","Итоговая цель — перейти от набора отдельных автоматизаций к единой системе, где агенты передают задачи друг другу без вашего участия."],
+    system: ["Система в целом выстроена и работает — контент, лидген и аналитика связаны между собой, а не существуют отдельно.","На этом уровне главная задача — не сломать систему при масштабировании: добавляйте новые каналы и форматы так, чтобы они встраивались в существующие процессы, а не создавали новый хаос.","Регулярный аудит воронки раз в квартал поможет вовремя находить узкие места, которые появляются по мере роста."],
+    learning: ["Вы уже уверенно используете ИИ как часть работы, а не как эксперимент — это заметно выделяет вас на фоне большинства.","Следующий шаг — не «использовать ИИ больше», а «использовать ИИ точнее»: выстраивать агентов под конкретные бизнес-метрики, а не только под удобство.","Имеет смысл обучить команду тем же принципам, чтобы система не зависела от одного человека, который «разбирается в ИИ»."]
+  },
+  autopilot: {
+    leadgen: ["Ваша воронка уже работает почти без ручного участия — редкий результат, признание заслуженно.","Осталось убрать последние ручные точки: например, ручную квалификацию лидов или персональные ответы, которые ещё не переданы агентам.","На этом уровне рост чаще приходит не от новых инструментов, а от точной аналитики — A/B-тестов сценариев и сегментации аудитории."],
+    automation: ["Вы в режиме автопилота: большая часть маркетинга работает без ежедневного вмешательства — это уровень, на который многие только нацеливаются.","Последние ручные точки — обычно стратегические решения и нестандартные ситуации, которые и не стоит полностью автоматизировать.","Дальше имеет смысл сфокусироваться на том, что автоматизация не может дать — на стратегии роста и новых направлениях."],
+    system: ["У вас выстроена целостная система: контент, лидген, ресерч и автоматизация работают друг на друга, а не по отдельности.","На этом уровне ценность растёт не от добавления новых инструментов, а от точной настройки уже существующих процессов под данные.","Стоит подумать о том, как задокументировать систему, чтобы она не зависела от одного человека и масштабировалась вместе с командой."],
+    learning: ["Вы не просто используете ИИ — вы выстроили вокруг него систему, и это уже уровень, о котором говорят как о конкурентном преимуществе.","Осталось убрать последние ручные решения — точки, где вы по привычке делаете что-то сами, хотя агент справился бы не хуже.","Дальше есть смысл делиться этим опытом с командой или партнёрами — система такого уровня редко строится в одиночку."]
+  }
+};
+
+var state = {
+  step: 0, // index into QUESTIONS (0..4), or -1 for cover
+  answers: [], // {scores?, key?}
+  analyzeTimers: [],
+  result: null
+};
+
+function $(id){ return document.getElementById(id); }
+
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
+  $(id).classList.add('active');
+}
+
+var Quiz = {
+  start: function(){
+    state.step = 0;
+    state.answers = [];
+    showScreen('screen-question');
+    renderQuestion();
+  },
+
+  renderQuestion: renderQuestion,
+
+  back: function(){
+    if (state.step === 0){
+      showScreen('screen-cover');
+      return;
+    }
+    state.step -= 1;
+    state.answers.pop();
+    renderQuestion();
+  },
+
+  goForm: function(){
+    showScreen('screen-form');
+  },
+
+  backToResult: function(){
+    showScreen('screen-result');
+  },
+
+  submitForm: function(){
+    var name = $('inpName').value.trim();
+    var contact = $('inpContact').value.trim();
+    var nameOk = name.length >= 2;
+    var contactOk = /^@?[a-zA-Z0-9_]{4,}$/.test(contact) || /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(contact);
+
+    $('fieldName').classList.toggle('invalid', !nameOk);
+    $('fieldContact').classList.toggle('invalid', !contactOk);
+    if (!nameOk || !contactOk) return;
+
+    var btn = $('submitBtn');
+    var original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Отправляем…';
+
+    // Имитация отправки — никакого реального запроса, данные нигде не сохраняются
+    setTimeout(function(){
+      btn.disabled = false;
+      btn.textContent = original;
+      $('thanksSub').textContent = name + ', мы «отправили» бы расширенный PDF-отчёт на ' + contact + '. Это демо-режим: реальной отправки и сохранения данных нет — в проде здесь был бы вебхук в Telegram-бота или CRM.';
+      showScreen('screen-thanks');
+    }, 1400);
+  },
+
+  restart: function(){
+    state.step = 0;
+    state.answers = [];
+    state.result = null;
+    $('inpName').value = '';
+    $('inpContact').value = '';
+    $('fieldName').classList.remove('invalid');
+    $('fieldContact').classList.remove('invalid');
+    showScreen('screen-cover');
+  }
+};
+
+function renderQuestion(){
+  var q = QUESTIONS[state.step];
+  var total = QUESTIONS.length;
+  $('progressLabel').textContent = (state.step+1) + '/' + total;
+  $('progressFill').style.width = Math.round(((state.step) / total) * 100) + '%';
+  $('qText').textContent = q.text;
+  $('qBack').style.visibility = 'visible';
+
+  var wrap = $('qOptions');
+  wrap.innerHTML = '';
+  q.options.forEach(function(opt, i){
+    var btn = document.createElement('button');
+    btn.className = 'option';
+    btn.textContent = opt.text;
+    btn.onclick = function(){ selectOption(i); };
+    wrap.appendChild(btn);
+  });
+}
+
+function selectOption(i){
+  var q = QUESTIONS[state.step];
+  var opt = q.options[i];
+  var opts = document.querySelectorAll('#qOptions .option');
+  opts.forEach(function(el){ el.classList.remove('selected'); });
+  opts[i].classList.add('selected');
+
+  state.answers[state.step] = q.pain ? { key: opt.key } : { scores: opt.scores };
+
+  setTimeout(function(){
+    if (state.step < QUESTIONS.length - 1){
+      state.step += 1;
+      renderQuestion();
+      $('progressFill').style.width = Math.round((state.step / QUESTIONS.length) * 100) + '%';
+    } else {
+      $('progressFill').style.width = '100%';
+      startAnalyzing();
+    }
+  }, 220);
+}
+
+function startAnalyzing(){
+  showScreen('screen-analyzing');
+  document.querySelectorAll('.analyze-line').forEach(function(el){
+    el.classList.remove('show','done');
+  });
+  var lines = document.querySelectorAll('.analyze-line');
+  lines.forEach(function(el, i){
+    setTimeout(function(){ el.classList.add('show'); }, i * 800);
+    setTimeout(function(){ el.classList.add('done'); }, i * 800 + 500);
+  });
+  setTimeout(function(){
+    computeResult();
+    renderResult();
+    showScreen('screen-result');
+    animateResult();
+  }, lines.length * 800 + 600);
+}
+
+function computeResult(){
+  var totals = { content:0, leadgen:0, research:0, automation:0 };
+  var painKey = 'system';
+  state.answers.forEach(function(a){
+    if (a.scores){
+      CATS.forEach(function(c){ totals[c] += a.scores[c] || 0; });
+    } else if (a.key){
+      painKey = a.key;
+    }
+  });
+  var totalScore = CATS.reduce(function(s,c){ return s + totals[c]; }, 0);
+  var pct = Math.round((totalScore / MAX_TOTAL) * 100);
+  pct = Math.max(0, Math.min(100, pct));
+
+  var tier = TIERS.find(function(t){ return pct >= t.min && pct <= t.max; }) || TIERS[0];
+
+  var axisPct = {};
+  CATS.forEach(function(c){ axisPct[c] = Math.round((totals[c] / MAX_BY_CAT[c]) * 100); });
+
+  var ranked = CATS.slice().sort(function(a,b){ return axisPct[b] - axisPct[a]; });
+  var good = ranked.slice(0,2);
+  var bad = ranked.slice(2);
+
+  state.result = { totals: totals, pct: pct, tier: tier, painKey: painKey, axisPct: axisPct, good: good, bad: bad };
+}
+
+function renderResult(){
+  var r = state.result;
+  $('resultTierName').textContent = r.tier.name;
+  $('gaugeNum').textContent = '0';
+
+  var recParagraphs = RECS[r.tier.key][r.painKey];
+  $('recText').innerHTML = recParagraphs.map(function(p){ return '<p>' + p + '</p>'; }).join('');
+
+  var goodHtml = r.good.map(function(c){ return '<div class="sw-item">✅ ' + CAT_LABEL[c] + '</div>'; }).join('');
+  var badHtml = r.bad.map(function(c){ return '<div class="sw-item">⚠️ ' + CAT_LABEL[c] + '</div>'; }).join('');
+  $('swGood').innerHTML = goodHtml;
+  $('swBad').innerHTML = badHtml;
+
+  renderRadarStatic(r.axisPct);
+}
+
+function animateResult(){
+  var r = state.result;
+
+  // Gauge count-up + arc
+  var circumference = 490;
+  var start = performance.now();
+  var duration = 1400;
+  function tickGauge(now){
+    var t = Math.min(1, (now - start) / duration);
+    var eased = 1 - Math.pow(1 - t, 3);
+    var val = Math.round(eased * r.pct);
+    $('gaugeNum').textContent = val;
+    var offset = circumference - (eased * r.pct / 100) * circumference;
+    $('gaugeArc').setAttribute('stroke-dashoffset', offset);
+    if (t < 1) requestAnimationFrame(tickGauge);
+  }
+  requestAnimationFrame(tickGauge);
+
+  // Radar animated draw
+  animateRadar(r.axisPct);
+
+  // Bars
+  setTimeout(function(){
+    $('barYouLabel').textContent = r.pct + '%';
+    $('barYou').style.width = r.pct + '%';
+    $('barAvg').style.width = '58%';
+  }, 150);
+}
+
+// ---- Radar chart (custom SVG) ----
+var RADAR_CENTER = { x:150, y:110 };
+var RADAR_R = 62;
+var RADAR_AXES = [
+  { key:'content', angle:-90, label:'Контент' },
+  { key:'leadgen', angle:0, label:'Лидген' },
+  { key:'research', angle:90, label:'Ресерч' },
+  { key:'automation', angle:180, label:'Автомат.' }
+];
+
+function radarPoint(angleDeg, radius){
+  var rad = angleDeg * Math.PI / 180;
+  return { x: RADAR_CENTER.x + radius * Math.cos(rad), y: RADAR_CENTER.y + radius * Math.sin(rad) };
+}
+
+function renderRadarStatic(axisPct){
+  var svg = $('radarSvg');
+  var parts = [];
+
+  // grid rings
+  [0.25, 0.5, 0.75, 1].forEach(function(f){
+    var pts = RADAR_AXES.map(function(a){ var p = radarPoint(a.angle, RADAR_R * f); return p.x + ',' + p.y; }).join(' ');
+    parts.push('<polygon points="' + pts + '" fill="none" stroke="#EDE9FE" stroke-width="1"/>');
+  });
+
+  // axis lines + labels
+  RADAR_AXES.forEach(function(a){
+    var p = radarPoint(a.angle, RADAR_R);
+    parts.push('<line x1="' + RADAR_CENTER.x + '" y1="' + RADAR_CENTER.y + '" x2="' + p.x + '" y2="' + p.y + '" stroke="#EDE9FE" stroke-width="1"/>');
+    var lp = radarPoint(a.angle, RADAR_R + 18);
+    var anchor = a.angle === 0 ? 'start' : (a.angle === 180 ? 'end' : 'middle');
+    parts.push('<text x="' + lp.x + '" y="' + lp.y + '" font-size="11" font-weight="700" fill="#6B7280" text-anchor="' + anchor + '" dominant-baseline="middle">' + a.label + '</text>');
+  });
+
+  parts.push('<polygon id="radarPoly" points="" fill="url(#radarFill)" stroke="#7C3AED" stroke-width="2" stroke-linejoin="round" opacity="0"/>');
+  parts.push('<defs><radialGradient id="radarFill" cx="50%" cy="50%" r="70%"><stop offset="0%" stop-color="#D946EF" stop-opacity="0.35"/><stop offset="100%" stop-color="#7C3AED" stop-opacity="0.12"/></radialGradient></defs>');
+
+  svg.innerHTML = parts.join('');
+}
+
+function animateRadar(axisPct){
+  var poly = $('radarPoly');
+  if (!poly) return;
+  poly.style.transition = 'opacity .4s ease';
+  poly.style.opacity = '1';
+
+  var start = performance.now();
+  var duration = 1200;
+  function tick(now){
+    var t = Math.min(1, (now - start) / duration);
+    var eased = 1 - Math.pow(1 - t, 3);
+    var pts = RADAR_AXES.map(function(a){
+      var val = (axisPct[a.key] || 0) * eased;
+      var p = radarPoint(a.angle, RADAR_R * (val/100));
+      return p.x + ',' + p.y;
+    }).join(' ');
+    poly.setAttribute('points', pts);
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+window.Quiz = Quiz;
+})();
 </script>
 </body>
 </html>`;
