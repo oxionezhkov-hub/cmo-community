@@ -23,6 +23,8 @@ export default {
     if (url.pathname.startsWith("/api/admin/")) return apiAdminAction(request, env, url);
     if (url.pathname === "/" || url.pathname === "/app") return serveApp(env);
     if (url.pathname === "/quiz1" || url.pathname === "/worker/quiz1") return serveQuiz1();
+    if (url.pathname === "/quiz2" || url.pathname === "/worker/quiz2") return serveQuiz2();
+    if (url.pathname === "/api/quiz2-analyze") return apiQuiz2Analyze(request, env);
     if (url.pathname === "/api/task-progress") return apiTaskProgress(request, env);
     if (url.pathname === "/api/auth-email") return apiAuthEmail(request, env);
     if (url.pathname === "/api/events") return apiEvents(request, env);
@@ -1276,6 +1278,181 @@ async function serveApp(env) {
 // ─── QUIZ 1: AI MATURITY SCORE (Growth Autopilot, шаблонный, без ИИ) ──
 function serveQuiz1() {
   return new Response(getQuiz1HTML(), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+// ─── QUIZ 2: РАЗБОР ЛЕНДИНГА ОТ ЭКСПЕРТА (реальный ИИ-анализ через Claude) ──
+function serveQuiz2() {
+  return new Response(getQuiz2HTML(), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+const QUIZ2_SYSTEM_PROMPT = `Ты — Максим Ильин, опытный эксперт по маркетинговым воронкам и конверсии лендингов. Тон уверенный, конкретный, без токсичности и излишней вежливости.
+Тебе присылают текст одной страницы сайта (может быть недоступен) и описание ситуации от пользователя: что за продукт, куда ведёт трафик, что должно происходить после захода на сайт, в чём подозревают проблему. Опционально — цифры конверсии.
+Если текст сайта помечен как недоступный — делай анализ только по описанию ситуации от пользователя, честно опираясь на меньший объём данных, не притворяйся, что видел сайт.
+Если цифры конверсии не переданы — никогда не выдумывай их, опирайся только на текстовый анализ страницы и описание ситуации.
+Ответь СТРОГО в виде JSON без каких-либо пояснений до или после, без markdown-разметки и без \`\`\`json оболочки, ровно по такой схеме:
+{"verdict":"короткий вывод в 1-2 предложения","score":6,"blocks":[{"title":"Оффер","status":"warning","text":"..."},{"title":"Доверие / соц. доказательства","status":"bad","text":"..."},{"title":"Призыв к действию","status":"good","text":"..."},{"title":"Что происходит после лендинга","status":"warning","text":"..."}],"next_steps":["шаг 1","шаг 2","шаг 3"]}
+Правила: "score" — целое число от 1 до 10, общая оценка конвертящей способности страницы. "status" у каждого блока — строго одно из "good"/"warning"/"bad". Блоков всегда ровно 4, именно с этими 4 заголовками и в этом порядке: "Оффер", "Доверие / соц. доказательства", "Призыв к действию", "Что происходит после лендинга". "next_steps" — 3 коротких конкретных пункта, что сделать в первую очередь.`;
+
+const QUIZ2_FALLBACK_RESULT = {
+  verdict: "Сайт сейчас выглядит неплохо, но теряет часть заявок на переходе от интереса к действию — оффер размыт, а доверие почти ничем не подкреплено.",
+  score: 5,
+  blocks: [
+    { title: "Оффер", status: "warning", text: "Непонятно за 3 секунды, что именно вы предлагаете и кому это нужно прямо сейчас. Заголовок общий, выгода не сформулирована в цифрах или конкретном результате." },
+    { title: "Доверие / соц. доказательства", status: "bad", text: "На странице почти нет отзывов, кейсов, цифр или логотипов клиентов — читателю не на что опереться, чтобы поверить в результат." },
+    { title: "Призыв к действию", status: "warning", text: "Кнопка есть, но формулировка нейтральная ('Отправить', 'Узнать больше') — не создаёт ощущения срочности и не отвечает на вопрос 'а что будет дальше'." },
+    { title: "Что происходит после лендинга", status: "bad", text: "Не описано, что человек получит сразу после заявки — нет мгновенного ответа, письма или следующего шага, из-за чего часть лидов остывает." }
+  ],
+  next_steps: [
+    "Переписать первый экран: конкретная выгода + для кого + что нужно сделать",
+    "Добавить 2-3 живых кейса или отзыва с цифрами рядом с оффером",
+    "Прописать понятный следующий шаг сразу после заявки (звонок за 15 минут, письмо с гайдом и т.п.)"
+  ],
+  _fallback: true
+};
+
+async function apiQuiz2Analyze(request, env) {
+  if (request.method !== "POST") return jsonResp({ error: "Method not allowed" }, 405);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResp({ error: "Некорректный JSON" }, 400);
+  }
+
+  const siteUrl = String(body.url || "").trim();
+  const situation = String(body.situation || "").trim();
+  const metrics = String(body.metrics || "").trim();
+
+  if (!siteUrl || !situation) {
+    return jsonResp({ error: "Нужны ссылка на сайт и описание ситуации" }, 400);
+  }
+
+  const siteText = await fetchSiteText(siteUrl);
+  const userPrompt = buildQuiz2Prompt({ siteText, situation, metrics });
+
+  const result = await callClaudeQuiz2Json(env, { system: QUIZ2_SYSTEM_PROMPT, user: userPrompt });
+
+  if (result) return jsonResp(result);
+
+  // Уровень 2 fallback — Claude не ответил/не распарсился: отдаём канонический пример,
+  // чтобы на эфире не было тишины перед камерой.
+  return jsonResp(QUIZ2_FALLBACK_RESULT);
+}
+
+// Забираем HTML одной страницы и вырезаем видимый текст. Деградирует без сбоя —
+// при любой ошибке возвращаем null, а не бросаем исключение (уровень 1 fallback).
+async function fetchSiteText(rawUrl) {
+  let target;
+  try {
+    target = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+    new URL(target);
+  } catch {
+    return null;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 7000);
+    const res = await fetch(target, {
+      signal: controller.signal,
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; CMORazboryBot/1.0; +https://cmo-razbory.oxion-ezhkov.workers.dev)" }
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const html = await res.text();
+    return stripHtmlToText(html);
+  } catch {
+    return null;
+  }
+}
+
+function stripHtmlToText(html) {
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<nav[\s\S]*?<\/nav>/gi, " ")
+    .replace(/<footer[\s\S]*?<\/footer>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.slice(0, 4000);
+}
+
+function buildQuiz2Prompt({ siteText, situation, metrics }) {
+  const parts = [];
+  parts.push(
+    siteText
+      ? `Текст сайта (очищенный, до 4000 символов):\n${siteText}`
+      : "Текст сайта недоступен — не удалось получить или разобрать страницу. Делай анализ только по описанию ситуации ниже."
+  );
+  parts.push(`Описание ситуации от пользователя:\n${situation}`);
+  parts.push(metrics ? `Известные цифры конверсии:\n${metrics}` : "Цифры конверсии не переданы — не выдумывай их.");
+  return parts.join("\n\n");
+}
+
+// Вызов Claude API по методологии из mybrand-smm (callClaude): модель, заголовки,
+// JSON-режим через инструкцию в промпте + regex-очистка ```json оболочки + JSON.parse.
+async function callClaudeQuiz2Json(env, { system, user }) {
+  if (!env.CLAUDE_API) return null;
+
+  const reqBody = {
+    model: "claude-haiku-4-5-20251001",
+    max_tokens: 1200,
+    system,
+    messages: [{ role: "user", content: user }]
+  };
+
+  let attempts = 0;
+  while (attempts < 3) {
+    attempts++;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 14000);
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": env.CLAUDE_API,
+          "anthropic-version": "2023-06-01"
+        },
+        body: JSON.stringify(reqBody)
+      });
+      clearTimeout(timeout);
+
+      if (res.status === 429 && attempts < 3) {
+        await new Promise(r => setTimeout(r, 1000 * attempts));
+        continue;
+      }
+      if (!res.ok) throw new Error(`Claude ${res.status}`);
+
+      const data = await res.json();
+      const text = data.content?.filter(b => b.type === "text")?.map(b => b.text)?.join("") ?? "";
+      const parsed = JSON.parse(text.replace(/```json\n?|\n?```/g, "").trim());
+
+      if (
+        !parsed ||
+        typeof parsed.verdict !== "string" ||
+        typeof parsed.score !== "number" ||
+        !Array.isArray(parsed.blocks) ||
+        !Array.isArray(parsed.next_steps)
+      ) {
+        return null;
+      }
+      return parsed;
+    } catch (e) {
+      if (attempts >= 3) return null;
+    }
+  }
+  return null;
 }
 
 // ══════════════════════════════════════════════
@@ -8525,6 +8702,507 @@ function animateRadar(axisPct){
 }
 
 window.Quiz = Quiz;
+})();
+</script>
+</body>
+</html>`;
+}
+
+// ─── QUIZ 2 HTML: разбор лендинга от эксперта (реальный ИИ-анализ) ────
+function getQuiz2HTML() {
+  return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Разбор лендинга от эксперта — Growth Autopilot</title>
+<style>
+  :root{
+    --violet:#7C3AED;
+    --magenta:#D946EF;
+    --blue:#3B82F6;
+    --bg:#F6F4FC;
+    --card:#FFFFFF;
+    --text:#1F2937;
+    --muted:#6B7280;
+    --ok:#16A34A;
+    --warn:#D97706;
+    --bad:#DC2626;
+    --grad: linear-gradient(135deg, var(--violet), var(--magenta));
+    --radius: 22px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height:100vh;
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+    padding:16px;
+  }
+  .app{
+    width:100%;
+    max-width:460px;
+    min-height:640px;
+    background:var(--card);
+    border-radius: var(--radius);
+    overflow:hidden;
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    box-shadow: 0 8px 30px rgba(124,58,237,0.08);
+  }
+  .screen{
+    display:none;
+    flex-direction:column;
+    flex:1;
+    padding:28px 24px 24px;
+    animation: fadeIn .35s ease;
+  }
+  .screen.active{display:flex;}
+  @keyframes fadeIn{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+
+  .brand{
+    font-size:13px;
+    font-weight:700;
+    letter-spacing:.04em;
+    color:var(--violet);
+    text-transform:uppercase;
+    margin-bottom:8px;
+  }
+
+  /* ---- Cover ---- */
+  #screen-cover{ justify-content:center; text-align:center; }
+  .cover-badge{
+    width:72px; height:72px; margin:0 auto 20px;
+    border-radius:20px;
+    background:var(--grad);
+    display:flex; align-items:center; justify-content:center;
+    font-size:32px;
+  }
+  .cover-title{ font-size:25px; font-weight:800; line-height:1.25; margin-bottom:12px; }
+  .cover-sub{ font-size:15px; color:var(--muted); line-height:1.5; margin-bottom:26px; }
+  .cover-points{ text-align:left; margin-bottom:28px; display:flex; flex-direction:column; gap:10px; }
+  .cover-point{ display:flex; align-items:flex-start; gap:10px; font-size:14px; color:var(--text); }
+  .cover-point .dot{ flex:none; width:22px; height:22px; border-radius:50%; background:rgba(124,58,237,.12); color:var(--violet); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:700; }
+  .cover-author{ font-size:12.5px; color:var(--muted); margin-top:16px; }
+
+  .btn{
+    border:none; cursor:pointer;
+    padding:16px 20px;
+    border-radius:16px;
+    font-size:16px; font-weight:700;
+    font-family:inherit;
+    transition:transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn:active{ transform:scale(0.97); }
+  .btn-primary{ background:var(--grad); color:#fff; box-shadow:0 8px 20px rgba(124,58,237,.28); width:100%; }
+  .btn-primary:hover{ box-shadow:0 10px 26px rgba(124,58,237,.36); }
+  .btn-ghost{ background:transparent; color:var(--muted); font-weight:600; font-size:14px; padding:10px; }
+  .btn:disabled{ opacity:.5; cursor:not-allowed; }
+
+  /* ---- Form ---- */
+  .form-scroll{ overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch; }
+  .field{ margin-bottom:14px; }
+  .field label{ display:block; font-size:12.5px; font-weight:700; color:var(--muted); margin-bottom:6px; }
+  .field input, .field textarea{
+    width:100%; padding:14px 16px; border-radius:14px;
+    border:1.5px solid #E9E4F7; background:#FBFAFE;
+    font-size:15px; font-family:inherit; color:var(--text);
+    transition:border-color .15s ease;
+    resize:vertical;
+  }
+  .field textarea{ min-height:96px; line-height:1.4; }
+  .field input:focus, .field textarea:focus{ outline:none; border-color:var(--violet); }
+  .field-hint{ font-size:11.5px; color:var(--muted); margin-top:5px; }
+  .field-error{ font-size:12px; color:var(--bad); margin-top:5px; display:none; }
+  .field.invalid input, .field.invalid textarea{ border-color:var(--bad); }
+  .field.invalid .field-error{ display:block; }
+  .form-note{ font-size:11.5px; color:var(--muted); text-align:center; margin-top:14px; line-height:1.5; }
+
+  /* ---- Analyzing ---- */
+  #screen-analyzing{ justify-content:center; align-items:center; text-align:center; }
+  .spinner{
+    width:56px; height:56px; border-radius:50%;
+    border:4px solid #EDE9FE; border-top-color:var(--violet);
+    animation:spin 1s linear infinite; margin-bottom:26px;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .analyze-lines{ display:flex; flex-direction:column; gap:14px; align-items:flex-start; text-align:left; }
+  .analyze-line{ display:flex; align-items:center; gap:10px; font-size:14.5px; color:var(--muted); opacity:0; transform:translateX(-6px); transition:opacity .35s ease, transform .35s ease, color .2s ease; }
+  .analyze-line.show{ opacity:1; transform:translateX(0); }
+  .analyze-line.done{ color:var(--text); }
+  .analyze-check{ flex:none; width:20px; height:20px; border-radius:50%; background:#EDE9FE; color:var(--violet); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; opacity:0; transform:scale(.5); transition:opacity .25s ease, transform .25s ease, background .25s ease, color .25s ease; }
+  .analyze-line.done .analyze-check{ opacity:1; transform:scale(1); background:var(--grad); color:#fff; }
+
+  /* ---- Result ---- */
+  #screen-result{ padding-top:22px; }
+  .result-scroll{ overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch; padding-bottom:6px; }
+  .result-title{ font-size:20px; font-weight:800; text-align:center; margin-bottom:2px; }
+  .result-tier{ text-align:center; font-size:13px; font-weight:700; color:var(--violet); text-transform:uppercase; letter-spacing:.03em; margin-bottom:18px; }
+
+  .gauge-wrap{ display:flex; justify-content:center; margin-bottom:20px; position:relative; }
+  .gauge-num{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:34px; font-weight:800; }
+  .gauge-num span{ font-size:16px; font-weight:700; color:var(--muted); }
+
+  .verdict-block{ background:#FBFAFE; border:1px solid #EFEAFB; border-radius:18px; padding:16px 18px; margin-bottom:18px; font-size:14.5px; line-height:1.55; color:var(--text); }
+
+  .result-card{ border:1.5px solid #EFEAFB; border-radius:18px; padding:16px 18px; margin-bottom:14px; display:flex; gap:12px; align-items:flex-start; }
+  .result-card.good{ background:rgba(22,163,74,.05); border-color:rgba(22,163,74,.22); }
+  .result-card.warning{ background:rgba(217,119,6,.05); border-color:rgba(217,119,6,.22); }
+  .result-card.bad{ background:rgba(220,38,38,.05); border-color:rgba(220,38,38,.22); }
+  .result-card-icon{ flex:none; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; }
+  .result-card.good .result-card-icon{ background:rgba(22,163,74,.15); }
+  .result-card.warning .result-card-icon{ background:rgba(217,119,6,.15); }
+  .result-card.bad .result-card-icon{ background:rgba(220,38,38,.15); }
+  .result-card-title{ font-size:14.5px; font-weight:800; margin-bottom:4px; }
+  .result-card-text{ font-size:13.5px; line-height:1.5; color:var(--text); }
+
+  .steps-block{ background:#FBFAFE; border:1px solid #EFEAFB; border-radius:18px; padding:18px; margin-bottom:18px; }
+  .steps-title{ font-size:13px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); margin-bottom:12px; }
+  .step-row{ display:flex; gap:10px; align-items:flex-start; font-size:14px; line-height:1.5; margin-bottom:10px; }
+  .step-row:last-child{ margin-bottom:0; }
+  .step-num{ flex:none; width:22px; height:22px; border-radius:50%; background:var(--grad); color:#fff; font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center; }
+
+  .cta-block{ text-align:center; margin-top:6px; }
+  .cta-title{ font-size:17px; font-weight:800; margin-bottom:6px; }
+  .cta-sub{ font-size:13.5px; color:var(--muted); margin-bottom:16px; line-height:1.5; }
+
+  /* ---- Thanks ---- */
+  #screen-thanks{ justify-content:center; align-items:center; text-align:center; }
+  .thanks-badge{ width:76px; height:76px; border-radius:50%; background:var(--grad); display:flex; align-items:center; justify-content:center; font-size:34px; margin-bottom:22px; animation:pop .4s ease; }
+  @keyframes pop{ 0%{ transform:scale(0.4); opacity:0;} 70%{ transform:scale(1.08);} 100%{ transform:scale(1); opacity:1;} }
+  .thanks-title{ font-size:21px; font-weight:800; margin-bottom:10px; }
+  .thanks-sub{ font-size:14.5px; color:var(--muted); line-height:1.55; margin-bottom:26px; }
+
+  .error-note{ font-size:12.5px; color:var(--bad); text-align:center; margin-top:12px; display:none; }
+  .error-note.show{ display:block; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- 1. Cover -->
+  <div class="screen active" id="screen-cover">
+    <div class="brand">Growth Autopilot</div>
+    <div class="cover-badge">🔍</div>
+    <div class="cover-title">Бесплатный разбор твоего лендинга</div>
+    <div class="cover-sub">Оставь ссылку на свою страницу — эксперт по воронкам разберёт, что мешает конвертить, и что делать в первую очередь.</div>
+    <div class="cover-points">
+      <div class="cover-point"><span class="dot">1</span> Реальный анализ вашей страницы, а не общий шаблон</div>
+      <div class="cover-point"><span class="dot">2</span> Оценка по 4 ключевым блокам: оффер, доверие, CTA, воронка</div>
+      <div class="cover-point"><span class="dot">3</span> Конкретные шаги, что улучшить в первую очередь</div>
+    </div>
+    <button class="btn btn-primary" onclick="Quiz2.start()">Получить разбор (~30 сек)</button>
+    <div class="cover-author">Разбор проводит Максим Ильин — эксперт по воронкам и маркетингу</div>
+  </div>
+
+  <!-- 2. Form -->
+  <div class="screen" id="screen-form">
+    <div class="brand">Growth Autopilot</div>
+    <div class="cover-title" style="font-size:21px; text-align:left;">Расскажи о своём сайте</div>
+    <div class="cover-sub" style="text-align:left; margin-bottom:20px;">Чем точнее опишешь ситуацию — тем точнее будет разбор.</div>
+    <div class="form-scroll">
+      <div class="field" id="fieldUrl">
+        <label for="inpUrl">Ссылка на лендинг/сайт</label>
+        <input id="inpUrl" type="text" placeholder="https://example.com" autocomplete="url">
+        <div class="field-error">Вставьте ссылку на страницу для разбора</div>
+      </div>
+      <div class="field" id="fieldSituation">
+        <label for="inpSituation">Что за продукт и в чём подозреваете проблему?</label>
+        <textarea id="inpSituation" placeholder="Например: продаю онлайн-курс по продажам, веду трафик из Reels, после захода на сайт почти никто не оставляет заявку..."></textarea>
+        <div class="field-error">Опишите ситуацию хотя бы в паре предложений</div>
+      </div>
+      <div class="field" id="fieldMetrics">
+        <label for="inpMetrics">Цифры конверсии, если знаете (необязательно)</label>
+        <input id="inpMetrics" type="text" placeholder="Например: 500 переходов, 8 заявок за месяц">
+        <div class="field-hint">Если не знаете — просто оставьте пустым, разбор не будет их выдумывать</div>
+      </div>
+    </div>
+    <button class="btn btn-primary" id="analyzeBtn" onclick="Quiz2.analyze()">Разобрать лендинг</button>
+    <button class="btn btn-ghost" style="width:100%; margin-top:6px;" onclick="Quiz2.backToCover()">← Назад</button>
+    <div class="error-note" id="analyzeError">Не получилось получить разбор. Попробуйте ещё раз.</div>
+  </div>
+
+  <!-- 3. Analyzing -->
+  <div class="screen" id="screen-analyzing">
+    <div class="spinner"></div>
+    <div class="analyze-lines" id="analyzeLines">
+      <div class="analyze-line" data-i="0"><span class="analyze-check">✓</span><span>Забираем страницу по ссылке</span></div>
+      <div class="analyze-line" data-i="1"><span class="analyze-check">✓</span><span>Изучаем оффер, доверие и призыв к действию</span></div>
+      <div class="analyze-line" data-i="2"><span class="analyze-check">✓</span><span>Формируем разбор от эксперта</span></div>
+    </div>
+  </div>
+
+  <!-- 4. Result -->
+  <div class="screen" id="screen-result">
+    <div class="result-scroll">
+      <div class="result-title">Разбор лендинга готов</div>
+      <div class="result-tier">AI-анализ от Максима Ильина</div>
+
+      <div class="gauge-wrap">
+        <svg id="gaugeSvg" width="180" height="180" viewBox="0 0 180 180">
+          <circle cx="90" cy="90" r="78" fill="none" stroke="#EDE9FE" stroke-width="14"/>
+          <circle id="gaugeArc" cx="90" cy="90" r="78" fill="none" stroke="url(#gaugeGrad)" stroke-width="14" stroke-linecap="round" stroke-dasharray="490" stroke-dashoffset="490" transform="rotate(-90 90 90)"/>
+          <defs>
+            <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#7C3AED"/>
+              <stop offset="100%" stop-color="#D946EF"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <div class="gauge-num"><span id="gaugeNum">0</span><span>/10</span></div>
+      </div>
+
+      <div class="verdict-block" id="verdictText"></div>
+
+      <div id="resultCards"></div>
+
+      <div class="steps-block">
+        <div class="steps-title">Что сделать в первую очередь</div>
+        <div id="nextSteps"></div>
+      </div>
+
+      <div class="cta-block">
+        <div class="cta-title">Хотите подробную консультацию?</div>
+        <div class="cta-sub">Разберём вашу воронку целиком и составим план роста конверсии — бесплатно.</div>
+        <button class="btn btn-primary" onclick="Quiz2.goForm()">Оставить контакт</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Contact form -->
+  <div class="screen" id="screen-contact">
+    <div class="brand">Growth Autopilot</div>
+    <div class="cover-title" style="font-size:21px;">Куда прислать консультацию?</div>
+    <div class="cover-sub" style="margin-bottom:22px;">Оставьте контакт — эксперт свяжется, чтобы разобрать воронку подробнее.</div>
+
+    <div class="field" id="fieldName">
+      <label for="inpName">Имя</label>
+      <input id="inpName" type="text" placeholder="Как к вам обращаться?" autocomplete="name">
+      <div class="field-error">Введите имя (минимум 2 символа)</div>
+    </div>
+    <div class="field" id="fieldContact">
+      <label for="inpContact">Telegram или email</label>
+      <input id="inpContact" type="text" placeholder="@username или email@mail.com" autocomplete="email">
+      <div class="field-error">Введите корректный @telegram или email</div>
+    </div>
+
+    <button class="btn btn-primary" id="submitBtn" onclick="Quiz2.submitForm()">Отправить</button>
+    <button class="btn btn-ghost" style="width:100%; margin-top:6px;" onclick="Quiz2.backToResult()">← Вернуться к результату</button>
+    <div class="form-note">Это демо-версия квиза: данные формы никуда не сохраняются и не отправляются на сервер — только имитация отправки в рамках воркшопа.</div>
+  </div>
+
+  <!-- 6. Thanks -->
+  <div class="screen" id="screen-thanks">
+    <div class="thanks-badge">✓</div>
+    <div class="thanks-title">Отправлено!</div>
+    <div class="thanks-sub" id="thanksSub"></div>
+    <button class="btn btn-primary" onclick="Quiz2.restart()">Разобрать ещё один сайт</button>
+  </div>
+
+</div>
+
+<script>
+(function(){
+
+var STATUS_META = {
+  good: { icon: '✅', cls: 'good' },
+  warning: { icon: '⚠️', cls: 'warning' },
+  bad: { icon: '❌', cls: 'bad' }
+};
+
+// Локальная копия канонического ответа — второй уровень fallback на случай,
+// если сам запрос к нашему API не дошёл (сеть отвалилась у зрителя на эфире).
+var LOCAL_FALLBACK = {
+  verdict: "Сайт сейчас выглядит неплохо, но теряет часть заявок на переходе от интереса к действию — оффер размыт, а доверие почти ничем не подкреплено.",
+  score: 5,
+  blocks: [
+    { title: "Оффер", status: "warning", text: "Непонятно за 3 секунды, что именно вы предлагаете и кому это нужно прямо сейчас." },
+    { title: "Доверие / соц. доказательства", status: "bad", text: "На странице почти нет отзывов, кейсов и цифр — читателю не на что опереться." },
+    { title: "Призыв к действию", status: "warning", text: "Кнопка есть, но формулировка нейтральная и не создаёт ощущения срочности." },
+    { title: "Что происходит после лендинга", status: "bad", text: "Не описано, что человек получит сразу после заявки." }
+  ],
+  next_steps: [
+    "Переписать первый экран: конкретная выгода + для кого + что нужно сделать",
+    "Добавить 2-3 живых кейса или отзыва с цифрами рядом с оффером",
+    "Прописать понятный следующий шаг сразу после заявки"
+  ]
+};
+
+function $(id){ return document.getElementById(id); }
+
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(function(s){ s.classList.remove('active'); });
+  $(id).classList.add('active');
+}
+
+function setInvalid(fieldId, invalid){
+  var el = $(fieldId);
+  if (invalid) el.classList.add('invalid'); else el.classList.remove('invalid');
+}
+
+function validEmailOrTg(v){
+  v = v.trim();
+  if (v.indexOf('@') === 0 && v.length > 2) return true;
+  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(v);
+}
+
+var lastResult = null;
+
+var Quiz2 = {
+  start: function(){
+    showScreen('screen-form');
+  },
+
+  backToCover: function(){
+    showScreen('screen-cover');
+  },
+
+  analyze: function(){
+    var url = $('inpUrl').value.trim();
+    var situation = $('inpSituation').value.trim();
+    var metrics = $('inpMetrics').value.trim();
+
+    var urlOk = url.length > 3;
+    var situationOk = situation.length > 8;
+    setInvalid('fieldUrl', !urlOk);
+    setInvalid('fieldSituation', !situationOk);
+    if (!urlOk || !situationOk) return;
+
+    $('analyzeError').classList.remove('show');
+    showScreen('screen-analyzing');
+
+    var lines = document.querySelectorAll('.analyze-line');
+    lines.forEach(function(el){ el.classList.remove('show','done'); });
+    var delays = [200, 900, 1700];
+    lines.forEach(function(el, i){
+      setTimeout(function(){ el.classList.add('show'); }, delays[i] || 0);
+      setTimeout(function(){ el.classList.add('done'); }, (delays[i] || 0) + 500);
+    });
+
+    var minDelay = new Promise(function(resolve){ setTimeout(resolve, 2300); });
+
+    var fetchPromise = fetch('/api/quiz2-analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: url, situation: situation, metrics: metrics })
+    }).then(function(res){
+      if (!res.ok) throw new Error('bad response');
+      return res.json();
+    }).catch(function(){
+      return LOCAL_FALLBACK;
+    });
+
+    Promise.all([fetchPromise, minDelay]).then(function(vals){
+      renderResult(vals[0]);
+      showScreen('screen-result');
+    });
+  },
+
+  goForm: function(){
+    showScreen('screen-contact');
+  },
+
+  backToResult: function(){
+    showScreen('screen-result');
+  },
+
+  submitForm: function(){
+    var name = $('inpName').value.trim();
+    var contact = $('inpContact').value.trim();
+    var nameOk = name.length >= 2;
+    var contactOk = validEmailOrTg(contact);
+    setInvalid('fieldName', !nameOk);
+    setInvalid('fieldContact', !contactOk);
+    if (!nameOk || !contactOk) return;
+
+    $('submitBtn').disabled = true;
+    $('submitBtn').textContent = 'Отправляем…';
+    setTimeout(function(){
+      $('submitBtn').disabled = false;
+      $('submitBtn').textContent = 'Отправить';
+      $('thanksSub').textContent = 'Спасибо, ' + name + '! Это демо-версия: заявка нигде не сохранена, в реальном проекте здесь придёт уведомление эксперту.';
+      showScreen('screen-thanks');
+    }, 700);
+  },
+
+  restart: function(){
+    $('inpUrl').value = '';
+    $('inpSituation').value = '';
+    $('inpMetrics').value = '';
+    $('inpName').value = '';
+    $('inpContact').value = '';
+    setInvalid('fieldUrl', false);
+    setInvalid('fieldSituation', false);
+    setInvalid('fieldName', false);
+    setInvalid('fieldContact', false);
+    lastResult = null;
+    showScreen('screen-cover');
+  }
+};
+
+function renderResult(data){
+  lastResult = data;
+  var score = Math.max(1, Math.min(10, Math.round(Number(data.score) || 5)));
+
+  $('verdictText').textContent = data.verdict || '';
+
+  var circumference = 490;
+  var offset = circumference * (1 - score / 10);
+  var arc = $('gaugeArc');
+  arc.style.strokeDashoffset = String(circumference);
+  $('gaugeNum').textContent = '0';
+  requestAnimationFrame(function(){
+    arc.style.transition = 'stroke-dashoffset 1s cubic-bezier(.22,.9,.3,1)';
+    arc.style.strokeDashoffset = String(offset);
+  });
+  animateNumber($('gaugeNum'), 0, score, 1000);
+
+  var cardsHtml = '';
+  var blocks = Array.isArray(data.blocks) ? data.blocks : [];
+  blocks.forEach(function(b){
+    var meta = STATUS_META[b.status] || STATUS_META.warning;
+    cardsHtml += '<div class="result-card ' + meta.cls + '">' +
+      '<div class="result-card-icon">' + meta.icon + '</div>' +
+      '<div><div class="result-card-title">' + escapeHtml(b.title || '') + '</div>' +
+      '<div class="result-card-text">' + escapeHtml(b.text || '') + '</div></div>' +
+      '</div>';
+  });
+  $('resultCards').innerHTML = cardsHtml;
+
+  var stepsHtml = '';
+  var steps = Array.isArray(data.next_steps) ? data.next_steps : [];
+  steps.forEach(function(step, i){
+    stepsHtml += '<div class="step-row"><div class="step-num">' + (i + 1) + '</div><div>' + escapeHtml(step) + '</div></div>';
+  });
+  $('nextSteps').innerHTML = stepsHtml;
+}
+
+function animateNumber(el, from, to, duration){
+  var start = performance.now();
+  function tick(now){
+    var t = Math.min(1, (now - start) / duration);
+    var eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = String(Math.round(from + (to - from) * eased));
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+function escapeHtml(str){
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+window.Quiz2 = Quiz2;
 })();
 </script>
 </body>
