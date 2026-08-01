@@ -26,6 +26,7 @@ export default {
     if (url.pathname === '/api/admin/chat-activity') return apiAdminChatActivity(request, env, url);
     if (url.pathname === '/api/admin/payments') return apiAdminPayments(request, env, url);
     if (url.pathname === '/api/payments/webhook') return apiPaymentsWebhook(request, env);
+    if (url.pathname === '/api/admin/avatar') return apiCRMAvatar(request, env, url);
     if (url.pathname.startsWith("/api/admin/")) return apiAdminAction(request, env, url);
     if (url.pathname === "/" || url.pathname === "/app") return serveApp(env);
     if (url.pathname === "/quiz1" || url.pathname === "/worker/quiz1") return serveQuiz1();
@@ -2577,6 +2578,64 @@ async function apiPaymentsWebhook(request, env) {
   return jsonResp({ ok: true, matched: true, key: match.key, monthKey });
 }
 
+// ══════════════════════════════════════════════
+// АВАТАРЫ УЧАСТНИКОВ (проксируем и кешируем фото профиля Telegram)
+// ══════════════════════════════════════════════
+
+function bufferToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+const AVATAR_CACHE_TTL = 60 * 60 * 24 * 7; // 7 дней — и на найденное фото, и на "фото нет"
+
+// Публичный (без admin-сессии) эндпоинт — <img src> не может передать заголовок Authorization,
+// а отдаёт он только чужую публичную аватарку Telegram, не данные CRM, так что это безопасно.
+async function apiCRMAvatar(request, env, url) {
+  const tgId = url.searchParams.get('tgId');
+  if (!tgId || !env.BOT_TOKEN) return new Response(null, { status: 404 });
+
+  const cacheKey = `avatarcache:${tgId}`;
+  const cached = await env.KV.get(cacheKey, 'json');
+  if (cached) {
+    if (!cached.dataB64) return new Response(null, { status: 404 });
+    const bytes = Uint8Array.from(atob(cached.dataB64), c => c.charCodeAt(0));
+    return new Response(bytes, { headers: { 'Content-Type': cached.mime || 'image/jpeg', 'Cache-Control': 'public, max-age=86400' } });
+  }
+
+  try {
+    const photosRes = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/getUserProfilePhotos?user_id=${encodeURIComponent(tgId)}&limit=1`).then(r => r.json());
+    const photoSizes = photosRes?.result?.photos?.[0];
+    if (!photoSizes?.length) {
+      await env.KV.put(cacheKey, JSON.stringify({ dataB64: null, fetchedAt: Date.now() }), { expirationTtl: AVATAR_CACHE_TTL });
+      return new Response(null, { status: 404 });
+    }
+
+    const fileId = photoSizes[0].file_id; // наименьший размер — этого достаточно для маленькой аватарки
+    const fileRes = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/getFile?file_id=${encodeURIComponent(fileId)}`).then(r => r.json());
+    const filePath = fileRes?.result?.file_path;
+    if (!filePath) {
+      await env.KV.put(cacheKey, JSON.stringify({ dataB64: null, fetchedAt: Date.now() }), { expirationTtl: AVATAR_CACHE_TTL });
+      return new Response(null, { status: 404 });
+    }
+
+    const imgRes = await fetch(`https://api.telegram.org/file/bot${env.BOT_TOKEN}/${filePath}`);
+    if (!imgRes.ok) return new Response(null, { status: 404 });
+    const buf = await imgRes.arrayBuffer();
+    const mime = imgRes.headers.get('Content-Type') || 'image/jpeg';
+    const dataB64 = bufferToBase64(buf);
+    await env.KV.put(cacheKey, JSON.stringify({ dataB64, mime, fetchedAt: Date.now() }), { expirationTtl: AVATAR_CACHE_TTL });
+    return new Response(buf, { headers: { 'Content-Type': mime, 'Cache-Control': 'public, max-age=86400' } });
+  } catch (e) {
+    return new Response(null, { status: 404 });
+  }
+}
+
 async function apiTrack(request, env) {
   if (request.method !== 'POST') return jsonResp({ error: 'Method not allowed' }, 405);
   const { type, tgId, initData, meta } = await request.json();
@@ -2740,6 +2799,7 @@ async function getCRMParticipants(env) {
       note: crm.note || '',
       tgId: tgId || null,
       paidMonths: crm.paidMonths || [],
+      payments: crm.payments || [],
       enrolledAt: userRec?.enrolledAt || crm.createdAt || null,
       launches,
       updatedAt: crm.updatedAt || null
@@ -2754,6 +2814,7 @@ async function getCRMParticipants(env) {
         key, email: null, status: r.status || 'lead', isPending: false,
         name: r.name || '', telegram: r.telegram || '', note: r.note || '',
         tgId: r.tgId || null, paidMonths: r.paidMonths || [],
+        payments: r.payments || [],
         enrolledAt: r.createdAt || null, launches: 0, updatedAt: r.updatedAt || null
       });
     }
@@ -6853,15 +6914,16 @@ function getAdminHTML() {
 
   .crm-board { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 12px; align-items: flex-start; }
   .crm-column {
-    flex: 1; min-width: 220px; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 10px;
+    flex: 0 0 300px; width: 300px; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 10px;
     display: flex; flex-direction: column; max-height: calc(100vh - 280px); min-height: 160px;
   }
   .crm-column-head { flex-shrink: 0; }
   .crm-column-cards { overflow-y: auto; overflow-x: hidden; padding-right: 2px; flex: 1; }
 
-  .crm-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; display: flex; align-items: center; gap: 9px; }
+  .crm-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; display: flex; align-items: center; gap: 8px; }
   .crm-card:hover { border-color: var(--border-h); box-shadow: var(--shadow-sm); }
-  .crm-card-avatar { flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #fff; }
+  .crm-card-avatar { position: relative; flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #fff; overflow: hidden; }
+  .crm-card-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
   .crm-card-body { flex: 1; min-width: 0; }
   .crm-card-name-row { display: flex; align-items: center; gap: 5px; }
   .crm-card-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
@@ -6869,8 +6931,10 @@ function getAdminHTML() {
   .crm-card-dot.pending { background: var(--warning); }
   .crm-card-name { font-size: 13px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .crm-card-sub { font-size: 11px; color: var(--accent); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .crm-card-draghandle { flex-shrink: 0; width: 18px; height: 18px; display: none; align-items: center; justify-content: center; color: var(--text3); cursor: grab; border-radius: 4px; font-size: 13px; line-height: 1; }
-  .crm-card-draghandle:hover { background: var(--bg2); color: var(--text2); }
+  .crm-card-icons { display: flex; align-items: center; gap: 1px; flex-shrink: 0; }
+  .crm-card-iconbtn { flex-shrink: 0; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; color: var(--text3); cursor: pointer; border-radius: 5px; font-size: 12px; line-height: 1; border: none; background: transparent; }
+  .crm-card-iconbtn:hover { background: var(--bg2); color: var(--text); }
+  .crm-card-draghandle { display: none; cursor: grab; }
   @media (min-width: 769px) { .crm-card-draghandle { display: flex; } }
 
   /* FILTER CHIPS */
@@ -6929,7 +6993,7 @@ function getAdminHTML() {
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
   .stats-row { grid-template-columns: 1fr 1fr; }
   .crm-board { flex-direction: column; overflow-x: visible; }
-  .crm-column { min-width: 100%; max-height: none; }
+  .crm-column { flex: 1 1 auto; width: 100%; min-width: 100%; max-height: none; }
   .crm-column-cards { overflow-y: visible; }
 }
   .mnav-btn {
@@ -7151,6 +7215,9 @@ function getAdminHTML() {
           <div class="field" id="crmApproveWrap" style="display:none">
             <button class="btn btn-w btn-sm" onclick="approveCRMEntry()">✅ Одобрить доступ (ожидает подтверждения)</button>
           </div>
+          <div class="field">
+            <button class="btn btn-danger btn-sm" id="crmPauseResumeBtn" style="display:none" onclick="crmModalPauseResume()"></button>
+          </div>
           <div class="field"><label>Примечание</label><textarea id="crmNote" rows="3" placeholder="Заметки по участнику..."></textarea></div>
 
           <div class="field" id="crmStatsBlock" style="display:none">
@@ -7161,6 +7228,16 @@ function getAdminHTML() {
           <div class="field">
             <label>Факты оплаты (5 000 ₽ / месяц) — <span id="crmPaidSum">0 ₽</span></label>
             <div id="crmPaidMonths" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+          </div>
+
+          <div class="field">
+            <label>История оплат (сумма и дата) — <span id="crmPaymentsSum">0 ₽</span></label>
+            <div id="crmPaymentsList" style="margin-bottom:8px"></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <input type="number" id="crmPaymentAmount" placeholder="Сумма ₽" style="flex:1;min-width:100px" min="0"/>
+              <input type="date" id="crmPaymentDate" style="flex:1;min-width:120px"/>
+              <button class="btn btn-ghost btn-sm" onclick="addCRMPaymentRecord()">+ Добавить</button>
+            </div>
           </div>
 
           <div class="field">
@@ -8269,6 +8346,30 @@ function crmSumOf(paidMonths) {
   return (paidMonths?.length || 0) * CRM_MONTH_PRICE;
 }
 
+function crmCurrentMonthKey() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+// Быстрая отметка/снятие оплаты за текущий месяц прямо с карточки, без открытия модалки.
+async function crmToggleThisMonthPaid(event, key) {
+  event.stopPropagation();
+  const entry = crmData.find(p => p.key === key);
+  if (!entry) return;
+  const month = crmCurrentMonthKey();
+  const months = new Set(entry.paidMonths || []);
+  const willBePaid = !months.has(month);
+  if (willBePaid) months.add(month); else months.delete(month);
+  entry.paidMonths = [...months];
+  entry.paidThisMonth = willBePaid;
+  renderCRMBoard();
+  await fetch('/api/admin/crm', {
+    method: 'POST', headers: aHeaders(),
+    body: JSON.stringify({ action: 'save', key, fields: { paidMonths: entry.paidMonths } })
+  });
+  showAdminToast(willBePaid ? 'Отмечено: оплатил ' + month : 'Отметка снята: ' + month);
+}
+
 function crmRelativeActivity(ts) {
   if (!ts) return 'нет данных об активности';
   const days = Math.floor((Date.now() - ts) / 86400000);
@@ -8317,6 +8418,33 @@ async function crmApplyStatusChange(key, status) {
   showAdminToast('Статус обновлён: ' + CRM_STATUS_LABELS[status]);
 }
 
+function updateCrmPauseResumeBtn(entry) {
+  const btn = document.getElementById('crmPauseResumeBtn');
+  if (!entry?.tgId) { btn.style.display = 'none'; return; }
+  if (crmIsInactiveStatus(entry.status)) {
+    btn.style.display = 'inline-block';
+    btn.className = 'btn btn-w btn-sm';
+    btn.textContent = '▶️ Возобновить доступ';
+  } else {
+    btn.style.display = 'inline-block';
+    btn.className = 'btn btn-danger btn-sm';
+    btn.textContent = '⏸ Приостановить доступ (уведомим участника)';
+  }
+}
+
+async function crmModalPauseResume() {
+  const key = document.getElementById('crmKey').value;
+  const entry = crmData.find(p => p.key === key);
+  if (!entry) return;
+  const target = crmIsInactiveStatus(entry.status) ? 'active' : 'paused';
+  await crmApplyStatusChange(key, target);
+  const refreshed = crmData.find(p => p.key === key);
+  if (refreshed) {
+    document.getElementById('crmStatus').value = refreshed.status;
+    updateCrmPauseResumeBtn(refreshed);
+  }
+}
+
 function crmCopyEmail(event, email) {
   event.stopPropagation();
   if (!email) return;
@@ -8354,19 +8482,31 @@ function renderCRMBoard() {
   else if (crmFilter === 'unpaid') filtered = filtered.filter(p => (p.status === 'active' || p.status === 'paid') && !p.paidThisMonth);
   else if (crmFilter === 'pending') filtered = filtered.filter(p => p.isPending);
 
+  // Внутри колонки — сначала те, кто требует внимания (ждут одобрения, затем риск/не оплатил),
+  // и внутри каждой группы сначала самые давно неактивные, чтобы не листать в поисках, с кем работать.
+  function crmSortKey(p) {
+    const unpaid = (p.status === 'active' || p.status === 'paid') && !p.paidThisMonth;
+    const tier = p.isPending ? 0 : (p.risk || unpaid) ? 1 : 2;
+    return [tier, p.lastActiveAt || 0];
+  }
+
   board.innerHTML = CRM_STATUS_ORDER.map(status => {
-    const items = filtered.filter(p => p.status === status);
+    const items = filtered.filter(p => p.status === status).sort((a, b) => {
+      const ka = crmSortKey(a), kb = crmSortKey(b);
+      return ka[0] !== kb[0] ? ka[0] - kb[0] : ka[1] - kb[1];
+    });
     const cards = items.map(p => {
       const unpaid = (p.status === 'active' || p.status === 'paid') && !p.paidThisMonth;
       const attnReasons = [];
       if (p.risk) attnReasons.push(\`не активен \${crmRelativeActivity(p.lastActiveAt)}\`);
       if (unpaid) attnReasons.push('не оплатил в этом месяце');
       const label = p.name || p.email || 'Без имени';
+      const isPayingStatus = p.status === 'active' || p.status === 'paid';
       return \`
       <div class="crm-card" draggable="true" data-key="\${escapeAdminHtml(p.key)}"
         ondragstart="crmCardDragStart(event,'\${escapeAdminHtml(p.key)}')"
         onclick="openCRMEdit('\${escapeAdminHtml(p.key)}')">
-        <div class="crm-card-avatar" style="background:\${crmAvatarColor(p.key)}">\${escapeAdminHtml(crmInitials(label))}</div>
+        <div class="crm-card-avatar" style="background:\${crmAvatarColor(p.key)}">\${escapeAdminHtml(crmInitials(label))}\${p.tgId ? \`<img src="/api/admin/avatar?tgId=\${encodeURIComponent(p.tgId)}" loading="lazy" onerror="this.remove()"/>\` : ''}</div>
         <div class="crm-card-body">
           <div class="crm-card-name-row">
             \${attnReasons.length ? \`<span class="crm-card-dot attn" title="\${escapeAdminHtml(attnReasons.join(' · '))}"></span>\` : ''}
@@ -8375,7 +8515,12 @@ function renderCRMBoard() {
           </div>
           \${p.telegram ? \`<div class="crm-card-sub">@\${escapeAdminHtml(p.telegram)}</div>\` : ''}
         </div>
-        <span class="crm-card-draghandle" title="Перетащить в другую колонку" onmousedown="event.stopPropagation()">⠿</span>
+        <div class="crm-card-icons">
+          \${p.telegram ? \`<button class="crm-card-iconbtn" onclick="crmOpenTelegram(event,'\${escapeAdminHtml(p.telegram)}')" title="Открыть в Telegram">✈️</button>\` : ''}
+          \${p.email ? \`<button class="crm-card-iconbtn" onclick="crmCopyEmail(event,'\${escapeAdminHtml(p.email)}')" title="Скопировать email">📋</button>\` : ''}
+          \${isPayingStatus ? \`<button class="crm-card-iconbtn" onclick="crmToggleThisMonthPaid(event,'\${escapeAdminHtml(p.key)}')" style="\${p.paidThisMonth ? 'opacity:1' : 'opacity:0.35'}" title="\${p.paidThisMonth ? 'Оплатил в этом месяце — нажми, чтобы снять отметку' : 'Отметить оплату за этот месяц'}">💰</button>\` : ''}
+          <span class="crm-card-draghandle" title="Перетащить в другую колонку" onmousedown="event.stopPropagation()">⠿</span>
+        </div>
       </div>\`;
     }).join('');
     return \`
@@ -8422,6 +8567,7 @@ function openCRMEdit(key) {
   document.getElementById('crmQuickEmailBtn').style.display = entry?.email ? 'inline-block' : 'none';
 
   document.getElementById('crmApproveWrap').style.display = entry?.isPending ? 'block' : 'none';
+  updateCrmPauseResumeBtn(entry);
 
   const activityEl = document.getElementById('crmActivityReadout');
   if (entry?.tgId) {
@@ -8433,6 +8579,7 @@ function openCRMEdit(key) {
   }
 
   renderCRMPaidMonths(entry?.paidMonths || []);
+  renderCRMPayments(entry?.payments || []);
 
   const statsBlock = document.getElementById('crmStatsBlock');
   if (entry?.tgId) {
@@ -8497,6 +8644,40 @@ function updateCRMPaidSum() {
   document.getElementById('crmPaidSum').textContent = crmSumOf(crmEditPaidMonths).toLocaleString('ru') + ' ₽';
 }
 
+// Точный журнал оплат (сумма + дата) — дополняет помесячные чипы выше для случаев,
+// когда сумма отличается от стандартной или важна точная дата платежа.
+let crmEditPayments = [];
+
+function renderCRMPayments(payments) {
+  crmEditPayments = [...(payments || [])];
+  const el = document.getElementById('crmPaymentsList');
+  el.innerHTML = crmEditPayments.length
+    ? crmEditPayments.map((p, i) => \`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">
+        <div><b>\${Number(p.amount || 0).toLocaleString('ru')} ₽</b> <span style="color:var(--text3)">· \${escapeAdminHtml(p.date || '')}</span></div>
+        <button class="btn btn-ghost btn-sm" onclick="deleteCRMPaymentRecord(\${i})">✕</button>
+      </div>\`).join('')
+    : '<div style="color:var(--text3);font-size:12px">Оплат не внесено</div>';
+  const total = crmEditPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  document.getElementById('crmPaymentsSum').textContent = total.toLocaleString('ru') + ' ₽';
+}
+
+function addCRMPaymentRecord() {
+  const amount = parseFloat(document.getElementById('crmPaymentAmount').value);
+  const date = document.getElementById('crmPaymentDate').value;
+  if (!amount || amount <= 0 || !date) { alert('Укажи сумму и дату оплаты'); return; }
+  crmEditPayments.push({ amount, date });
+  crmEditPayments.sort((a, b) => (a.date < b.date ? 1 : -1));
+  document.getElementById('crmPaymentAmount').value = '';
+  document.getElementById('crmPaymentDate').value = '';
+  renderCRMPayments(crmEditPayments);
+}
+
+function deleteCRMPaymentRecord(idx) {
+  crmEditPayments.splice(idx, 1);
+  renderCRMPayments(crmEditPayments);
+}
+
 async function approveCRMEntry() {
   const email = document.getElementById('crmEmail').value.trim();
   if (!email) { alert('Нет email для одобрения'); return; }
@@ -8515,6 +8696,7 @@ async function saveCRMEdit() {
     telegram: document.getElementById('crmTelegram').value.trim().replace(/^@/, ''),
     note: document.getElementById('crmNote').value.trim(),
     paidMonths: crmEditPaidMonths,
+    payments: crmEditPayments,
     status: document.getElementById('crmStatus').value
   };
   const msg = document.getElementById('crmEditMsg');
