@@ -24,6 +24,8 @@ export default {
     if (url.pathname === '/api/admin/workshop-attendance') return apiAdminWorkshopAttendance(request, env, url);
     if (url.pathname === '/api/admin/crm') return apiAdminCRM(request, env, url);
     if (url.pathname === '/api/admin/chat-activity') return apiAdminChatActivity(request, env, url);
+    if (url.pathname === '/api/admin/payments') return apiAdminPayments(request, env, url);
+    if (url.pathname === '/api/payments/webhook') return apiPaymentsWebhook(request, env);
     if (url.pathname.startsWith("/api/admin/")) return apiAdminAction(request, env, url);
     if (url.pathname === "/" || url.pathname === "/app") return serveApp(env);
     if (url.pathname === "/quiz1" || url.pathname === "/worker/quiz1") return serveQuiz1();
@@ -811,7 +813,7 @@ if (action === "kb-init" && request.method === "POST") {
   const emails = await env.KV.get("emails:approved", "json") || [];
   const pending = await env.KV.get("pending:list", "json") || [];
   const questions = await env.KV.get("questions:list", "json") || [];
-  
+
 const admins = await env.KV.get("admins:list", "json") || [];
 const adminEmails = new Set(admins.map(a => a.email.toLowerCase()));
 const participantEmails = emails.filter(e => !adminEmails.has(e.toLowerCase()));
@@ -821,33 +823,76 @@ const participantEmails = emails.filter(e => !adminEmails.has(e.toLowerCase()));
   let totalLaunches = 0;
   let paymentsWithDates = [];
   let topUsers = [];
-  
+
   for (const key of userList.keys) {
   const u = await env.KV.get(key.name, "json");
   if (!u?.approved) continue;
   if (adminEmails.has((u.email || '').toLowerCase())) continue;
     const userId = u.tgId;
-    
+
     const launches = await env.KV.get(`userstat:${userId}:launches`, "json") || 0;
     const payment = await env.KV.get(`userpayment:${userId}`);
     const progAi = await env.KV.get(`progress:${userId}:ai`, "json") || { completed: [] };
     const progFun = await env.KV.get(`progress:${userId}:funnels`, "json") || { completed: [] };
     const totalDone = progAi.completed.length + progFun.completed.length;
-    
+
     totalLaunches += launches;
     if (payment) paymentsWithDates.push({ email: u.email, date: payment });
     topUsers.push({ email: u.email, username: u.username, launches, done: totalDone });
   }
-  
+
   topUsers.sort((a, b) => b.launches - a.launches);
-  
+
+  // Сигналы для карточки здоровья и ленты "Требует внимания" — переиспользуем
+  // тот же список участников, что и CRM-доска (см. getCRMParticipants).
+  const participants = await getCRMParticipants(env);
+  const activeIsh = participants.filter(p => p.status === 'active' || p.status === 'paid');
+  const riskList = activeIsh.filter(p => p.risk);
+  const newList = participants.filter(p => p.isNew);
+  const unpaidActive = activeIsh.filter(p => !p.paidThisMonth);
+
+  const retentionPct = participants.length ? Math.round(activeIsh.length / participants.length * 100) : 0;
+  const paymentHealthPct = activeIsh.length ? Math.round((activeIsh.length - unpaidActive.length) / activeIsh.length * 100) : 100;
+
+  const day = 86400000;
+  const now = Date.now();
+  const sumEvtaggRange = async (fromDaysAgoExclusive, toDaysAgoInclusive) => {
+    const dates = [];
+    for (let i = toDaysAgoInclusive; i < fromDaysAgoExclusive; i++) dates.push(eventDateStr(now - i * day));
+    const aggs = await Promise.all(dates.map(d => env.KV.get(`evtagg:${d}`, 'json')));
+    return aggs.reduce((sum, a) => sum + (a?.total || 0), 0);
+  };
+  const last30 = await sumEvtaggRange(30, 0);
+  const prev30 = await sumEvtaggRange(60, 30);
+  const engagementDeltaPct = prev30 > 0 ? Math.round((last30 - prev30) / prev30 * 100) : (last30 > 0 ? 100 : 0);
+  const engagementScore = Math.max(0, Math.min(100, 50 + engagementDeltaPct / 2));
+  const growthScore = Math.max(0, Math.min(100, newList.length * 10));
+
+  const healthScore = Math.round((retentionPct + engagementScore + growthScore + paymentHealthPct) / 4);
+
+  const insights = [];
+  if (riskList.length) insights.push({ type: 'risk', title: `${riskList.length} участник${riskList.length === 1 ? '' : riskList.length < 5 ? 'а' : 'ов'} ${riskList.length === 1 ? 'не проявлял' : 'не проявляли'} активность ${RISK_DAYS}+ дней`, sub: 'Активные/оплатившие без следов активности — стоит написать', target: 'participants', filter: 'risk' });
+  if (pending.length) insights.push({ type: 'pending', title: `${pending.length} заявк${pending.length === 1 ? 'а' : pending.length < 5 ? 'и' : 'ок'} ${pending.length === 1 ? 'ждёт' : 'ждут'} одобрения`, sub: 'Новые заявки на доступ висят в очереди', target: 'participants', filter: 'pending' });
+  if (questions.length) insights.push({ type: 'pending', title: `${questions.length} вопрос${questions.length === 1 ? '' : questions.length < 5 ? 'а' : 'ов'} без ответа`, sub: 'Участники ждут ответа в боте', target: 'questions', filter: null });
+  if (unpaidActive.length) insights.push({ type: 'risk', title: `${unpaidActive.length} активн${unpaidActive.length === 1 ? 'ый' : 'ых'} участник${unpaidActive.length === 1 ? '' : unpaidActive.length < 5 ? 'а' : 'ов'} ${unpaidActive.length === 1 ? 'не оплатил' : 'не оплатили'} этот месяц`, sub: 'Нет отметки об оплате за ' + thisMonthLabelRu(), target: 'participants', filter: 'unpaid' });
+  if (newList.length) insights.push({ type: 'info', title: `${newList.length} нов${newList.length === 1 ? 'ый' : 'ых'} участник${newList.length === 1 ? '' : newList.length < 5 ? 'а' : 'ов'} за последние ${NEW_DAYS} дней`, sub: 'Стоит проверить, прошли ли онбординг', target: 'participants', filter: 'new' });
+
   return jsonResp({
     totalEmails: participantEmails.length,
     totalPending: pending.length,
     totalQuestions: questions.length,
     totalLaunches,
     paymentsWithDates: paymentsWithDates.slice(0, 20),
-    topUsers: topUsers.slice(0, 5)
+    topUsers: topUsers.slice(0, 5),
+    health: {
+      score: healthScore,
+      retentionPct, paymentHealthPct,
+      engagementDeltaPct, growthCount: newList.length,
+      riskCount: riskList.length, newCount: newList.length,
+      totalParticipants: participants.length, activeCount: activeIsh.length,
+      eventsLast30: last30, eventsPrev30: prev30
+    },
+    insights
   });
 }
 
@@ -2408,6 +2453,130 @@ async function apiAdminChatActivity(request, env, url) {
   return jsonResp({ error: 'Not found' }, 404);
 }
 
+// ══════════════════════════════════════════════
+// ОПЛАТЫ — сверка с edsofa.ai (текущим процессором оплат)
+// ══════════════════════════════════════════════
+
+// Находит участника CRM по email или telegram-username (без @, без учёта регистра).
+function crmFindByContact(participants, email, telegram) {
+  const emailLc = (email || '').toLowerCase().trim() || null;
+  const tgLc = (telegram || '').replace(/^@/, '').toLowerCase().trim() || null;
+  return participants.find(p =>
+    (emailLc && p.email && p.email.toLowerCase() === emailLc) ||
+    (tgLc && p.telegram && p.telegram.toLowerCase() === tgLc)
+  ) || null;
+}
+
+// Добавляет месяцы оплаты в crm:{key}.paidMonths и переводит лида/бота в статус "paid".
+async function crmApplyPaidMonths(env, key, months, fallback) {
+  const crm = await env.KV.get(`crm:${key}`, 'json') || { status: fallback?.status || 'lead', createdAt: Date.now(), email: fallback?.email || null, telegram: fallback?.telegram || null, name: fallback?.name || '' };
+  const set = new Set(crm.paidMonths || fallback?.paidMonths || []);
+  months.forEach(m => set.add(m));
+  crm.paidMonths = [...set];
+  if (!crm.status || crm.status === 'lead' || crm.status === 'bot') crm.status = 'paid';
+  crm.updatedAt = Date.now();
+  await env.KV.put(`crm:${key}`, JSON.stringify(crm));
+  return crm;
+}
+
+async function apiAdminPayments(request, env, url) {
+  const auth = request.headers.get("Authorization") || "";
+  if (!auth.includes("admin_session_" + ADMIN_PASSWORD)) return jsonResp({ error: "Unauthorized" }, 401);
+
+  if (request.method === 'GET') {
+    const unmatched = await env.KV.get('payments:unmatched', 'json') || [];
+    return jsonResp({ ok: true, unmatched, webhookConfigured: !!env.PAYMENTS_WEBHOOK_SECRET });
+  }
+
+  if (request.method === 'POST') {
+    const body = await request.json();
+    const action = body.action;
+
+    // Импорт из вставленной таблицы (формат совпадает с таблицей, которую ведут вручную):
+    // № · telegram · email · ВСЕГО · колонки-месяцы с суммой.
+    if (action === 'import') {
+      const { records } = body; // [{ telegram, email, name, months: ['2026-05', ...] }]
+      if (!Array.isArray(records)) return jsonResp({ ok: false, error: 'Некорректные данные' });
+      const participants = await getCRMParticipants(env);
+      let matched = 0;
+      const unmatchedRows = [];
+      for (const r of records) {
+        if (!r.months?.length) continue;
+        const found = crmFindByContact(participants, r.email, r.telegram);
+        if (found) {
+          await crmApplyPaidMonths(env, found.key, r.months, found);
+          matched++;
+        } else {
+          unmatchedRows.push(r);
+        }
+      }
+      return jsonResp({ ok: true, matched, unmatched: unmatchedRows });
+    }
+
+    if (action === 'dismiss-unmatched') {
+      const { id } = body;
+      let unmatched = await env.KV.get('payments:unmatched', 'json') || [];
+      unmatched = unmatched.filter(u => u.id !== id);
+      await env.KV.put('payments:unmatched', JSON.stringify(unmatched));
+      return jsonResp({ ok: true });
+    }
+
+    if (action === 'link-unmatched') {
+      const { id, key } = body;
+      if (!id || !key) return jsonResp({ ok: false, error: 'Нет id или key' });
+      let unmatched = await env.KV.get('payments:unmatched', 'json') || [];
+      const entry = unmatched.find(u => u.id === id);
+      if (!entry) return jsonResp({ ok: false, error: 'Запись не найдена' });
+      await crmApplyPaidMonths(env, key, [entry.monthKey]);
+      unmatched = unmatched.filter(u => u.id !== id);
+      await env.KV.put('payments:unmatched', JSON.stringify(unmatched));
+      return jsonResp({ ok: true });
+    }
+
+    return jsonResp({ error: 'Unknown action' }, 404);
+  }
+
+  return jsonResp({ error: 'Not found' }, 404);
+}
+
+// Входящий вебхук платёжного процессора (edsofa.ai). Формат payload у edsofa.ai не публикуется
+// (нет открытой документации API/webhooks) — поля ниже разумное значение по умолчанию
+// (email/telegram/amount/paid_at/status), при получении реального примера от поддержки
+// edsofa.ai подстроить маппинг полей здесь под их точную схему.
+async function apiPaymentsWebhook(request, env) {
+  if (request.method !== 'POST') return jsonResp({ error: 'Method not allowed' }, 405);
+  const url = new URL(request.url);
+  const token = url.searchParams.get('token') || request.headers.get('X-Webhook-Secret') || '';
+  if (!env.PAYMENTS_WEBHOOK_SECRET || token !== env.PAYMENTS_WEBHOOK_SECRET) {
+    return jsonResp({ error: 'Unauthorized' }, 401);
+  }
+
+  let payload;
+  try { payload = await request.json(); } catch (e) { return jsonResp({ error: 'Invalid JSON' }, 400); }
+
+  const email = payload.email || payload.buyer_email || null;
+  const telegram = payload.telegram || payload.username || payload.tg_username || null;
+  const paidAtTs = payload.paid_at ? new Date(payload.paid_at).getTime() : Date.now();
+  const monthKey = currentMonthStr(Number.isNaN(paidAtTs) ? Date.now() : paidAtTs);
+
+  const participants = await getCRMParticipants(env);
+  const match = crmFindByContact(participants, email, telegram);
+
+  if (!match) {
+    const unmatched = await env.KV.get('payments:unmatched', 'json') || [];
+    unmatched.unshift({
+      id: Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+      email: email || null, telegram: telegram || null,
+      amount: payload.amount ?? null, monthKey, raw: payload, receivedAt: Date.now()
+    });
+    await env.KV.put('payments:unmatched', JSON.stringify(unmatched.slice(0, 200)));
+    return jsonResp({ ok: true, matched: false });
+  }
+
+  await crmApplyPaidMonths(env, match.key, [monthKey], match);
+  return jsonResp({ ok: true, matched: true, key: match.key, monthKey });
+}
+
 async function apiTrack(request, env) {
   if (request.method !== 'POST') return jsonResp({ error: 'Method not allowed' }, 405);
   const { type, tgId, initData, meta } = await request.json();
@@ -2497,97 +2666,137 @@ async function crmRestoreAccess(env, email) {
   }
 }
 
+const RISK_DAYS = 14;
+const NEW_DAYS = 7;
+
+function currentMonthStr(ts = Date.now()) {
+  const d = new Date(ts);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+const RU_MONTHS = ['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+function thisMonthLabelRu(ts = Date.now()) {
+  const d = new Date(ts);
+  return RU_MONTHS[d.getMonth()] + ' ' + d.getFullYear();
+}
+
+// Собирает единый список участников CRM (используется CRM-доской, дашбордом и рассылками по сегментам),
+// обогащая его сигналами активности из useractivity:{tgId} (пишется logEvent на bot/miniapp/chat-события).
+async function getCRMParticipants(env) {
+  const [approvedEmails, pending, stopped, crmKeys, botKeys] = await Promise.all([
+    env.KV.get('emails:approved', 'json').then(v => v || []),
+    env.KV.get('pending:list', 'json').then(v => v || []),
+    env.KV.get('users:stopped', 'json').then(v => v || []),
+    env.KV.list({ prefix: 'crm:' }),
+    env.KV.list({ prefix: 'botuser:' })
+  ]);
+  const crmRecords = {};
+  await Promise.all(crmKeys.keys.map(async k => {
+    const r = await env.KV.get(k.name, 'json');
+    if (r) crmRecords[k.name.replace('crm:', '')] = r;
+  }));
+
+  const keySet = new Map(); // key(lowercase) -> canonical email
+  approvedEmails.forEach(e => keySet.set(e.toLowerCase(), e));
+  pending.forEach(p => keySet.set(p.email.toLowerCase(), p.email));
+  Object.values(crmRecords).forEach(r => { if (r.email) keySet.set(r.email.toLowerCase(), r.email); });
+
+  const list = [];
+  const coveredTgIds = new Set();
+
+  for (const [key, email] of keySet) {
+    const crm = crmRecords[key] || {};
+    const isPending = pending.some(p => p.email.toLowerCase() === key);
+    const isStopped = stopped.includes(key);
+    let status = crm.status;
+    if (!status) status = isStopped ? 'paused' : isPending ? 'lead' : 'active';
+
+    const tgId = crm.tgId || await env.KV.get(`email_to_user:${key}`);
+    let userRec = null, botUser = null;
+    if (tgId) {
+      coveredTgIds.add(String(tgId));
+      [userRec, botUser] = await Promise.all([
+        env.KV.get(`user:${tgId}`, 'json'),
+        env.KV.get(`botuser:${tgId}`, 'json')
+      ]);
+    }
+    const launches = tgId ? (await env.KV.get(`userstat:${tgId}:launches`, 'json') || 0) : 0;
+    const pendingEntry = pending.find(p => p.email.toLowerCase() === key);
+
+    list.push({
+      key, email,
+      status,
+      isPending,
+      name: crm.name || userRec?.name || botUser?.name || pendingEntry?.name || '',
+      telegram: crm.telegram || botUser?.username || userRec?.username || '',
+      note: crm.note || '',
+      tgId: tgId || null,
+      paidMonths: crm.paidMonths || [],
+      enrolledAt: userRec?.enrolledAt || crm.createdAt || null,
+      launches,
+      updatedAt: crm.updatedAt || null
+    });
+  }
+
+  // Чистые лиды без email/аккаунта (добавленные вручную)
+  for (const [key, r] of Object.entries(crmRecords)) {
+    if (!r.email && !list.some(x => x.key === key)) {
+      if (r.tgId) coveredTgIds.add(String(r.tgId));
+      list.push({
+        key, email: null, status: r.status || 'lead', isPending: false,
+        name: r.name || '', telegram: r.telegram || '', note: r.note || '',
+        tgId: r.tgId || null, paidMonths: r.paidMonths || [],
+        enrolledAt: r.createdAt || null, launches: 0, updatedAt: r.updatedAt || null
+      });
+    }
+  }
+
+  // Пользователи, которые только написали боту, но не проходили email-верификацию —
+  // показываем как отдельный статус "Написал боту", а не отдельным списком.
+  for (const k of botKeys.keys) {
+    const tgId = k.name.replace('botuser:', '');
+    if (coveredTgIds.has(String(tgId))) continue;
+    const userRec = await env.KV.get(`user:${tgId}`, 'json');
+    if (userRec) continue; // уже прошёл email-флоу — представлен где-то выше
+    const crmKey = `tg_${tgId}`;
+    if (crmRecords[crmKey]) continue; // обработан в блоке выше как "чистый лид"
+    const botUser = await env.KV.get(k.name, 'json');
+    list.push({
+      key: crmKey, email: null, status: 'bot', isPending: false,
+      name: botUser?.name || '', telegram: botUser?.username || '', note: '',
+      tgId: Number(tgId) || tgId, paidMonths: [],
+      enrolledAt: botUser?.startedAt || null, launches: 0, updatedAt: null
+    });
+  }
+
+  // Обогащение сигналами активности (последнее событие из useractivity: bot/miниапп/чат)
+  // и производными признаками риска/новизны/оплаты — без выдумывания новых полей статуса,
+  // это подсказки поверх существующего ручного статуса.
+  const thisMonth = currentMonthStr();
+  const now = Date.now();
+  await Promise.all(list.map(async p => {
+    let lastActiveAt = null;
+    if (p.tgId) {
+      const activity = await env.KV.get(`useractivity:${p.tgId}`, 'json');
+      lastActiveAt = activity?.[0]?.ts || null;
+    }
+    p.lastActiveAt = lastActiveAt;
+    p.paidThisMonth = (p.paidMonths || []).includes(thisMonth);
+    p.isNew = !!(p.enrolledAt && (now - p.enrolledAt) < NEW_DAYS * 86400000);
+    const activeIsh = ['active', 'paid'].includes(p.status);
+    const daysSinceActive = lastActiveAt ? Math.floor((now - lastActiveAt) / 86400000) : null;
+    p.risk = activeIsh && (daysSinceActive === null || daysSinceActive >= RISK_DAYS);
+  }));
+
+  return list;
+}
+
 async function apiAdminCRM(request, env, url) {
   const auth = request.headers.get("Authorization") || "";
   if (!auth.includes("admin_session_" + ADMIN_PASSWORD)) return jsonResp({ error: "Unauthorized" }, 401);
 
   if (request.method === 'GET') {
-    const [approvedEmails, pending, stopped, crmKeys, botKeys] = await Promise.all([
-      env.KV.get('emails:approved', 'json').then(v => v || []),
-      env.KV.get('pending:list', 'json').then(v => v || []),
-      env.KV.get('users:stopped', 'json').then(v => v || []),
-      env.KV.list({ prefix: 'crm:' }),
-      env.KV.list({ prefix: 'botuser:' })
-    ]);
-    const crmRecords = {};
-    await Promise.all(crmKeys.keys.map(async k => {
-      const r = await env.KV.get(k.name, 'json');
-      if (r) crmRecords[k.name.replace('crm:', '')] = r;
-    }));
-
-    const keySet = new Map(); // key(lowercase) -> canonical email
-    approvedEmails.forEach(e => keySet.set(e.toLowerCase(), e));
-    pending.forEach(p => keySet.set(p.email.toLowerCase(), p.email));
-    Object.values(crmRecords).forEach(r => { if (r.email) keySet.set(r.email.toLowerCase(), r.email); });
-
-    const list = [];
-    const coveredTgIds = new Set();
-
-    for (const [key, email] of keySet) {
-      const crm = crmRecords[key] || {};
-      const isPending = pending.some(p => p.email.toLowerCase() === key);
-      const isStopped = stopped.includes(key);
-      let status = crm.status;
-      if (!status) status = isStopped ? 'paused' : isPending ? 'lead' : 'active';
-
-      const tgId = crm.tgId || await env.KV.get(`email_to_user:${key}`);
-      let userRec = null, botUser = null;
-      if (tgId) {
-        coveredTgIds.add(String(tgId));
-        [userRec, botUser] = await Promise.all([
-          env.KV.get(`user:${tgId}`, 'json'),
-          env.KV.get(`botuser:${tgId}`, 'json')
-        ]);
-      }
-      const launches = tgId ? (await env.KV.get(`userstat:${tgId}:launches`, 'json') || 0) : 0;
-      const pendingEntry = pending.find(p => p.email.toLowerCase() === key);
-
-      list.push({
-        key, email,
-        status,
-        isPending,
-        name: crm.name || userRec?.name || botUser?.name || pendingEntry?.name || '',
-        telegram: crm.telegram || botUser?.username || userRec?.username || '',
-        note: crm.note || '',
-        tgId: tgId || null,
-        paidMonths: crm.paidMonths || [],
-        enrolledAt: userRec?.enrolledAt || crm.createdAt || null,
-        launches,
-        updatedAt: crm.updatedAt || null
-      });
-    }
-
-    // Чистые лиды без email/аккаунта (добавленные вручную)
-    for (const [key, r] of Object.entries(crmRecords)) {
-      if (!r.email && !list.some(x => x.key === key)) {
-        if (r.tgId) coveredTgIds.add(String(r.tgId));
-        list.push({
-          key, email: null, status: r.status || 'lead', isPending: false,
-          name: r.name || '', telegram: r.telegram || '', note: r.note || '',
-          tgId: r.tgId || null, paidMonths: r.paidMonths || [],
-          enrolledAt: r.createdAt || null, launches: 0, updatedAt: r.updatedAt || null
-        });
-      }
-    }
-
-    // Пользователи, которые только написали боту, но не проходили email-верификацию —
-    // показываем как отдельный статус "Написал боту", а не отдельным списком.
-    for (const k of botKeys.keys) {
-      const tgId = k.name.replace('botuser:', '');
-      if (coveredTgIds.has(String(tgId))) continue;
-      const userRec = await env.KV.get(`user:${tgId}`, 'json');
-      if (userRec) continue; // уже прошёл email-флоу — представлен где-то выше
-      const crmKey = `tg_${tgId}`;
-      if (crmRecords[crmKey]) continue; // обработан в блоке выше как "чистый лид"
-      const botUser = await env.KV.get(k.name, 'json');
-      list.push({
-        key: crmKey, email: null, status: 'bot', isPending: false,
-        name: botUser?.name || '', telegram: botUser?.username || '', note: '',
-        tgId: Number(tgId) || tgId, paidMonths: [],
-        enrolledAt: botUser?.startedAt || null, launches: 0, updatedAt: null
-      });
-    }
-
+    const list = await getCRMParticipants(env);
     return jsonResp({ ok: true, participants: list });
   }
 
@@ -6298,19 +6507,28 @@ function getAdminHTML() {
   @import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;700&family=Geologica:wght@300;400;500;600&display=swap');
 
   :root {
-  --bg: #f5f5f5;
-  --bg2: #efefef;
-  --bg3: #e8e8e8;
+  --bg: #f6f6f8;
+  --bg2: #efeff2;
+  --bg3: #e9e9ee;
   --card: #ffffff;
-  --border: rgba(0,0,0,0.08);
-  --border-h: rgba(0,0,0,0.18);
-  --text: #111111;
-  --text2: rgba(0,0,0,0.5);
-  --text3: rgba(0,0,0,0.3);
-  --accent: #111111;
+  --border: rgba(17,17,20,0.09);
+  --border-h: rgba(17,17,20,0.2);
+  --text: #131316;
+  --text2: rgba(19,19,22,0.56);
+  --text3: rgba(19,19,22,0.38);
+  --accent: #4338ca;
+  --accent-soft: rgba(67,56,202,0.1);
+  --accent-text: #ffffff;
   --danger: #d93025;
-  --success: #1a7f4b;
+  --danger-soft: rgba(217,48,37,0.1);
+  --success: #16794f;
+  --success-soft: rgba(22,121,79,0.1);
+  --warning: #b8860b;
+  --warning-soft: rgba(184,134,11,0.12);
   --radius: 10px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 2px rgba(17,17,20,0.04);
+  --shadow-md: 0 8px 24px rgba(17,17,20,0.08);
 }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -6365,7 +6583,7 @@ function getAdminHTML() {
     transition: border-color 0.2s;
   }
 
-  .login-box input:focus { border-color: rgba(255,255,255,0.25); }
+  .login-box input:focus { border-color: var(--accent); }
 
   .btn { display: inline-block; padding: 11px 20px; border-radius: var(--radius); font-family: 'Geologica', sans-serif; font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all 0.2s; }
   .btn-w { background: var(--text); color: var(--bg); width: 100%; }
@@ -6405,20 +6623,31 @@ function getAdminHTML() {
 
   .sidebar-logo span { color: var(--text3); font-size: 10px; display: block; margin-top: 2px; letter-spacing: 1.5px; font-weight: 400; font-family: 'Geologica'; }
 
+  .nav-section-label {
+    padding: 16px 20px 6px;
+    font-size: 10px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--text3);
+    font-weight: 600;
+  }
+  .nav-section-label:first-of-type { padding-top: 4px; }
+
   .nav-link {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 20px;
+    padding: 9px 20px;
+    margin: 0 8px;
+    border-radius: 8px;
     color: var(--text2);
     font-size: 13px;
     cursor: pointer;
     transition: all 0.15s;
-    border-radius: 0;
   }
 
-  .nav-link:hover { color: var(--text); background: rgba(255,255,255,0.04); }
-  .nav-link.active { color: var(--text); background: rgba(255,255,255,0.07); }
+  .nav-link:hover { color: var(--text); background: var(--bg2); }
+  .nav-link.active { color: var(--accent-text); background: var(--accent); }
   .nav-link-icon { font-size: 16px; width: 20px; text-align: center; }
 
   .main-content {
@@ -6470,7 +6699,7 @@ function getAdminHTML() {
   }
   .tbl td {
     padding: 10px 12px;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
+    border-bottom: 1px solid var(--border);
     font-size: 13px;
     color: var(--text2);
   }
@@ -6492,7 +6721,7 @@ function getAdminHTML() {
     outline: none;
     transition: border-color 0.2s;
   }
-  .field input:focus, .field textarea:focus, .field select:focus { border-color: rgba(255,255,255,0.2); }
+  .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--accent); }
   .field textarea { resize: vertical; min-height: 80px; }
   .field select option { background: var(--bg3); }
 
@@ -6510,8 +6739,10 @@ function getAdminHTML() {
     font-size: 11px;
     letter-spacing: 0.5px;
   }
-  .badge-ok { background: rgba(68,255,136,0.12); color: var(--success); }
-  .badge-pending { background: rgba(255,200,68,0.12); color: #ffc844; }
+  .badge-ok { background: var(--success-soft); color: var(--success); }
+  .badge-pending { background: var(--warning-soft); color: var(--warning); }
+  .badge-risk { background: var(--danger-soft); color: var(--danger); }
+  .badge-new { background: var(--accent-soft); color: var(--accent); }
 
   /* NOTIFY FORM */
   .notify-preview {
@@ -6571,6 +6802,7 @@ function getAdminHTML() {
 
   /* STATS */
   .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
+  .stats-row-4 { grid-template-columns: repeat(4, 1fr); }
   .stat-card {
     background: var(--card);
     border: 1px solid var(--border);
@@ -6612,7 +6844,64 @@ function getAdminHTML() {
   .toggle input:checked ~ .toggle-thumb { transform: translateX(16px); background: var(--bg); }
 
   .crm-board { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; align-items: flex-start; }
-  .crm-column { flex: 1; min-width: 200px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 12px; padding: 10px; }
+  .crm-column { flex: 1; min-width: 220px; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 10px; }
+
+  .crm-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; }
+  .crm-card:hover { border-color: var(--border-h); box-shadow: var(--shadow-sm); }
+  .crm-card-name { font-size: 13px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .crm-card-meta { font-size: 11px; color: var(--text3); margin-top: 3px; }
+  .crm-card-tg { font-size: 11px; color: var(--accent); margin-top: 2px; }
+  .crm-card-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+
+  /* FILTER CHIPS */
+  .chip-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .chip { padding: 6px 13px; border-radius: 20px; font-size: 12px; font-weight: 500; border: 1px solid var(--border); background: var(--card); color: var(--text2); cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+  .chip:hover { border-color: var(--border-h); color: var(--text); }
+  .chip.active { background: var(--text); border-color: var(--text); color: var(--bg); }
+
+  /* HEALTH / DASHBOARD */
+  .health-card { display: flex; align-items: center; gap: 28px; background: linear-gradient(135deg, var(--text) 0%, #2c2c34 100%); color: #fff; border-radius: var(--radius-lg); padding: 24px 28px; margin-bottom: 16px; flex-wrap: wrap; }
+  .health-ring { position: relative; width: 96px; height: 96px; flex-shrink: 0; }
+  .health-ring svg { transform: rotate(-90deg); }
+  .health-ring-val { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: 'Unbounded', sans-serif; font-size: 26px; font-weight: 700; }
+  .health-sub { flex: 1; min-width: 220px; display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 14px; }
+  .health-sub-item .l { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,0.55); margin-bottom: 6px; }
+  .health-sub-item .v { font-family: 'Unbounded', sans-serif; font-size: 18px; font-weight: 600; }
+  .health-bar { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.15); margin-top: 6px; overflow: hidden; }
+  .health-bar i { display: block; height: 100%; background: #fff; border-radius: 2px; }
+
+  .metric-tile { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .metric-tile .l { font-size: 11px; color: var(--text3); margin-bottom: 8px; }
+  .metric-tile .v { font-family: 'Unbounded', sans-serif; font-size: 24px; font-weight: 700; line-height: 1; }
+  .metric-delta { font-size: 11px; font-weight: 500; margin-top: 6px; display: inline-block; }
+  .metric-delta.up { color: var(--success); }
+  .metric-delta.down { color: var(--danger); }
+  .metric-delta.flat { color: var(--text3); }
+
+  .insight-list { display: flex; flex-direction: column; gap: 8px; }
+  .insight-card { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+  .insight-card .ic { width: 34px; height: 34px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+  .insight-card .ic.risk { background: var(--danger-soft); }
+  .insight-card .ic.pending { background: var(--warning-soft); }
+  .insight-card .ic.info { background: var(--accent-soft); }
+  .insight-card .body { flex: 1; min-width: 0; }
+  .insight-card .t { font-size: 13px; font-weight: 500; color: var(--text); }
+  .insight-card .s { font-size: 11px; color: var(--text3); margin-top: 2px; }
+  .insight-empty { color: var(--text3); font-size: 13px; padding: 12px 4px; }
+
+  .activity-row { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.15s; border-radius: 8px; }
+  .activity-row:hover { background: var(--bg2); }
+  .activity-row:last-child { border-bottom: none; }
+  .activity-row .name { font-size: 13px; font-weight: 500; flex: 1; min-width: 0; }
+  .activity-row .cnt { font-size: 12px; color: var(--text3); }
+
+  .tab-row { display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+  .tab-btn { padding: 10px 4px; margin-right: 20px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text3); font-family: 'Geologica', sans-serif; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
+
+  .callout { display: flex; gap: 12px; background: var(--accent-soft); border: 1px solid rgba(67,56,202,0.18); border-radius: 12px; padding: 14px 16px; font-size: 12px; color: var(--text2); line-height: 1.6; margin-bottom: 16px; }
+  .callout .ic { font-size: 18px; flex-shrink: 0; }
 
   @media (max-width: 768px) {
   .sidebar { display: none; }
@@ -6665,31 +6954,38 @@ function getAdminHTML() {
     <!-- Sidebar -->
     <div class="sidebar">
       <div class="sidebar-logo">CMO <span>ADMIN PANEL</span></div>
+
+      <div class="nav-section-label">Обзор</div>
       <div class="nav-link active" id="nl-dashboard" onclick="showPage('dashboard')">
         <span class="nav-link-icon">⊞</span> Дашборд
       </div>
+
+      <div class="nav-section-label">Участники</div>
       <div class="nav-link" id="nl-participants" onclick="showPage('participants')">
-        <span class="nav-link-icon">👤</span> Участники
+        <span class="nav-link-icon">👤</span> CRM
       </div>
+      <div class="nav-link" id="nl-analytics" onclick="showPage('analytics')">
+        <span class="nav-link-icon">📊</span> Активность
+      </div>
+
+      <div class="nav-section-label">Коммуникации</div>
       <div class="nav-link" id="nl-notify" onclick="showPage('notify')">
         <span class="nav-link-icon">📢</span> Уведомления
-      </div>
-      <div class="nav-link" id="nl-programs" onclick="showPage('programs')">
-        <span class="nav-link-icon">📚</span> Программы
       </div>
       <div class="nav-link" id="nl-questions" onclick="showPage('questions')">
         <span class="nav-link-icon">❓</span> Вопросы
       </div>
+
+      <div class="nav-section-label">Оплаты</div>
+      <div class="nav-link" id="nl-payments" onclick="showPage('payments')">
+        <span class="nav-link-icon">💳</span> Оплаты
+      </div>
+
+      <div class="nav-section-label">Мероприятия</div>
       <div class="nav-link" id="nl-events" onclick="showPage('events')">
-  <span class="nav-link-icon">📅</span> Мероприятия
-</div>
-<div class="nav-link" id="nl-admins" onclick="showPage('admins')">
-  <span class="nav-link-icon">🔐</span> Админы
-</div>
-<div class="nav-link" id="nl-kb" onclick="showPage('kb')">
-  <span class="nav-link-icon">📚</span> База знаний
-</div>
-<div class="nav-link" id="nl-coffee" onclick="showPage('coffee')">
+        <span class="nav-link-icon">📅</span> Мероприятия
+      </div>
+      <div class="nav-link" id="nl-coffee" onclick="showPage('coffee')">
         <span class="nav-link-icon">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
             <path d="M17 8h1a4 4 0 0 1 0 8h-1"/>
@@ -6699,8 +6995,18 @@ function getAdminHTML() {
         </span>
         Рандом Кофе
       </div>
-      <div class="nav-link" id="nl-analytics" onclick="showPage('analytics')">
-        <span class="nav-link-icon">📊</span> Аналитика
+
+      <div class="nav-section-label">Материалы</div>
+      <div class="nav-link" id="nl-programs" onclick="showPage('programs')">
+        <span class="nav-link-icon">📚</span> Программы
+      </div>
+      <div class="nav-link" id="nl-kb" onclick="showPage('kb')">
+        <span class="nav-link-icon">📖</span> База знаний
+      </div>
+
+      <div class="nav-section-label">Команда</div>
+      <div class="nav-link" id="nl-admins" onclick="showPage('admins')">
+        <span class="nav-link-icon">🔐</span> Админы
       </div>
     </div>
 
@@ -6710,24 +7016,45 @@ function getAdminHTML() {
       <!-- DASHBOARD -->
       <div class="page active" id="page-dashboard">
         <div class="page-title">Дашборд</div>
-        <div class="stats-row">
-  <div class="stat-card"><div class="stat-val" id="stat-emails">—</div><div class="stat-label">Участников</div></div>
-  <div class="stat-card"><div class="stat-val" id="stat-pending">—</div><div class="stat-label">Ожидают</div></div>
-  <div class="stat-card"><div class="stat-val" id="stat-questions">—</div><div class="stat-label">Вопросов</div></div>
-  <div class="stat-card"><div class="stat-val" id="stat-launches">—</div><div class="stat-label">Всего заходов</div></div>
-  <div class="stat-card"><div class="stat-val" id="stat-payments">—</div><div class="stat-label">Оплат</div></div>
-</div>
 
-<div class="grid-2">
-  <div class="card">
-    <div class="card-title">Топ-5 по активности</div>
-    <div id="topUsers"></div>
-  </div>
-  <div class="card">
-    <div class="card-title">Последние оплаты</div>
-    <div id="paymentsList"></div>
-  </div>
-</div>
+        <div class="health-card">
+          <div class="health-ring">
+            <svg width="96" height="96" viewBox="0 0 96 96">
+              <circle cx="48" cy="48" r="42" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="8"/>
+              <circle id="healthRingArc" cx="48" cy="48" r="42" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-dasharray="264" stroke-dashoffset="264" style="transition:stroke-dashoffset 0.6s ease"/>
+            </svg>
+            <div class="health-ring-val" id="healthScoreVal">—</div>
+          </div>
+          <div class="health-sub">
+            <div class="health-sub-item"><div class="l">Удержание</div><div class="v" id="healthRetention">—</div><div class="health-bar"><i id="healthRetentionBar" style="width:0%"></i></div></div>
+            <div class="health-sub-item"><div class="l">Вовлечённость</div><div class="v" id="healthEngagement">—</div><div class="health-bar"><i id="healthEngagementBar" style="width:0%"></i></div></div>
+            <div class="health-sub-item"><div class="l">Рост</div><div class="v" id="healthGrowth">—</div><div class="health-bar"><i id="healthGrowthBar" style="width:0%"></i></div></div>
+            <div class="health-sub-item"><div class="l">Оплаты</div><div class="v" id="healthPayment">—</div><div class="health-bar"><i id="healthPaymentBar" style="width:0%"></i></div></div>
+          </div>
+        </div>
+
+        <div class="stats-row stats-row-4">
+          <div class="metric-tile"><div class="l">Участников</div><div class="v" id="stat-emails">—</div></div>
+          <div class="metric-tile"><div class="l">Ожидают одобрения</div><div class="v" id="stat-pending">—</div></div>
+          <div class="metric-tile"><div class="l">Вопросов без ответа</div><div class="v" id="stat-questions">—</div></div>
+          <div class="metric-tile"><div class="l">Всего заходов</div><div class="v" id="stat-launches">—</div></div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-title">Требует внимания</div>
+          <div class="insight-list" id="insightList"></div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-title">Топ-5 по активности</div>
+            <div id="topUsers"></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Последние оплаты</div>
+            <div id="paymentsList"></div>
+          </div>
+        </div>
       </div>
 
       <!-- PARTICIPANTS -->
@@ -6735,7 +7062,7 @@ function getAdminHTML() {
         <div class="page-title">CRM участников</div>
 
         <div class="card" style="margin-bottom:16px">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:4px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">
             <div class="card-title" style="margin-bottom:0">Участники по статусам</div>
             <div style="display:flex;gap:8px;align-items:center">
               <input type="text" id="crmSearch" placeholder="Поиск..." oninput="renderCRMBoard()"
@@ -6743,6 +7070,13 @@ function getAdminHTML() {
               <button class="btn btn-ghost btn-sm" onclick="loadCRM()">↻</button>
               <button class="btn btn-w btn-sm" onclick="openCRMEdit(null)">+ Добавить</button>
             </div>
+          </div>
+          <div class="chip-row" id="crmFilterChips">
+            <div class="chip active" data-filter="all" onclick="setCrmFilter('all')">Все</div>
+            <div class="chip" data-filter="risk" onclick="setCrmFilter('risk')">🔥 Риск</div>
+            <div class="chip" data-filter="new" onclick="setCrmFilter('new')">🆕 Новые</div>
+            <div class="chip" data-filter="unpaid" onclick="setCrmFilter('unpaid')">💳 Не оплатили в этом месяце</div>
+            <div class="chip" data-filter="pending" onclick="setCrmFilter('pending')">⏳ Ожидают одобрения</div>
           </div>
           <p style="font-size:12px;color:var(--text3);margin:4px 0 12px">Перетащи карточку в другую колонку (на компьютере) или выбери статус в выпадающем списке на карточке (на телефоне). Клик по карточке открывает подробную информацию.</p>
           <div id="crm-board" class="crm-board"></div>
@@ -6770,6 +7104,7 @@ function getAdminHTML() {
       <div class="modal-overlay" id="crmEditModal">
         <div class="modal" style="max-width:560px">
           <div class="modal-title" id="crmEditTitle">Карточка участника</div>
+          <div id="crmActivityReadout" style="display:none;font-size:12px;color:var(--text3);margin:-12px 0 16px"></div>
           <input type="hidden" id="crmKey"/>
           <div class="grid-2">
             <div class="field"><label>Имя</label><input type="text" id="crmName" placeholder="Имя Фамилия"/></div>
@@ -6882,10 +7217,17 @@ function getAdminHTML() {
           <div class="card-title">Отправить уведомление</div>
           <div class="field">
   <label>Получатели</label>
-  <div style="display:flex;gap:8px;margin-bottom:12px">
+  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
     <button class="btn btn-w btn-sm" id="notifyModeAll" onclick="setNotifyMode('all')">Все участники</button>
     <button class="btn btn-ghost btn-sm" id="notifyModeSelect" onclick="setNotifyMode('select')">Выбрать</button>
+    <button class="btn btn-ghost btn-sm" id="notifyModeSegment" onclick="setNotifyMode('segment')">По сегменту</button>
   </div>
+  <div id="notifySegmentRow" class="chip-row" style="display:none">
+    <div class="chip active" data-seg="risk" onclick="setNotifySegment('risk')">🔥 Риск</div>
+    <div class="chip" data-seg="new" onclick="setNotifySegment('new')">🆕 Новые</div>
+    <div class="chip" data-seg="unpaid" onclick="setNotifySegment('unpaid')">💳 Не оплатили</div>
+  </div>
+  <div id="notifySegmentCount" style="display:none;font-size:12px;color:var(--text3);margin-bottom:12px"></div>
   <div id="notifyUserList" style="display:none;max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);padding:8px"></div>
 </div>
           <div class="field">
@@ -6919,6 +7261,41 @@ function getAdminHTML() {
       <div class="page" id="page-questions">
         <div class="page-title">Вопросы участников</div>
         <div id="questionsList"></div>
+      </div>
+
+      <!-- PAYMENTS -->
+      <div class="page" id="page-payments">
+        <div class="page-title">Оплаты</div>
+
+        <div class="callout">
+          <div class="ic">💳</div>
+          <div>Оплаты идут через <b>edsofa.ai</b>. У edsofa.ai нет открытой API-документации, поэтому здесь два способа сверки: вставить таблицу с оплатами (как ты уже ведёшь её вручную) или настроить вебхук в личном кабинете edsofa.ai — попроси у их поддержки формат уведомления и, если поля будут отличаться от email/telegram/amount/paid_at, дай знать, чтобы поправить приём на своей стороне.</div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-title">Вставить таблицу оплат</div>
+          <p style="font-size:12px;color:var(--text3);margin-bottom:12px">Скопируй строки прямо из таблицы (как в файле, который ты ведёшь) и вставь ниже. Первая строка — заголовки: <code style="background:var(--bg3);padding:2px 6px;border-radius:4px">telegram, email, ВСЕГО</code>, затем по одной колонке на месяц (например <code style="background:var(--bg3);padding:2px 6px;border-radius:4px">МАЙ, ИЮНЬ, ИЮЛЬ</code>). Пустая ячейка месяца — не оплачено, любое непустое значение — оплачено.</p>
+          <div class="field">
+            <label>Год для колонок-месяцев</label>
+            <input type="number" id="paymentsImportYear" style="max-width:120px" placeholder="2026"/>
+          </div>
+          <div class="field">
+            <label>Данные (вставь из таблицы, разделитель — таб или запятая)</label>
+            <textarea id="paymentsImportData" rows="8" placeholder="telegram	email	ВСЕГО	МАЙ	ИЮНЬ	ИЮЛЬ&#10;https://t.me/AllaSld	habarovchanka@ya.ru	10000	 	5000	5000"></textarea>
+          </div>
+          <button class="btn btn-w" onclick="submitPaymentsImport()">Сверить и применить</button>
+          <div class="msg" id="paymentsImportMsg"></div>
+          <div id="paymentsImportUnmatched" style="margin-top:12px"></div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <div class="card-title" style="margin-bottom:0">Непривязанные оплаты из вебхука</div>
+            <button class="btn btn-ghost btn-sm" onclick="loadPayments()">↻ Обновить</button>
+          </div>
+          <p style="font-size:12px;color:var(--text3);margin:4px 0 12px">Оплаты от edsofa.ai, для которых не нашёлся email/telegram в CRM — привяжи вручную к нужному участнику.</p>
+          <div id="paymentsUnmatchedList" style="color:var(--text3);font-size:13px">Загрузка...</div>
+        </div>
       </div>
 
       <div class="page" id="page-admins">
@@ -7132,7 +7509,10 @@ function getAdminHTML() {
       <div style="font-size:14px;font-weight:600">Активность в чате Ядра</div>
       <button class="btn btn-ghost btn-sm" onclick="openChatImportModal()">+ Внести данные вручную</button>
     </div>
-    <p style="font-size:12px;color:var(--text3);margin:0 0 12px">Бот учитывает сообщения автоматически, если добавлен в чат. Прошлые дни (до добавления бота) можно внести вручную, включая задний числом.</p>
+    <div class="callout">
+      <div class="ic">🤖</div>
+      <div>Чтобы бот считал сообщения в чате автоматически: добавь его в чат Ядра участником, затем в <b>@BotFather</b> → выбери бота → <b>Bot Settings → Group Privacy → Turn off</b>. Пока Privacy Mode включён, Telegram не показывает боту обычные сообщения группы — только упоминания и команды. Дни до подключения бота можно внести вручную ниже, задним числом.</div>
+    </div>
     <div id="chat-activity-list" style="color:var(--text3);font-size:13px">Загрузка...</div>
   </div>
 </div>
@@ -7238,117 +7618,44 @@ function getAdminHTML() {
       <span style="font-size:20px">👤</span>
       <span>CRM</span>
     </button>
+    <button class="mnav-btn" id="mnav-analytics" onclick="showPage('analytics')">
+      <span style="font-size:20px">📊</span>
+      <span>Активность</span>
+    </button>
     <button class="mnav-btn" id="mnav-notify" onclick="showPage('notify')">
       <span style="font-size:20px">📢</span>
       <span>Рассылка</span>
-    </button>
-    <button class="mnav-btn" id="mnav-programs" onclick="showPage('programs')">
-      <span style="font-size:20px">📚</span>
-      <span>Программы</span>
-    </button>
-    <button class="mnav-btn" id="mnav-coffee" onclick="showPage('coffee')">
-      <span style="font-size:20px">☕</span>
-      <span>Кофе</span>
-    </button>
-    <button class="mnav-btn" id="mnav-analytics" onclick="showPage('analytics')">
-      <span style="font-size:20px">📊</span>
-      <span>Аналитика</span>
     </button>
     <button class="mnav-btn" id="mnav-questions" onclick="showPage('questions')">
       <span style="font-size:20px">❓</span>
       <span>Вопросы</span>
     </button>
+    <button class="mnav-btn" id="mnav-payments" onclick="showPage('payments')">
+      <span style="font-size:20px">💳</span>
+      <span>Оплаты</span>
+    </button>
     <button class="mnav-btn" id="mnav-events" onclick="showPage('events')">
       <span style="font-size:20px">📅</span>
       <span>Мероприятия</span>
+    </button>
+    <button class="mnav-btn" id="mnav-coffee" onclick="showPage('coffee')">
+      <span style="font-size:20px">☕</span>
+      <span>Кофе</span>
+    </button>
+    <button class="mnav-btn" id="mnav-programs" onclick="showPage('programs')">
+      <span style="font-size:20px">📚</span>
+      <span>Программы</span>
+    </button>
+    <button class="mnav-btn" id="mnav-kb" onclick="showPage('kb')">
+      <span style="font-size:20px">📖</span>
+      <span>База знаний</span>
     </button>
     <button class="mnav-btn" id="mnav-admins" onclick="showPage('admins')">
       <span style="font-size:20px">🔐</span>
       <span>Админы</span>
     </button>
-    <button class="mnav-btn" id="mnav-kb" onclick="showPage('kb')">
-      <span style="font-size:20px">📚</span>
-      <span>База знаний</span>
-    </button>
   </div>
 </nav>
-
-<!-- COFFEE PAGE -->
-      <div class="page" id="page-coffee">
-        <div class="page-title">☕ Рандом Кофе</div>
- 
-        <!-- Статистика -->
-        <div class="stats-row" style="margin-bottom:24px">
-          <div class="stat-card"><div class="stat-val" id="coffee-stat-total">—</div><div class="stat-label">Участников</div></div>
-          <div class="stat-card"><div class="stat-val" id="coffee-stat-active">—</div><div class="stat-label">Активных</div></div>
-          <div class="stat-card"><div class="stat-val" id="coffee-stat-complaints">—</div><div class="stat-label">Жалоб</div></div>
-          <div class="stat-card"><div class="stat-val" id="coffee-stat-week">—</div><div class="stat-label">Пар на неделе</div></div>
-        </div>
- 
-        <!-- Текущий раунд -->
-        <div class="card" style="margin-bottom:20px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-            <div style="font-size:14px;font-weight:600">Раунд <span id="coffee-week-id">—</span></div>
-            <div style="display:flex;gap:8px">
-              <button class="btn btn-ghost" onclick="loadCoffeeAdmin()">↻ Обновить</button>
-              <button class="btn btn-w" onclick="openCoffeePairModal()">+ Назначить пары</button>
-            </div>
-          </div>
-          <div id="coffee-pairs-table">
-            <div style="color:var(--text3);font-size:13px">Пары ещё не назначены</div>
-          </div>
-        </div>
- 
-        <!-- Жалобы -->
-        <div class="card" style="margin-bottom:20px">
-          <div style="font-size:14px;font-weight:600;margin-bottom:16px">Жалобы</div>
-          <div id="coffee-complaints-list">
-            <div style="color:var(--text3);font-size:13px">Жалоб нет</div>
-          </div>
-        </div>
- 
-        <!-- Участники -->
-        <div class="card">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-            <div style="font-size:14px;font-weight:600">Участники</div>
-            <input id="coffee-search" type="text" placeholder="Поиск..."
-              oninput="filterCoffeeParticipants()"
-              style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-size:13px;width:200px;outline:none"/>
-          </div>
-          <table class="data-table" style="width:100%">
-            <thead>
-              <tr>
-                <th>Участник</th>
-                <th>Анкета</th>
-                <th>Встреч</th>
-                <th>Рейтинг</th>
-                <th>Статус</th>
-                <th>Действия</th>
-              </tr>
-            </thead>
-            <tbody id="coffee-participants-tbody"></tbody>
-          </table>
-        </div>
-      </div>
- 
-      <!-- COFFEE PAIR MODAL -->
-      <div id="coffeePairModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center;">
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:24px;width:480px;max-height:80vh;overflow-y:auto">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
-            <div style="font-family:'Unbounded',sans-serif;font-size:14px;font-weight:600">Назначить пары</div>
-            <button onclick="document.getElementById('coffeePairModal').style.display='none'" style="background:none;border:none;color:var(--text2);font-size:18px;cursor:pointer">✕</button>
-          </div>
-          <div style="font-size:12px;color:var(--text3);margin-bottom:16px">
-            Введите пары вручную. Каждая строка: <code style="background:var(--bg3);padding:2px 6px;border-radius:4px">@username1 — @username2</code> или tgId через пробел.
-          </div>
-          <div id="coffee-pair-rows" style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"></div>
-          <button onclick="addCoffeePairRow()" class="btn btn-ghost" style="width:100%;margin-bottom:16px">+ Добавить пару</button>
-          <div style="display:flex;gap:8px">
-            <button onclick="document.getElementById('coffeePairModal').style.display='none'" class="btn btn-ghost" style="flex:1">Отмена</button>
-            <button onclick="saveCoffeePairs()" class="btn btn-w" style="flex:1">Сохранить раунд</button>
-          </div>
-        </div>
-      </div>
 
 <script>
 let adminToken = '';
@@ -7356,6 +7663,7 @@ let adminProgram = 'ai';
 let adminProgramData = { ai: null, funnels: null };
 let allParticipantsData = [];
 let notifyMode = 'all';
+let notifySegment = 'risk';
 let selectedNotifyUsers = new Set();
 let editingEventId = null;
 
@@ -7364,8 +7672,165 @@ function setNotifyMode(mode) {
   notifyMode = mode;
   document.getElementById('notifyModeAll').className = mode === 'all' ? 'btn btn-w btn-sm' : 'btn btn-ghost btn-sm';
   document.getElementById('notifyModeSelect').className = mode === 'select' ? 'btn btn-w btn-sm' : 'btn btn-ghost btn-sm';
+  document.getElementById('notifyModeSegment').className = mode === 'segment' ? 'btn btn-w btn-sm' : 'btn btn-ghost btn-sm';
   document.getElementById('notifyUserList').style.display = mode === 'select' ? 'block' : 'none';
+  document.getElementById('notifySegmentRow').style.display = mode === 'segment' ? 'flex' : 'none';
+  document.getElementById('notifySegmentCount').style.display = mode === 'segment' ? 'block' : 'none';
   if (mode === 'select') loadNotifyUserList();
+  if (mode === 'segment') updateNotifySegmentCount();
+}
+
+async function setNotifySegment(seg) {
+  notifySegment = seg;
+  document.querySelectorAll('#notifySegmentRow .chip').forEach(c => c.classList.toggle('active', c.dataset.seg === seg));
+  updateNotifySegmentCount();
+}
+
+async function updateNotifySegmentCount() {
+  const el = document.getElementById('notifySegmentCount');
+  el.textContent = 'Считаем аудиторию...';
+  try {
+    if (!crmData.length) await loadCRM();
+    const count = crmSegmentTgIds(notifySegment).length;
+    el.textContent = \`Получат сообщение: \${count} участник\${count === 1 ? '' : count < 5 ? 'а' : 'ов'} с привязанным Telegram\`;
+  } catch (e) { el.textContent = ''; }
+}
+
+function crmSegmentTgIds(seg) {
+  let list = crmData.filter(p => p.tgId);
+  if (seg === 'risk') list = list.filter(p => p.risk);
+  else if (seg === 'new') list = list.filter(p => p.isNew);
+  else if (seg === 'unpaid') list = list.filter(p => (p.status === 'active' || p.status === 'paid') && !p.paidThisMonth);
+  return list.map(p => p.tgId);
+}
+
+// ── PAYMENTS (edsofa.ai reconciliation) ─────────────────────────────
+const RU_MONTH_MAP = { 'янв':1,'фев':2,'мар':3,'апр':4,'май':5,'июн':6,'июл':7,'авг':8,'сен':9,'окт':10,'ноя':11,'дек':12 };
+function ruMonthToNum(word) {
+  const w = (word || '').toLowerCase().trim();
+  for (const prefix in RU_MONTH_MAP) if (w.startsWith(prefix)) return RU_MONTH_MAP[prefix];
+  return null;
+}
+
+function splitImportLine(line) {
+  if (line.includes('\t')) return line.split('\t');
+  const protectedLine = line.replace(/(\\d),(\\d{3})/g, '$1§$2');
+  return protectedLine.split(',').map(c => c.replace(/§/g, ','));
+}
+
+function parsePaymentsImportData(raw, year) {
+  const lines = raw.split('\\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) return { records: [], error: 'Нужна строка заголовков и хотя бы одна строка данных' };
+
+  const header = splitImportLine(lines[0]).map(h => h.trim());
+  let tgIdx = -1, emailIdx = -1;
+  const monthCols = [];
+  header.forEach((h, i) => {
+    const hl = h.toLowerCase();
+    if (hl.includes('telegram') || hl === 'tg' || hl.includes('t.me')) tgIdx = i;
+    else if (hl.includes('mail') || hl.includes('почта')) emailIdx = i;
+    else {
+      const m = ruMonthToNum(hl);
+      if (m) monthCols.push({ idx: i, monthKey: year + '-' + String(m).padStart(2, '0') });
+    }
+  });
+
+  if (tgIdx === -1 || emailIdx === -1) {
+    const sample = splitImportLine(lines[1] || '');
+    sample.forEach((cell, i) => {
+      if (tgIdx === -1 && /t\\.me\\//i.test(cell)) tgIdx = i;
+      if (emailIdx === -1 && /@.+\\./.test(cell)) emailIdx = i;
+    });
+  }
+
+  if (!monthCols.length) return { records: [], error: 'Не нашёл ни одной колонки-месяца в заголовке (МАЙ, ИЮНЬ...)' };
+  if (tgIdx === -1 && emailIdx === -1) return { records: [], error: 'Не нашёл колонку telegram или email' };
+
+  const records = [];
+  for (let li = 1; li < lines.length; li++) {
+    const cells = splitImportLine(lines[li]);
+    const tgRaw = tgIdx >= 0 ? (cells[tgIdx] || '').trim() : '';
+    const telegram = tgRaw.replace(/^https?:\\/\\/t\\.me\\//i, '').replace(/^@/, '').trim() || null;
+    const email = emailIdx >= 0 ? (cells[emailIdx] || '').trim().toLowerCase() || null : null;
+    if (!telegram && !email) continue;
+    const months = [];
+    monthCols.forEach(mc => {
+      const v = (cells[mc.idx] || '').trim();
+      if (v && /\\d/.test(v)) months.push(mc.monthKey);
+    });
+    if (!months.length) continue;
+    records.push({ telegram, email, months });
+  }
+  return { records };
+}
+
+async function submitPaymentsImport() {
+  const year = parseInt(document.getElementById('paymentsImportYear').value, 10) || new Date().getFullYear();
+  const raw = document.getElementById('paymentsImportData').value.trim();
+  const msg = document.getElementById('paymentsImportMsg');
+  if (!raw) { msg.className = 'msg err'; msg.textContent = 'Вставь данные'; return; }
+
+  const { records, error } = parsePaymentsImportData(raw, year);
+  if (error) { msg.className = 'msg err'; msg.textContent = error; return; }
+  if (!records.length) { msg.className = 'msg err'; msg.textContent = 'Не нашёл ни одной строки с оплатой'; return; }
+
+  try {
+    const res = await fetch('/api/admin/payments', {
+      method: 'POST', headers: aHeaders(),
+      body: JSON.stringify({ action: 'import', records })
+    }).then(r => r.json());
+    if (!res.ok) { msg.className = 'msg err'; msg.textContent = res.error || 'Ошибка'; return; }
+    msg.className = 'msg ok';
+    msg.textContent = \`Применено к \${res.matched} участник\${res.matched === 1 ? 'у' : 'ам'}\${res.unmatched?.length ? \`, не найдено в CRM: \${res.unmatched.length}\` : ''}\`;
+    const unmEl = document.getElementById('paymentsImportUnmatched');
+    unmEl.innerHTML = (res.unmatched || []).length ? \`<div class="card" style="background:var(--bg2)"><div class="card-title">Не найдены в CRM (добавь их вручную)</div>\` +
+      res.unmatched.map(r => \`<div style="font-size:12px;color:var(--text2);padding:4px 0">\${escapeAdminHtml(r.telegram ? '@' + r.telegram : '') } \${escapeAdminHtml(r.email || '')}</div>\`).join('') + '</div>' : '';
+    if (res.matched) loadCRM();
+  } catch (e) { msg.className = 'msg err'; msg.textContent = 'Ошибка подключения'; }
+}
+
+async function loadPayments() {
+  const el = document.getElementById('paymentsUnmatchedList');
+  try {
+    if (!crmData.length) await loadCRM();
+    const data = await fetch('/api/admin/payments', { headers: aHeaders() }).then(r => r.json());
+    if (!data.ok) { el.innerHTML = '<div style="color:var(--text3)">Ошибка загрузки</div>'; return; }
+    window.paymentsUnmatchedData = data.unmatched || [];
+    renderPaymentsUnmatched();
+  } catch (e) { el.innerHTML = '<div style="color:var(--text3)">Ошибка загрузки</div>'; }
+}
+
+function renderPaymentsUnmatched() {
+  const el = document.getElementById('paymentsUnmatchedList');
+  const list = window.paymentsUnmatchedData || [];
+  if (!list.length) { el.innerHTML = '<div style="color:var(--text3)">Непривязанных оплат нет.</div>'; return; }
+  const options = crmData.map(p => \`<option value="\${escapeAdminHtml(p.key)}">\${escapeAdminHtml(p.name || p.email || p.telegram || p.key)}</option>\`).join('');
+  el.innerHTML = list.map(u => \`
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:160px">
+        <div style="font-size:13px">\${escapeAdminHtml(u.email || '')} \${u.telegram ? '<span style="color:var(--accent)">@' + escapeAdminHtml(u.telegram) + '</span>' : ''}</div>
+        <div style="font-size:11px;color:var(--text3)">\${u.monthKey || ''}\${u.amount ? ' · ' + u.amount : ''} · \${new Date(u.receivedAt).toLocaleDateString('ru')}</div>
+      </div>
+      <select id="paymentsLink-\${u.id}" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 8px;color:var(--text);font-size:12px;max-width:200px">
+        <option value="">— выбрать участника —</option>\${options}
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="linkUnmatchedPayment('\${u.id}')">Привязать</button>
+      <button class="btn btn-ghost btn-sm" onclick="dismissUnmatchedPayment('\${u.id}')">Скрыть</button>
+    </div>\`).join('');
+}
+
+async function linkUnmatchedPayment(id) {
+  const key = document.getElementById('paymentsLink-' + id)?.value;
+  if (!key) { showAdminToast('Выбери участника'); return; }
+  await fetch('/api/admin/payments', { method: 'POST', headers: aHeaders(), body: JSON.stringify({ action: 'link-unmatched', id, key }) });
+  showAdminToast('Привязано');
+  loadCRM();
+  loadPayments();
+}
+
+async function dismissUnmatchedPayment(id) {
+  await fetch('/api/admin/payments', { method: 'POST', headers: aHeaders(), body: JSON.stringify({ action: 'dismiss-unmatched', id }) });
+  loadPayments();
 }
 
 async function loadNotifyUserList() {
@@ -7515,6 +7980,7 @@ function showPage(id) {
   if (id === 'coffee') loadCoffeeAdmin();
   if (id === 'kb') kbLoadAdmin();
   if (id === 'analytics') loadAnalytics();
+  if (id === 'payments') loadPayments();
 }
 
 async function loadAnalytics() {
@@ -7549,17 +8015,29 @@ async function loadAnalytics() {
 async function loadChatActivity() {
   const el = document.getElementById('chat-activity-list');
   try {
-    const data = await fetch('/api/admin/chat-activity', { headers: aHeaders() }).then(r => r.json());
+    const [data] = await Promise.all([
+      fetch('/api/admin/chat-activity', { headers: aHeaders() }).then(r => r.json()),
+      crmData.length ? Promise.resolve() : loadCRM()
+    ]);
     if (!data.ok || !data.users.length) { el.innerHTML = '<div style="color:var(--text3)">Данных пока нет — добавь бота в чат Ядра или внеси данные вручную.</div>'; return; }
     el.innerHTML = \`<table class="tbl" style="width:100%"><thead><tr>
       <th>Участник</th><th>Сообщений</th><th>Последняя активность</th>
-    </tr></thead><tbody>\` + data.users.map(u => \`
-      <tr>
-        <td>\${escapeAdminHtml(u.name || '—')} \${u.username ? '<span style="color:var(--text3)">@' + escapeAdminHtml(u.username) + '</span>' : ''}</td>
+    </tr></thead><tbody>\` + data.users.map(u => {
+      const crmEntry = crmData.find(p => String(p.tgId) === String(u.userId));
+      return \`
+      <tr onclick="openCRMByTgId('\${escapeAdminHtml(String(u.userId))}')" style="cursor:pointer" title="\${crmEntry ? 'Открыть карточку в CRM' : 'Не найден в CRM'}">
+        <td>\${escapeAdminHtml(u.name || '—')} \${u.username ? '<span style="color:var(--accent)">@' + escapeAdminHtml(u.username) + '</span>' : ''}</td>
         <td>\${u.messageCount || 0}</td>
         <td style="color:var(--text3);font-size:12px">\${u.lastMessageAt ? new Date(u.lastMessageAt).toLocaleDateString('ru') : '—'}</td>
-      </tr>\`).join('') + '</tbody></table>';
+      </tr>\`;
+    }).join('') + '</tbody></table>';
   } catch(e) { el.innerHTML = '<div style="color:var(--text3)">Ошибка загрузки</div>'; }
+}
+
+function openCRMByTgId(tgId) {
+  const entry = crmData.find(p => String(p.tgId) === String(tgId));
+  if (entry) { showPage('participants'); setTimeout(() => openCRMEdit(entry.key), 50); }
+  else showAdminToast('Этот пользователь не найден в CRM');
 }
 
 function openChatImportModal() {
@@ -7645,15 +8123,56 @@ async function removeAdmin(email) {
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────
+const INSIGHT_ICONS = { risk: '🔥', pending: '⏳', info: '🆕' };
+
+function goInsight(target, filter) {
+  showPage(target);
+  if (target === 'participants' && filter) {
+    setTimeout(() => setCrmFilter(filter), 50);
+  }
+}
+
 async function loadDashboard() {
   const stats = await fetch('/api/admin/dashboard-stats', { headers: aHeaders() }).then(r => r.json());
-  
+
   document.getElementById('stat-emails').textContent = stats.totalEmails || 0;
   document.getElementById('stat-pending').textContent = stats.totalPending || 0;
   document.getElementById('stat-questions').textContent = stats.totalQuestions || 0;
   document.getElementById('stat-launches').textContent = stats.totalLaunches || 0;
-  document.getElementById('stat-payments').textContent = stats.paymentsWithDates?.length || 0;
-  
+
+  // Индекс здоровья
+  const h = stats.health || {};
+  const score = h.score ?? 0;
+  document.getElementById('healthScoreVal').textContent = score;
+  const circumference = 264;
+  document.getElementById('healthRingArc').setAttribute('stroke-dashoffset', String(circumference - (circumference * Math.max(0, Math.min(100, score)) / 100)));
+
+  document.getElementById('healthRetention').textContent = (h.retentionPct ?? 0) + '%';
+  document.getElementById('healthRetentionBar').style.width = (h.retentionPct ?? 0) + '%';
+
+  const engDelta = h.engagementDeltaPct ?? 0;
+  document.getElementById('healthEngagement').textContent = (engDelta > 0 ? '+' : '') + engDelta + '%';
+  document.getElementById('healthEngagementBar').style.width = Math.max(0, Math.min(100, 50 + engDelta / 2)) + '%';
+
+  document.getElementById('healthGrowth').textContent = '+' + (h.growthCount ?? 0);
+  document.getElementById('healthGrowthBar').style.width = Math.max(0, Math.min(100, (h.growthCount ?? 0) * 10)) + '%';
+
+  document.getElementById('healthPayment').textContent = (h.paymentHealthPct ?? 0) + '%';
+  document.getElementById('healthPaymentBar').style.width = (h.paymentHealthPct ?? 0) + '%';
+
+  // Требует внимания
+  const insightList = document.getElementById('insightList');
+  const insights = stats.insights || [];
+  insightList.innerHTML = insights.length ? insights.map(ins => \`
+    <div class="insight-card" onclick="goInsight('\${ins.target}', \${ins.filter ? \`'\${ins.filter}'\` : 'null'})">
+      <div class="ic \${ins.type}">\${INSIGHT_ICONS[ins.type] || 'ℹ️'}</div>
+      <div class="body">
+        <div class="t">\${escapeAdminHtml(ins.title)}</div>
+        <div class="s">\${escapeAdminHtml(ins.sub)}</div>
+      </div>
+      <div style="color:var(--text3);font-size:16px">→</div>
+    </div>\`).join('') : '<div class="insight-empty">Всё спокойно — ничего срочного нет.</div>';
+
   // Топ-5
   let topHtml = '';
   (stats.topUsers || []).forEach((u, i) => {
@@ -7713,9 +8232,26 @@ const CRM_STATUS_ORDER = ['bot', 'lead', 'paid', 'active', 'paused', 'left'];
 const CRM_MONTH_PRICE = 5000;
 let crmData = [];
 let crmDraggedKey = null;
+let crmFilter = 'all';
+
+function setCrmFilter(filter) {
+  crmFilter = filter;
+  document.querySelectorAll('#crmFilterChips .chip').forEach(c => c.classList.toggle('active', c.dataset.filter === filter));
+  renderCRMBoard();
+}
 
 function crmSumOf(paidMonths) {
   return (paidMonths?.length || 0) * CRM_MONTH_PRICE;
+}
+
+function crmRelativeActivity(ts) {
+  if (!ts) return 'нет данных об активности';
+  const days = Math.floor((Date.now() - ts) / 86400000);
+  if (days <= 0) return 'сегодня';
+  if (days === 1) return 'вчера';
+  if (days < 7) return \`\${days} дн. назад\`;
+  if (days < 30) return \`\${Math.floor(days / 7)} нед. назад\`;
+  return \`\${Math.floor(days / 30)} мес. назад\`;
 }
 
 function crmStatusSelectHTML(key, currentStatus) {
@@ -7762,27 +8298,36 @@ function renderCRMBoard() {
   const board = document.getElementById('crm-board');
   if (!board) return;
   const q = (document.getElementById('crmSearch')?.value || '').toLowerCase().trim();
-  const filtered = q
+  let filtered = q
     ? crmData.filter(p =>
         (p.name || '').toLowerCase().includes(q) ||
         (p.email || '').toLowerCase().includes(q) ||
         (p.telegram || '').toLowerCase().includes(q))
     : crmData;
 
+  if (crmFilter === 'risk') filtered = filtered.filter(p => p.risk);
+  else if (crmFilter === 'new') filtered = filtered.filter(p => p.isNew);
+  else if (crmFilter === 'unpaid') filtered = filtered.filter(p => (p.status === 'active' || p.status === 'paid') && !p.paidThisMonth);
+  else if (crmFilter === 'pending') filtered = filtered.filter(p => p.isPending);
+
   board.innerHTML = CRM_STATUS_ORDER.map(status => {
     const items = filtered.filter(p => p.status === status);
     const cards = items.map(p => {
       const sum = crmSumOf(p.paidMonths);
+      const badges = [
+        p.risk ? '<span class="badge badge-risk">🔥 риск</span>' : '',
+        p.isNew ? '<span class="badge badge-new">🆕 новый</span>' : '',
+        p.isPending ? '<span class="badge badge-pending">ожидает</span>' : ''
+      ].filter(Boolean).join(' ');
       return \`
       <div class="crm-card" draggable="true" data-key="\${escapeAdminHtml(p.key)}"
         ondragstart="crmDraggedKey='\${escapeAdminHtml(p.key)}';event.dataTransfer.effectAllowed='move'"
-        onclick="openCRMEdit('\${escapeAdminHtml(p.key)}')"
-        style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;cursor:pointer">
-        <div style="font-size:13px;font-weight:500">\${escapeAdminHtml(p.name || p.email || 'Без имени')}\${p.isPending ? ' <span style="color:#F5C842;font-size:10px">· ожидает</span>' : ''}</div>
-        \${p.email ? \`<div style="font-size:11px;color:var(--text3);margin-top:2px">\${escapeAdminHtml(p.email)}</div>\` : ''}
-        \${p.telegram ? \`<div style="font-size:11px;color:#6bffb8;margin-top:2px">@\${escapeAdminHtml(p.telegram)}</div>\` : ''}
-        \${sum ? \`<div style="font-size:11px;color:var(--text3);margin-top:4px">💰 \${sum.toLocaleString('ru')} ₽</div>\` : ''}
-        <div style="display:flex;gap:6px;margin-top:8px">
+        onclick="openCRMEdit('\${escapeAdminHtml(p.key)}')">
+        <div class="crm-card-name">\${escapeAdminHtml(p.name || p.email || 'Без имени')}\${badges ? ' ' + badges : ''}</div>
+        \${p.email ? \`<div class="crm-card-meta">\${escapeAdminHtml(p.email)}</div>\` : ''}
+        \${p.telegram ? \`<div class="crm-card-tg">@\${escapeAdminHtml(p.telegram)}</div>\` : ''}
+        <div class="crm-card-meta">\${p.tgId ? crmRelativeActivity(p.lastActiveAt) : 'без Telegram-аккаунта'}\${sum ? ' · 💰 ' + sum.toLocaleString('ru') + ' ₽' : ''}\${(p.status === 'active' || p.status === 'paid') ? (p.paidThisMonth ? ' · <span style="color:var(--success)">оплатил</span>' : ' · <span style="color:var(--danger)">не оплатил</span>') : ''}</div>
+        <div class="crm-card-row">
           \${p.telegram ? \`<button onclick="crmOpenTelegram(event,'\${escapeAdminHtml(p.telegram)}')" class="btn btn-ghost btn-sm" style="flex:1;font-size:11px;padding:4px 6px" title="Открыть в Telegram">✈️ TG</button>\` : ''}
           \${p.email ? \`<button onclick="crmCopyEmail(event,'\${escapeAdminHtml(p.email)}')" class="btn btn-ghost btn-sm" style="flex:1;font-size:11px;padding:4px 6px" title="Скопировать email">📋 Email</button>\` : ''}
         </div>
@@ -7830,6 +8375,15 @@ function openCRMEdit(key) {
   document.getElementById('crmEditMsg').textContent = '';
 
   document.getElementById('crmApproveWrap').style.display = entry?.isPending ? 'block' : 'none';
+
+  const activityEl = document.getElementById('crmActivityReadout');
+  if (entry?.tgId) {
+    activityEl.style.display = 'block';
+    const badges = [entry.risk ? '🔥 риск' : '', entry.isNew ? '🆕 новый' : '', entry.paidThisMonth ? 'оплатил в этом месяце' : (entry.status === 'active' || entry.status === 'paid') ? 'не оплатил в этом месяце' : ''].filter(Boolean).join(' · ');
+    activityEl.textContent = 'Последняя активность: ' + crmRelativeActivity(entry.lastActiveAt) + (badges ? ' · ' + badges : '');
+  } else {
+    activityEl.style.display = 'none';
+  }
 
   renderCRMPaidMonths(entry?.paidMonths || []);
 
@@ -8076,9 +8630,12 @@ async function sendNotify() {
 
   if (!confirm('Отправить уведомление?')) return;
 
-  const body = notifyMode === 'all'
-    ? { text, program: '' }
-    : { text, userIds: [...selectedNotifyUsers] };
+  let body;
+  if (notifyMode === 'all') body = { text, program: '' };
+  else if (notifyMode === 'segment') {
+    if (!crmData.length) await loadCRM();
+    body = { text, userIds: crmSegmentTgIds(notifySegment) };
+  } else body = { text, userIds: [...selectedNotifyUsers] };
 
   try {
     const res = await fetch('/api/admin/notify', {
@@ -8498,7 +9055,7 @@ function renderCoffeeHistory(weeks) {
     }).join('');
     return \`
       <div style="border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden">
-        <div onclick="toggleCoffeeHistoryWeek(\${wi})" style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;background:rgba(255,255,255,0.02)">
+        <div onclick="toggleCoffeeHistoryWeek(\${wi})" style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;background:var(--bg2)">
           <div style="font-size:13px;font-weight:500">\${escapeAdminHtml(w.weekId)} \${w.auto ? '<span style="color:var(--text3);font-size:11px">· авто</span>' : ''}</div>
           <div style="font-size:11px;color:var(--text3)">\${w.pairs.length} пар \${w.sentAt ? '· отправлено' : '· не отправлено'}</div>
         </div>
@@ -8549,7 +9106,7 @@ function renderCoffeePairsTable(round, participants) {
       </tr></thead>
       <tbody>\${rows}</tbody>
     </table>
-    \${round.sentAt ? '<div style="font-size:11px;color:var(--text3);margin-top:10px">✓ Рассылка отправлена</div>' : '<div style="font-size:11px;color:#F5C842;margin-top:10px">⏳ Рассылка ещё не отправлена (пн 12:00 МСК)</div>'}
+    \${round.sentAt ? '<div style="font-size:11px;color:var(--text3);margin-top:10px">✓ Рассылка отправлена</div>' : '<div style="font-size:11px;color:var(--warning);margin-top:10px">⏳ Рассылка ещё не отправлена (пн 12:00 МСК)</div>'}
   \`;
 }
  
@@ -8621,7 +9178,7 @@ function renderCoffeeParticipantsTable(participants) {
   }
   tbody.innerHTML = participants.map(p => {
     const statusBadge = p.active
-      ? '<span style="color:#6bffb8;font-size:11px">● Активен</span>'
+      ? '<span style="color:var(--success);font-size:11px">● Активен</span>'
       : '<span style="color:var(--text3);font-size:11px">○ Остановлен</span>';
     const disableBtnText = p.active ? 'Отключить' : 'Включить';
     return \`
@@ -8629,13 +9186,13 @@ function renderCoffeeParticipantsTable(participants) {
         <td>
           <div style="font-size:13px;font-weight:500">\${escapeAdminHtml(p.name || '—')}</div>
           <div style="font-size:11px;color:var(--text3)">\${p.tgId}</div>
-          \${p.username ? \`<div style="font-size:11px;color:#6bffb8">@\${escapeAdminHtml(p.username)}</div>\` : '<div style="font-size:11px;color:var(--text3);opacity:0.5">нет username</div>'}
+          \${p.username ? \`<div style="font-size:11px;color:var(--accent)">@\${escapeAdminHtml(p.username)}</div>\` : '<div style="font-size:11px;color:var(--text3);opacity:0.5">нет username</div>'}
         </td>
         <td>
           <button onclick="toggleCoffeeInfo('\${p.tgId}')" class="btn btn-ghost" style="font-size:11px;padding:4px 10px">Информация</button>
         </td>
         <td style="font-size:13px">\${p.totalMeetings || 0}</td>
-        <td style="font-size:13px;color:#F5C842">\${p.avgRating ? '★ ' + p.avgRating : '—'}</td>
+        <td style="font-size:13px;color:var(--warning)">\${p.avgRating ? '★ ' + p.avgRating : '—'}</td>
         <td>\${statusBadge}</td>
         <td>
           <button onclick="toggleCoffeeParticipant('\${p.tgId}', \${p.active})"
@@ -8645,7 +9202,7 @@ function renderCoffeeParticipantsTable(participants) {
         </td>
       </tr>
       <tr id="coffee-info-\${p.tgId}" style="display:none">
-        <td colspan="6" style="background:rgba(255,255,255,0.02);padding:16px;border-radius:8px">
+        <td colspan="6" style="background:var(--bg2);padding:16px;border-radius:8px">
           \${renderCoffeeInfoCard(p)}
         </td>
       </tr>
