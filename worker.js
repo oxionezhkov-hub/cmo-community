@@ -2648,6 +2648,10 @@ async function crmSuspendAccess(env, email) {
       userData.stoppedAt = Date.now();
       await env.KV.put(`user:${userId}`, JSON.stringify(userData));
     }
+    await tgSend(env, Number(userId),
+      `🚫 *Доступ к CMO Ядро закрыт*\n\nМы не получили оплату за следующий месяц, поэтому доступ приостановлен.\n\n⏳ Через 3 дня ты будешь удалён из чата. Вернуться после этого будет невозможно.\n\n_Если это ошибка — напиши Олегу, он разберётся._`,
+      { inline_keyboard: [[{ text: '✍️ Написать Олегу — восстановить доступ', url: 'https://t.me/oleg_ezhkov' }]] }
+    );
   }
 }
 
@@ -2663,6 +2667,10 @@ async function crmRestoreAccess(env, email) {
       delete userData.stoppedAt;
       await env.KV.put(`user:${userId}`, JSON.stringify(userData));
     }
+    await tgSend(env, Number(userId),
+      `✅ *Доступ к CMO Ядро восстановлен!*\n\nТвой доступ к базе знаний снова активен. Добро пожаловать обратно! 🎉\n\nЗаходи в мини-приложение 👇`,
+      { inline_keyboard: [[{ text: "📚 Открыть CMO Ядро", web_app: { url: WORKER_URL + "/app" } }]] }
+    );
   }
 }
 
@@ -6843,12 +6851,20 @@ function getAdminHTML() {
   .toggle-thumb { position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; background: var(--text3); border-radius: 50%; transition: 0.2s; }
   .toggle input:checked ~ .toggle-thumb { transform: translateX(16px); background: var(--bg); }
 
-  .crm-board { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; align-items: flex-start; }
-  .crm-column { flex: 1; min-width: 220px; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 10px; }
+  .crm-board { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 12px; align-items: flex-start; }
+  .crm-column {
+    flex: 1; min-width: 220px; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 10px;
+    display: flex; flex-direction: column; max-height: calc(100vh - 280px); min-height: 160px;
+  }
+  .crm-column-head { flex-shrink: 0; }
+  .crm-column-cards { overflow-y: auto; overflow-x: hidden; padding-right: 2px; flex: 1; }
 
-  .crm-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; }
+  .crm-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; position: relative; }
   .crm-card:hover { border-color: var(--border-h); box-shadow: var(--shadow-sm); }
-  .crm-card-name { font-size: 13px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .crm-card-draghandle { position: absolute; top: 8px; right: 8px; width: 20px; height: 20px; display: none; align-items: center; justify-content: center; color: var(--text3); cursor: grab; border-radius: 4px; font-size: 13px; line-height: 1; }
+  .crm-card-draghandle:hover { background: var(--bg2); color: var(--text2); }
+  @media (min-width: 769px) { .crm-card-draghandle { display: flex; } }
+  .crm-card-name { font-size: 13px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-right: 20px; }
   .crm-card-meta { font-size: 11px; color: var(--text3); margin-top: 3px; }
   .crm-card-tg { font-size: 11px; color: var(--accent); margin-top: 2px; }
   .crm-card-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
@@ -6909,7 +6925,8 @@ function getAdminHTML() {
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
   .stats-row { grid-template-columns: 1fr 1fr; }
   .crm-board { flex-direction: column; overflow-x: visible; }
-  .crm-column { min-width: 100%; }
+  .crm-column { min-width: 100%; max-height: none; }
+  .crm-column-cards { overflow-y: visible; }
 }
   .mnav-btn {
   flex: 0 0 auto;
@@ -7078,7 +7095,7 @@ function getAdminHTML() {
             <div class="chip" data-filter="unpaid" onclick="setCrmFilter('unpaid')">💳 Не оплатили в этом месяце</div>
             <div class="chip" data-filter="pending" onclick="setCrmFilter('pending')">⏳ Ожидают одобрения</div>
           </div>
-          <p style="font-size:12px;color:var(--text3);margin:4px 0 12px">Перетащи карточку в другую колонку (на компьютере) или выбери статус в выпадающем списке на карточке (на телефоне). Клик по карточке открывает подробную информацию.</p>
+          <p style="font-size:12px;color:var(--text3);margin:4px 0 12px">Перетащи карточку за значок ⠿ в другую колонку или выбери статус в выпадающем списке. Клик по остальной части карточки открывает подробную информацию. Перевод в «Пауза»/«Ушёл» и обратно отправляет участнику уведомление в Telegram.</p>
           <div id="crm-board" class="crm-board"></div>
         </div>
 
@@ -8261,9 +8278,25 @@ function crmStatusSelectHTML(key, currentStatus) {
   </select>\`;
 }
 
-async function crmQuickSetStatus(key, status) {
+function crmIsInactiveStatus(status) { return status === 'paused' || status === 'left'; }
+
+// Общий обработчик смены статуса (используется и выпадающим списком, и drag&drop) —
+// переход в/из "Пауза"/"Ушёл" реально отправляет участнику уведомление в Telegram
+// (см. crmSuspendAccess/crmRestoreAccess), поэтому спрашиваем подтверждение.
+async function crmApplyStatusChange(key, status) {
   const entry = crmData.find(p => p.key === key);
   if (!entry || entry.status === status) return;
+
+  const goingInactive = crmIsInactiveStatus(status) && !crmIsInactiveStatus(entry.status);
+  const goingActive = !crmIsInactiveStatus(status) && crmIsInactiveStatus(entry.status);
+  if ((goingInactive || goingActive) && entry.email) {
+    const who = entry.name || entry.email;
+    const msg = goingInactive
+      ? \`\${who} придёт уведомление о закрытии доступа (доступ отключится через 3 дня). Продолжить?\`
+      : \`\${who} придёт уведомление о восстановлении доступа. Продолжить?\`;
+    if (!confirm(msg)) { renderCRMBoard(); return; }
+  }
+
   entry.status = status;
   renderCRMBoard();
   await fetch('/api/admin/crm', {
@@ -8271,6 +8304,10 @@ async function crmQuickSetStatus(key, status) {
     body: JSON.stringify({ action: 'set-status', key, status, email: entry.email })
   });
   showAdminToast('Статус обновлён: ' + CRM_STATUS_LABELS[status]);
+}
+
+async function crmQuickSetStatus(key, status) {
+  await crmApplyStatusChange(key, status);
 }
 
 function crmCopyEmail(event, email) {
@@ -8321,8 +8358,9 @@ function renderCRMBoard() {
       ].filter(Boolean).join(' ');
       return \`
       <div class="crm-card" draggable="true" data-key="\${escapeAdminHtml(p.key)}"
-        ondragstart="crmDraggedKey='\${escapeAdminHtml(p.key)}';event.dataTransfer.effectAllowed='move'"
+        ondragstart="crmCardDragStart(event,'\${escapeAdminHtml(p.key)}')"
         onclick="openCRMEdit('\${escapeAdminHtml(p.key)}')">
+        <span class="crm-card-draghandle" title="Перетащить в другую колонку" onmousedown="event.stopPropagation()">⠿</span>
         <div class="crm-card-name">\${escapeAdminHtml(p.name || p.email || 'Без имени')}\${badges ? ' ' + badges : ''}</div>
         \${p.email ? \`<div class="crm-card-meta">\${escapeAdminHtml(p.email)}</div>\` : ''}
         \${p.telegram ? \`<div class="crm-card-tg">@\${escapeAdminHtml(p.telegram)}</div>\` : ''}
@@ -8338,12 +8376,20 @@ function renderCRMBoard() {
       <div class="crm-column" data-status="\${status}"
         ondragover="event.preventDefault()"
         ondrop="crmHandleDrop(event,'\${status}')">
-        <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text3);margin-bottom:10px;display:flex;justify-content:space-between">
+        <div class="crm-column-head" style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text3);margin-bottom:10px;display:flex;justify-content:space-between">
           <span>\${CRM_STATUS_LABELS[status]}</span><span>\${items.length}</span>
         </div>
-        \${cards || '<div style="font-size:12px;color:var(--text3);opacity:0.6">Пусто</div>'}
+        <div class="crm-column-cards">
+          \${cards || '<div style="font-size:12px;color:var(--text3);opacity:0.6">Пусто</div>'}
+        </div>
       </div>\`;
   }).join('');
+}
+
+function crmCardDragStart(event, key) {
+  if (!event.target.classList.contains('crm-card-draghandle')) { event.preventDefault(); return; }
+  crmDraggedKey = key;
+  event.dataTransfer.effectAllowed = 'move';
 }
 
 async function crmHandleDrop(event, status) {
@@ -8351,15 +8397,7 @@ async function crmHandleDrop(event, status) {
   const key = crmDraggedKey;
   crmDraggedKey = null;
   if (!key) return;
-  const entry = crmData.find(p => p.key === key);
-  if (!entry || entry.status === status) return;
-  entry.status = status; // оптимистичное обновление
-  renderCRMBoard();
-  await fetch('/api/admin/crm', {
-    method: 'POST', headers: aHeaders(),
-    body: JSON.stringify({ action: 'set-status', key, status, email: entry.email })
-  });
-  showAdminToast('Статус обновлён: ' + CRM_STATUS_LABELS[status]);
+  await crmApplyStatusChange(key, status);
 }
 
 function openCRMEdit(key) {
