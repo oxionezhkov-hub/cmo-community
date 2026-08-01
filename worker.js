@@ -6859,15 +6859,19 @@ function getAdminHTML() {
   .crm-column-head { flex-shrink: 0; }
   .crm-column-cards { overflow-y: auto; overflow-x: hidden; padding-right: 2px; flex: 1; }
 
-  .crm-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; position: relative; }
+  .crm-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s; display: flex; align-items: center; gap: 9px; }
   .crm-card:hover { border-color: var(--border-h); box-shadow: var(--shadow-sm); }
-  .crm-card-draghandle { position: absolute; top: 8px; right: 8px; width: 20px; height: 20px; display: none; align-items: center; justify-content: center; color: var(--text3); cursor: grab; border-radius: 4px; font-size: 13px; line-height: 1; }
+  .crm-card-avatar { flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #fff; }
+  .crm-card-body { flex: 1; min-width: 0; }
+  .crm-card-name-row { display: flex; align-items: center; gap: 5px; }
+  .crm-card-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .crm-card-dot.attn { background: var(--danger); }
+  .crm-card-dot.pending { background: var(--warning); }
+  .crm-card-name { font-size: 13px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .crm-card-sub { font-size: 11px; color: var(--accent); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .crm-card-draghandle { flex-shrink: 0; width: 18px; height: 18px; display: none; align-items: center; justify-content: center; color: var(--text3); cursor: grab; border-radius: 4px; font-size: 13px; line-height: 1; }
   .crm-card-draghandle:hover { background: var(--bg2); color: var(--text2); }
   @media (min-width: 769px) { .crm-card-draghandle { display: flex; } }
-  .crm-card-name { font-size: 13px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding-right: 20px; }
-  .crm-card-meta { font-size: 11px; color: var(--text3); margin-top: 3px; }
-  .crm-card-tg { font-size: 11px; color: var(--accent); margin-top: 2px; }
-  .crm-card-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 
   /* FILTER CHIPS */
   .chip-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
@@ -7095,7 +7099,7 @@ function getAdminHTML() {
             <div class="chip" data-filter="unpaid" onclick="setCrmFilter('unpaid')">💳 Не оплатили в этом месяце</div>
             <div class="chip" data-filter="pending" onclick="setCrmFilter('pending')">⏳ Ожидают одобрения</div>
           </div>
-          <p style="font-size:12px;color:var(--text3);margin:4px 0 12px">Перетащи карточку за значок ⠿ в другую колонку или выбери статус в выпадающем списке. Клик по остальной части карточки открывает подробную информацию. Перевод в «Пауза»/«Ушёл» и обратно отправляет участнику уведомление в Telegram.</p>
+          <p style="font-size:12px;color:var(--text3);margin:4px 0 12px">Клик по карточке открывает подробную информацию и смену статуса. За значок ⠿ карточку можно перетащить в другую колонку. Точка на карточке — красная значит требует внимания (риск/не оплатил), жёлтая — ждёт одобрения. Перевод в «Пауза»/«Ушёл» и обратно отправляет участнику уведомление в Telegram.</p>
           <div id="crm-board" class="crm-board"></div>
         </div>
 
@@ -7139,6 +7143,10 @@ function getAdminHTML() {
           <div class="grid-2">
             <div class="field"><label>Email</label><input type="email" id="crmEmail" placeholder="email@example.com"/></div>
             <div class="field"><label>Telegram (без @)</label><input type="text" id="crmTelegram" placeholder="username"/></div>
+          </div>
+          <div style="display:flex;gap:8px;margin:-8px 0 14px">
+            <button class="btn btn-ghost btn-sm" id="crmQuickTgBtn" style="display:none" onclick="crmOpenTelegram(event, document.getElementById('crmTelegram').value.trim().replace(/^@/,''))">✈️ Открыть в Telegram</button>
+            <button class="btn btn-ghost btn-sm" id="crmQuickEmailBtn" style="display:none" onclick="crmCopyEmail(event, document.getElementById('crmEmail').value.trim())">📋 Скопировать email</button>
           </div>
           <div class="field" id="crmApproveWrap" style="display:none">
             <button class="btn btn-w btn-sm" onclick="approveCRMEntry()">✅ Одобрить доступ (ожидает подтверждения)</button>
@@ -8271,11 +8279,14 @@ function crmRelativeActivity(ts) {
   return \`\${Math.floor(days / 30)} мес. назад\`;
 }
 
-function crmStatusSelectHTML(key, currentStatus) {
-  return \`<select onclick="event.stopPropagation()" onchange="crmQuickSetStatus('\${escapeAdminHtml(key)}', this.value)"
-    style="width:100%;margin-top:6px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:4px 6px;color:var(--text);font-size:11px">
-    \${CRM_STATUS_ORDER.map(s => \`<option value="\${s}" \${s === currentStatus ? 'selected' : ''}>\${CRM_STATUS_LABELS[s]}</option>\`).join('')}
-  </select>\`;
+const CRM_AVATAR_COLORS = ['#4338ca', '#0f766e', '#b45309', '#be185d', '#4d7c0f', '#7c3aed', '#0369a1', '#b91c1c'];
+function crmAvatarColor(seed) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+  return CRM_AVATAR_COLORS[Math.abs(hash) % CRM_AVATAR_COLORS.length];
+}
+function crmInitials(label) {
+  return (label || '?').trim().slice(0, 1).toUpperCase();
 }
 
 function crmIsInactiveStatus(status) { return status === 'paused' || status === 'left'; }
@@ -8304,10 +8315,6 @@ async function crmApplyStatusChange(key, status) {
     body: JSON.stringify({ action: 'set-status', key, status, email: entry.email })
   });
   showAdminToast('Статус обновлён: ' + CRM_STATUS_LABELS[status]);
-}
-
-async function crmQuickSetStatus(key, status) {
-  await crmApplyStatusChange(key, status);
 }
 
 function crmCopyEmail(event, email) {
@@ -8350,26 +8357,25 @@ function renderCRMBoard() {
   board.innerHTML = CRM_STATUS_ORDER.map(status => {
     const items = filtered.filter(p => p.status === status);
     const cards = items.map(p => {
-      const sum = crmSumOf(p.paidMonths);
-      const badges = [
-        p.risk ? '<span class="badge badge-risk">🔥 риск</span>' : '',
-        p.isNew ? '<span class="badge badge-new">🆕 новый</span>' : '',
-        p.isPending ? '<span class="badge badge-pending">ожидает</span>' : ''
-      ].filter(Boolean).join(' ');
+      const unpaid = (p.status === 'active' || p.status === 'paid') && !p.paidThisMonth;
+      const attnReasons = [];
+      if (p.risk) attnReasons.push(\`не активен \${crmRelativeActivity(p.lastActiveAt)}\`);
+      if (unpaid) attnReasons.push('не оплатил в этом месяце');
+      const label = p.name || p.email || 'Без имени';
       return \`
       <div class="crm-card" draggable="true" data-key="\${escapeAdminHtml(p.key)}"
         ondragstart="crmCardDragStart(event,'\${escapeAdminHtml(p.key)}')"
         onclick="openCRMEdit('\${escapeAdminHtml(p.key)}')">
-        <span class="crm-card-draghandle" title="Перетащить в другую колонку" onmousedown="event.stopPropagation()">⠿</span>
-        <div class="crm-card-name">\${escapeAdminHtml(p.name || p.email || 'Без имени')}\${badges ? ' ' + badges : ''}</div>
-        \${p.email ? \`<div class="crm-card-meta">\${escapeAdminHtml(p.email)}</div>\` : ''}
-        \${p.telegram ? \`<div class="crm-card-tg">@\${escapeAdminHtml(p.telegram)}</div>\` : ''}
-        <div class="crm-card-meta">\${p.tgId ? crmRelativeActivity(p.lastActiveAt) : 'без Telegram-аккаунта'}\${sum ? ' · 💰 ' + sum.toLocaleString('ru') + ' ₽' : ''}\${(p.status === 'active' || p.status === 'paid') ? (p.paidThisMonth ? ' · <span style="color:var(--success)">оплатил</span>' : ' · <span style="color:var(--danger)">не оплатил</span>') : ''}</div>
-        <div class="crm-card-row">
-          \${p.telegram ? \`<button onclick="crmOpenTelegram(event,'\${escapeAdminHtml(p.telegram)}')" class="btn btn-ghost btn-sm" style="flex:1;font-size:11px;padding:4px 6px" title="Открыть в Telegram">✈️ TG</button>\` : ''}
-          \${p.email ? \`<button onclick="crmCopyEmail(event,'\${escapeAdminHtml(p.email)}')" class="btn btn-ghost btn-sm" style="flex:1;font-size:11px;padding:4px 6px" title="Скопировать email">📋 Email</button>\` : ''}
+        <div class="crm-card-avatar" style="background:\${crmAvatarColor(p.key)}">\${escapeAdminHtml(crmInitials(label))}</div>
+        <div class="crm-card-body">
+          <div class="crm-card-name-row">
+            \${attnReasons.length ? \`<span class="crm-card-dot attn" title="\${escapeAdminHtml(attnReasons.join(' · '))}"></span>\` : ''}
+            \${p.isPending ? '<span class="crm-card-dot pending" title="Ожидает одобрения"></span>' : ''}
+            <span class="crm-card-name">\${escapeAdminHtml(label)}</span>
+          </div>
+          \${p.telegram ? \`<div class="crm-card-sub">@\${escapeAdminHtml(p.telegram)}</div>\` : ''}
         </div>
-        \${crmStatusSelectHTML(p.key, p.status)}
+        <span class="crm-card-draghandle" title="Перетащить в другую колонку" onmousedown="event.stopPropagation()">⠿</span>
       </div>\`;
     }).join('');
     return \`
@@ -8411,6 +8417,9 @@ function openCRMEdit(key) {
   document.getElementById('crmStatus').value = entry?.status || 'lead';
   document.getElementById('crmDeleteBtn').style.display = entry ? 'inline-block' : 'none';
   document.getElementById('crmEditMsg').textContent = '';
+
+  document.getElementById('crmQuickTgBtn').style.display = entry?.telegram ? 'inline-block' : 'none';
+  document.getElementById('crmQuickEmailBtn').style.display = entry?.email ? 'inline-block' : 'none';
 
   document.getElementById('crmApproveWrap').style.display = entry?.isPending ? 'block' : 'none';
 
