@@ -3,5 +3,10 @@ main = "worker.js"
 compatibility_date = "2024-01-01"
 
 [[kv_namespaces]]
-binding = "KV" 
+binding = "KV"
 id = "1d4173c9a3d54841a6a1b5bc4ee44729"
+
+# Required secrets (set via `wrangler secret put <NAME>`, never committed here):
+#   BOT_TOKEN               - Telegram bot token
+#   ADMIN_ID                - Telegram chat id for admin notifications
+#   PAYMENTS_WEBHOOK_SECRET  - shared secret for POST /api/payments/webhook (edsofa.ai reconciliation)
