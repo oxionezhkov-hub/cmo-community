@@ -78,18 +78,19 @@ if (url.pathname === '/api/admin/coffee/send-now') {
   async scheduled(event, env, ctx) {
   const now = new Date();
   const day = now.getUTCDay(); // 1=пн, 5=пт
-  const hour = now.getUTCHours(); // ✅ Fixed: was getUTCHour()
+  const hour = now.getUTCHours();
   // 9 = 12:00 МСК
-  if (day === 1) {
-    // понедельник — если админ не назначил пары вручную, формируем их автоматически (избегая повторов)
-    const weekId = COFFEE_WEEK();
-    const existing = await env.KV.get(`coffee:round:${weekId}`, 'json');
-    if (!existing) await coffeeAutoGeneratePairs(env, weekId);
-    await coffeeSendPairs(env); // рассылка пар
+  if (hour === 9) {
+    if (day === 1) {
+      // понедельник — если админ не назначил пары вручную, формируем их автоматически (избегая повторов)
+      const weekId = COFFEE_WEEK();
+      const existing = await env.KV.get(`coffee:round:${weekId}`, 'json');
+      if (!existing) await coffeeAutoGeneratePairs(env, weekId);
+      await coffeeSendPairs(env); // рассылка пар
+    }
+    if (day === 5) await coffeeSendReminder(env); // пятница — напоминание + оценка
   }
-  if (day === 5) await coffeeSendReminder(env); // пятница — напоминание + оценка
-    await coffeeSendNewbieReminders(env); // ← добавь эту строку
-
+  await coffeeSendNewbieReminders(env);
 }
 };
 
