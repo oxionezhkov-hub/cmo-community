@@ -7436,6 +7436,7 @@ function getAdminHTML() {
         <button class="btn btn-ghost" onclick="loadCoffeeAdmin()">↻ Обновить</button>
         <button class="btn btn-ghost" onclick="generateCoffeePairsAuto()">🎲 Авто-распределение</button>
         <button class="btn btn-w" onclick="openCoffeePairModal()">+ Назначить пары вручную</button>
+        <button class="btn btn-w" onclick="sendCoffeePairsNow()">📤 Отправить сейчас</button>
       </div>
     </div>
     <div id="coffee-pairs-table">
@@ -9062,6 +9063,19 @@ async function generateCoffeePairsAuto() {
     if (res.ok) {
       const unmatchedCount = res.round?.unmatched?.length || 0;
       showAdminToast('Пары сформированы' + (unmatchedCount ? \` (без пары остался: \${unmatchedCount})\` : ''));
+      loadCoffeeAdmin();
+    } else alert(res.error || 'Ошибка');
+  } catch(e) { alert('Ошибка подключения'); }
+}
+
+async function sendCoffeePairsNow() {
+  if (!confirm('Разослать пары этой недели участникам в Telegram прямо сейчас? Это действие нельзя отменить.')) return;
+  try {
+    const res = await fetch('/api/admin/coffee/send-now', {
+      method: 'POST', headers: aHeaders(), body: JSON.stringify({})
+    }).then(r => r.json());
+    if (res.ok) {
+      showAdminToast(\`Разослано пар: \${res.pairs}\`);
       loadCoffeeAdmin();
     } else alert(res.error || 'Ошибка');
   } catch(e) { alert('Ошибка подключения'); }
