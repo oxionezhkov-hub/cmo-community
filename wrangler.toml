@@ -6,6 +6,10 @@ compatibility_date = "2024-01-01"
 binding = "KV"
 id = "1d4173c9a3d54841a6a1b5bc4ee44729"
 
+[triggers]
+# 9:00 UTC = 12:00 МСК, каждый час пн и пт (scheduled() сам проверяет час === 9)
+crons = ["0 9 * * 1,5"]
+
 # Required secrets (set via `wrangler secret put <NAME>`, never committed here):
 #   BOT_TOKEN               - Telegram bot token
 #   ADMIN_ID                - Telegram chat id for admin notifications
