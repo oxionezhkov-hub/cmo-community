@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<!--
+  ДЕМО-СТРАНИЦА. Данные о бренде, кейсах и цифрах — вымышленные, собраны
+  специально, чтобы показать разные форматы интерактивных блоков из
+  interactive-blocks.md на нише "парки развлечений". Не публиковать как
+  факт о реальном клиенте. См. lead-magnets/pages/kuda-utekaet-vyruchka-parka/structure.md.
+-->
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Куда утекает выручка вашего парка развлечений — ParkFlow (демо)</title>
+<meta name="description" content="Диагностика воронки продажи билетов сезонного парка развлечений: 6 точек утечки выручки, расчёт потерь за день сезона и бесплатный разбор воронки. Демо-материал.">
+<meta property="og:title" content="Куда утекает выручка вашего парка развлечений">
+<meta property="og:description" content="6 точек утечки выручки за короткий сезон, расчёт потерь в деньгах и бесплатный разбор воронки продажи билетов.">
+<meta property="og:type" content="article">
+
+<!-- Яндекс.Метрика: ID-заглушка 00000000 — демо-материал, не публиковалось в прод, реальный счётчик не подставлен -->
+<script type="text/javascript">
+   (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+   m[i].l=1*new Date();
+   for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+   k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})
+   (window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
+   ym(00000000, "init", {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", accurateTrackBounce:true, trackLinks:true});
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/00000000" style="position:absolute; left:-9999px;" alt=""/></div></noscript>
+
+<style>
+  /* ── Токены: "билет на карусель" — карнавальный красный, тёплое золото,
+     кремовая бумага билета. Перфорация и полукруглые вырезы — по мотиву
+     отрывного билета в парк аттракционов. ───────────────────────────── */
+  :root {
+    --ticket: #FFF6E7;
+    --ticket-raised: #FFFFFF;
+    --ink: #2A1E1A;
+    --ink-soft: #7A6659;
+    --line: #F0DEB8;
+    --red: #E63946;
+    --red-tint: #FBE0E1;
+    --gold: #F1A208;
+    --gold-tint: #FDECC8;
+    --teal: #0F8B8D;
+    --teal-tint: #DCF1EF;
+    --font-heading: -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-body: -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --radius: 20px;
+    --max-width: 720px;
+    --space: 24px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+  body {
+    margin: 0;
+    background: var(--ticket);
+    color: var(--ink);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { font-family: var(--font-heading); font-weight: 800; line-height: 1.2; margin: 0 0 0.5em; letter-spacing: -0.01em; }
+  p { margin: 0 0 1.1em; }
+  a { color: var(--teal); }
+  button { font-family: inherit; cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--teal); outline-offset: 2px; }
+
+  .demo-flag {
+    background: var(--ink); color: var(--gold-tint); font-size: 12px; font-weight: 700;
+    text-align: center; padding: 8px 12px; letter-spacing: .03em;
+  }
+
+  #reading-progress {
+    position: fixed; top: 0; left: 0; height: 5px; width: 0%;
+    background: linear-gradient(90deg, var(--red), var(--gold)); z-index: 1000; transition: width 0.1s linear;
+  }
+
+  .wrap { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--space); }
+
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--red); margin-bottom: 14px;
+  }
+  .eyebrow::before { content: "🎡"; font-size: 15px; }
+
+  /* ── Шапка ─────────────────────────────────────────────── */
+  .hero { padding: 48px 0 36px; text-align: center; position: relative; overflow: hidden; }
+  .hero h1 { font-size: clamp(28px, 6.4vw, 44px); }
+  .hero p { color: var(--ink-soft); font-size: 18px; max-width: 52ch; margin: 0 auto 28px; }
+
+  .fair-scene { display: flex; justify-content: center; gap: 10px; margin-bottom: 8px; }
+  .fair-scene svg { display: block; }
+
+  /* ── Билетная карточка-тизер ───────────────────────────── */
+  .ticket-card {
+    background: var(--ticket-raised); border-radius: var(--radius);
+    padding: 20px var(--space); margin-top: 8px;
+    box-shadow: 0 10px 30px rgba(42,30,26,0.08);
+    position: relative;
+    border: 2px dashed var(--line);
+  }
+  .ticket-card::before, .ticket-card::after {
+    content: ""; position: absolute; top: 50%; width: 22px; height: 22px;
+    background: var(--ticket); border-radius: 50%; transform: translateY(-50%);
+  }
+  .ticket-card::before { left: -13px; }
+  .ticket-card::after { right: -13px; }
+  .ticket-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .ticket-stat b { display: block; font-size: 22px; color: var(--red); }
+  .ticket-stat span { font-size: 12.5px; color: var(--ink-soft); }
+
+  /* ── Контентные секции ─────────────────────────────────── */
+  .content-block { padding: 40px 0; border-top: 1px dashed var(--line); }
+  .content-block h2 { font-size: clamp(22px, 4.2vw, 29px); }
+  .content-block .lede { font-size: 13px; color: var(--red); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; margin: -6px 0 18px; }
+  .prose p { font-size: 17px; }
+  .prose .callout {
+    background: var(--gold-tint); border-left: 4px solid var(--gold);
+    border-radius: 0 12px 12px 0; padding: 14px 18px; font-size: 15px; color: var(--ink-soft); margin: 22px 0 0;
+  }
+  .demo-note { font-size: 12.5px; color: var(--ink-soft); font-style: italic; margin-top: 10px; }
+
+  /* ── Квиз ──────────────────────────────────────────────── */
+  .quiz { background: var(--ticket-raised); border-radius: var(--radius); padding: var(--space); box-shadow: 0 4px 18px rgba(42,30,26,0.06); }
+  .quiz-question { display: none; }
+  .quiz-question.active { display: block; }
+  .quiz-q { font-weight: 800; font-size: 19px; margin-bottom: 4px; }
+  .quiz-options { display: grid; gap: 12px; margin-top: 16px; }
+  .quiz-options button { padding: 15px 18px; border: 2px solid var(--red); background: transparent; color: var(--ink); border-radius: 14px; font-size: 16px; text-align: left; min-height: 48px; transition: background .12s ease, color .12s ease; }
+  .quiz-options button:hover, .quiz-options button.selected { background: var(--red); color: #fff; }
+  .quiz-result { display: none; }
+  .quiz-result.active { display: block; animation: reveal .3s ease; }
+  @keyframes reveal { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  .quiz-tag { display: inline-block; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #fff; background: var(--teal); border-radius: 999px; padding: 4px 12px; margin-bottom: 10px; }
+
+  /* ── Опрос ─────────────────────────────────────────────── */
+  .poll { background: var(--ticket-raised); border-radius: var(--radius); padding: var(--space); box-shadow: 0 4px 18px rgba(42,30,26,0.06); }
+  .poll-options button { display: block; width: 100%; padding: 15px 18px; margin-bottom: 10px; border: 2px solid var(--line); border-radius: 14px; background: var(--ticket-raised); min-height: 48px; text-align: left; font-size: 16px; }
+  .poll-options button:hover { border-color: var(--teal); }
+  .poll-result { margin-top: 12px; color: var(--teal); font-size: 14px; font-weight: 700; display: none; }
+  .poll-note { font-size: 12px; color: var(--ink-soft); font-style: italic; margin-top: 6px; }
+
+  /* ── Аккордеон ─────────────────────────────────────────── */
+  .accordion-item { border-bottom: 1px dashed var(--line); }
+  .accordion-trigger { width: 100%; background: none; border: none; padding: 18px 0; display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 17px; font-weight: 700; min-height: 44px; color: var(--ink); text-align: left; }
+  .accordion-trigger .badge { flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; background: var(--red-tint); color: var(--red); display: flex; align-items: center; justify-content: center; font-size: 16px; transition: transform .2s ease; }
+  .accordion-item.open .accordion-trigger .badge { transform: rotate(45deg); background: var(--red); color: #fff; }
+  .accordion-panel { max-height: 0; overflow: hidden; transition: max-height 0.25s ease; }
+  .accordion-item.open .accordion-panel { max-height: 500px; padding-bottom: 18px; }
+  .accordion-panel .myth { font-size: 13px; color: var(--red); font-weight: 700; text-transform: uppercase; letter-spacing: .03em; margin-bottom: 4px; }
+
+  /* ── Слайдер до/после ──────────────────────────────────── */
+  .compare { position: relative; overflow: hidden; border-radius: var(--radius); aspect-ratio: 4/3; touch-action: none; box-shadow: 0 4px 18px rgba(42,30,26,0.08); }
+  .compare img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 0; display: block; }
+  .compare .after { clip-path: inset(0 0 0 50%); }
+  .compare-handle { position: absolute; top: 0; bottom: 0; left: 50%; width: 4px; background: #fff; cursor: ew-resize; box-shadow: 0 0 0 1px rgba(0,0,0,.06); }
+  .compare-handle::after { content: "↔"; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 42px; height: 42px; background: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
+  .compare-caption { display: flex; justify-content: space-between; font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; margin-top: 10px; color: var(--ink-soft); }
+  .compare-caption .bad { color: var(--red); }
+  .compare-caption .good { color: var(--teal); }
+
+  /* ── Калькулятор ───────────────────────────────────────── */
+  .calc { background: var(--ticket-raised); border-radius: var(--radius); padding: var(--space); box-shadow: 0 4px 18px rgba(42,30,26,0.06); }
+  .calc-field { margin-bottom: 16px; }
+  .calc-field label { display: block; font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+  .calc-field input, .calc-field select { width: 100%; padding: 13px 14px; border-radius: 12px; border: 2px solid var(--line); font-size: 16px; min-height: 44px; font-family: inherit; background: var(--ticket); color: var(--ink); }
+  .calc-field input:focus, .calc-field select:focus { border-color: var(--teal); outline: none; }
+  .calc-result { background: var(--red-tint); border-radius: 14px; padding: 18px; margin-top: 8px; text-align: center; }
+  .calc-result .big { font-size: 30px; font-weight: 800; color: var(--red); display: block; }
+  .calc-result .small { font-size: 13.5px; color: var(--ink-soft); margin-top: 6px; }
+
+  /* ── Чек-лист ──────────────────────────────────────────── */
+  .checklist { background: var(--ticket-raised); border-radius: var(--radius); padding: var(--space); box-shadow: 0 4px 18px rgba(42,30,26,0.06); }
+  .checklist-progress { font-size: 14px; font-weight: 700; color: var(--teal); margin-bottom: 14px; }
+  .checklist label { display: flex; gap: 12px; align-items: flex-start; padding: 11px 0; border-bottom: 1px dashed var(--line); font-size: 15.5px; }
+  .checklist label:last-child { border-bottom: none; }
+  .checklist input { width: 22px; height: 22px; flex-shrink: 0; margin-top: 1px; accent-color: var(--teal); }
+
+  /* ── Финальный CTA ─────────────────────────────────────── */
+  .final-cta { background: linear-gradient(135deg, var(--red), #C22233); color: #fff; border-radius: var(--radius); padding: 36px var(--space); text-align: center; position: relative; }
+  .final-cta::before, .final-cta::after {
+    content: ""; position: absolute; top: 50%; width: 24px; height: 24px;
+    background: var(--ticket); border-radius: 50%; transform: translateY(-50%);
+  }
+  .final-cta::before { left: -14px; }
+  .final-cta::after { right: -14px; }
+  .final-cta h2 { color: #fff; }
+  .final-cta p { color: rgba(255,255,255,0.9); }
+  .final-cta form { display: grid; gap: 12px; margin-top: 22px; text-align: left; }
+  .final-cta input { padding: 15px 16px; border-radius: 12px; border: none; font-size: 16px; min-height: 48px; font-family: inherit; }
+  .final-cta button[type="submit"] { padding: 15px 16px; border-radius: 12px; border: none; background: var(--gold); color: var(--ink); font-size: 16px; font-weight: 800; min-height: 48px; }
+  .final-cta button[type="submit"]:hover { filter: brightness(1.05); }
+  .form-status { font-size: 14px; margin-top: 4px; min-height: 20px; color: #fff; }
+
+  footer { text-align: center; padding: 36px 0 44px; color: var(--ink-soft); font-size: 13px; }
+  footer .demo-footer-note { display: block; margin-top: 6px; font-size: 11.5px; opacity: .8; }
+</style>
+</head>
+<body>
+
+<div class="demo-flag">ДЕМО-СТРАНИЦА · данные и кейсы вымышлены для показа форматов интерактива, не публиковалась</div>
+<div id="reading-progress"></div>
+
+<header class="hero wrap">
+  <div class="fair-scene" aria-hidden="true">
+    <svg width="220" height="72" viewBox="0 0 220 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="36" cy="36" r="30" stroke="#F1A208" stroke-width="4"/>
+      <circle cx="36" cy="36" r="3" fill="#E63946"/>
+      <line x1="36" y1="6" x2="36" y2="66" stroke="#F1A208" stroke-width="2"/>
+      <line x1="6" y1="36" x2="66" y2="36" stroke="#F1A208" stroke-width="2"/>
+      <line x1="15" y1="15" x2="57" y2="57" stroke="#F1A208" stroke-width="2"/>
+      <line x1="57" y1="15" x2="15" y2="57" stroke="#F1A208" stroke-width="2"/>
+      <path d="M100 66 L110 20 L120 66 Z" fill="#E63946"/>
+      <path d="M130 66 L142 10 L154 66 Z" fill="#0F8B8D"/>
+      <path d="M164 66 L172 30 L180 66 Z" fill="#F1A208"/>
+    </svg>
+  </div>
+  <span class="eyebrow">Growth-разбор для сезонных парков</span>
+  <h1>Куда утекает выручка вашего парка развлечений</h1>
+  <p>Пройдите разбор из 6 блоков — узнаете, где именно теряются деньги за короткий сезон, посчитаете потери в рублях и получите бесплатный разбор своей воронки продажи билетов.</p>
+
+  <div class="ticket-card">
+    <div class="ticket-stats">
+      <div class="ticket-stat"><b>6</b><span>точек утечки выручки</span></div>
+      <div class="ticket-stat"><b>3&nbsp;мин</b><span>на весь разбор</span></div>
+      <div class="ticket-stat"><b>20&nbsp;мин</b><span>бесплатный аудит воронки</span></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- Блок 2 — теория -->
+  <section class="content-block prose">
+    <p class="lede">Разбор 01</p>
+    <h2>Почему сезон короткий, а точек утечки — много</h2>
+    <p>У сезонного парка развлечений воронка выглядит просто: реклама или пост в соцсетях → страница парка → покупка билета → сам визит, доп. траты на фудкорте и сувенирах → возможный повторный визит. Проблема не в схеме, а в том, что сезон длится 90-120 дней в году — и любая утечка на любом этапе умножается на каждый погожий день, который больше не повторится.</p>
+    <p>Классическая ошибка — считать, что раз трафик есть (люди узнают о парке, заходят на сайт или в директ), то с деньгами всё в порядке. На практике основные потери случаются не на этапе привлечения интереса, а на этапе превращения интереса в купленный билет: неудобная покупка с телефона, невозможность купить билет без звонка администратору, отсутствие догоняющих напоминаний тем, кто зашёл на сайт и не купил.</p>
+    <div class="callout">По наблюдениям агентства ParkFlow (демо-цифра для примера) типичный сезонный парк теряет 15-25% потенциальной выручки именно на этапе покупки билета — то есть трафик уже оплачен и пришёл, но не превращается в деньги.</div>
+  </section>
+
+  <!-- Блок 3 — квиз с ветвлением -->
+  <section class="content-block">
+    <p class="lede">Разбор 02</p>
+    <h2>Какой у вас парк</h2>
+    <div class="quiz" id="quiz-park" data-metrica-goal="quiz_completed">
+      <div class="quiz-question active" data-q="0">
+        <p class="quiz-q">Какой у вас формат парка?</p>
+        <div class="quiz-options">
+          <button data-result="solo">Один парк на одной локации</button>
+          <button data-result="network">Сеть из нескольких точек</button>
+          <button data-result="indoor">Круглогодичный индор-парк</button>
+        </div>
+      </div>
+      <div class="quiz-result" data-result="solo">
+        <span class="quiz-tag">Один парк</span>
+        <h3>Ваша главная точка риска — сезонность</h3>
+        <p>Весь годовой доход должен уместиться в 3-4 месяца, поэтому цена одного неудобного шага в покупке билета для вас выше, чем для сети или круглогодичного парка. В первую очередь стоит проверить, за сколько кликов с телефона можно купить билет прямо сейчас.</p>
+      </div>
+      <div class="quiz-result" data-result="network">
+        <span class="quiz-tag">Сеть парков</span>
+        <h3>У вас чаще всего есть маркетолог, но воронка не унифицирована</h3>
+        <p>Решения по сайту и рекламе нередко принимаются на уровне каждой точки отдельно — из-за этого одна локация теряет заявки там, где другая уже всё настроила. Унификация воронки продажи билетов между точками обычно даёт быстрый и заметный эффект.</p>
+      </div>
+      <div class="quiz-result" data-result="indoor">
+        <span class="quiz-tag">Индор-парк</span>
+        <h3>Сезонность мягче, но конкуренция за будний день выше</h3>
+        <p>Круглый год — это преимущество, но и конкурентов, готовых занять свободный слот в будни, у вас больше. Здесь особенно важны ремаркетинг и абонементная модель, которые сглаживают проседания в будние дни.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Блок 4 — опрос -->
+  <section class="content-block">
+    <p class="lede">Разбор 03</p>
+    <h2>А как у вас?</h2>
+    <div class="poll" data-metrica-goal="poll_answered">
+      <p class="quiz-q">Сколько дней в году открыт ваш парк?</p>
+      <div class="poll-options">
+        <button data-percent="58">Меньше 120 дней — сезонный</button>
+        <button data-percent="42">Круглый год</button>
+      </div>
+      <p class="poll-result"></p>
+      <p class="poll-note">Демо-цифры для примера формата — на реальном проекте заменяются на данные, накопленные Яндекс.Метрикой после публикации.</p>
+    </div>
+  </section>
+
+  <!-- Блок 5 — аккордеон -->
+  <section class="content-block">
+    <p class="lede">Разбор 04</p>
+    <h2>Мифы о продвижении парков развлечений</h2>
+    <div class="accordion">
+      <div class="accordion-item">
+        <button class="accordion-trigger"><span>«Больше рекламы — больше денег»</span><span class="badge" aria-hidden="true">+</span></button>
+        <div class="accordion-panel">
+          <p class="myth">Реальность</p>
+          <p>Если конверсия сайта или кассы в купленный билет низкая, дополнительный трафик просто дороже утекает через ту же дырявую воронку. Сначала — воронка, потом — объём рекламы.</p>
+        </div>
+      </div>
+      <div class="accordion-item">
+        <button class="accordion-trigger"><span>«Активных соцсетей без сайта достаточно»</span><span class="badge" aria-hidden="true">+</span></button>
+        <div class="accordion-panel">
+          <p class="myth">Реальность</p>
+          <p>Часть аудитории из соцсетей не готова писать в директ, чтобы купить билет — ей нужна понятная страница с ценами и покупкой в пару кликов. Без неё вы теряете именно тех, кто уже был готов заплатить.</p>
+        </div>
+      </div>
+      <div class="accordion-item">
+        <button class="accordion-trigger"><span>«В межсезонье маркетинг можно поставить на паузу»</span><span class="badge" aria-hidden="true">+</span></button>
+        <div class="accordion-panel">
+          <p class="myth">Реальность</p>
+          <p>Межсезонье — единственное время собрать базу контактов и продать абонементы или подарочные сертификаты на следующий сезон заранее, а не начинать с нуля в апреле.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Блок 6 — слайдер до/после -->
+  <section class="content-block">
+    <p class="lede">Разбор 05</p>
+    <h2>Воронка продажи билетов: слабая vs сильная</h2>
+    <p>Потяните ползунок, чтобы сравнить, как выглядит воронка, которая теряет заявки, и воронка, которая доводит их до купленного билета.</p>
+    <div class="compare" id="compare-1">
+      <img class="before" alt="Слабая воронка: реклама приводит на страницу без цен, дальше — только звонок администратору, часть заявок теряется на каждом шаге" src="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20400%20300'%3E%3Crect%20width='400'%20height='300'%20fill='%23FBE0E1'/%3E%3Ctext%20x='200'%20y='40'%20text-anchor='middle'%20font-family='Arial'%20font-size='16'%20font-weight='700'%20fill='%23E63946'%3EСлабая%20воронка%3C/text%3E%3Cg%20font-family='Arial'%20font-size='13'%20fill='%232A1E1A'%3E%3Crect%20x='40'%20y='70'%20width='320'%20height='36'%20rx='8'%20fill='%23fff'/%3E%3Ctext%20x='200'%20y='93'%20text-anchor='middle'%3EРеклама%20%E2%86%92%20переход%20100%25%3C/text%3E%3Crect%20x='60'%20y='120'%20width='280'%20height='36'%20rx='8'%20fill='%23fff'/%3E%3Ctext%20x='200'%20y='143'%20text-anchor='middle'%3EСтраница%20без%20цен%20%E2%86%92%2058%25%3C/text%3E%3Crect%20x='90'%20y='170'%20width='220'%20height='36'%20rx='8'%20fill='%23fff'/%3E%3Ctext%20x='200'%20y='193'%20text-anchor='middle'%3EЗвонок%20администратору%20%E2%86%92%2031%25%3C/text%3E%3Crect%20x='130'%20y='220'%20width='140'%20height='36'%20rx='8'%20fill='%23fff'/%3E%3Ctext%20x='200'%20y='243'%20text-anchor='middle'%20font-weight='700'%3EБилет%20%E2%86%92%2014%25%3C/text%3E%3C/g%3E%3C/svg%3E">
+      <img class="after" alt="Сильная воронка: реклама ведёт на страницу с ценами и онлайн-покупкой, есть ремаркетинг на не купивших, до билета доходит больше заявок" src="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20400%20300'%3E%3Crect%20width='400'%20height='300'%20fill='%23DCF1EF'/%3E%3Ctext%20x='200'%20y='40'%20text-anchor='middle'%20font-family='Arial'%20font-size='16'%20font-weight='700'%20fill='%230F8B8D'%3EСильная%20воронка%3C/text%3E%3Cg%20font-family='Arial'%20font-size='13'%20fill='%232A1E1A'%3E%3Crect%20x='40'%20y='70'%20width='320'%20height='36'%20rx='8'%20fill='%23fff'/%3E%3Ctext%20x='200'%20y='93'%20text-anchor='middle'%3EРеклама%20%E2%86%92%20переход%20100%25%3C/text%3E%3Crect%20x='50'%20y='120'%20width='300'%20height='36'%20rx='8'%20fill='%23fff'/%3E%3Ctext%20x='200'%20y='143'%20text-anchor='middle'%3EСтраница%20с%20ценами%20%E2%86%92%2082%25%3C/text%3E%3Crect%20x='60'%20y='170'%20width='280'%20height='36'%20rx='8'%20fill='%23fff'/%3E%3Ctext%20x='200'%20y='193'%20text-anchor='middle'%3EОнлайн-покупка%20%2B%20ремаркетинг%20%E2%86%92%2061%25%3C/text%3E%3Crect%20x='90'%20y='220'%20width='220'%20height='36'%20rx='8'%20fill='%23fff'/%3E%3Ctext%20x='200'%20y='243'%20text-anchor='middle'%20font-weight='700'%3EБилет%20%E2%86%92%2047%25%3C/text%3E%3C/g%3E%3C/svg%3E">
+      <div class="compare-handle"></div>
+    </div>
+    <div class="compare-caption"><span class="bad">← слабая: 14% доходит до билета</span><span class="good">сильная: 47% →</span></div>
+  </section>
+
+  <!-- Блок 7 — калькулятор -->
+  <section class="content-block">
+    <p class="lede">Разбор 06</p>
+    <h2>Сколько вы теряете за один день сезона</h2>
+    <p>Введите свои цифры — расчёт покажет примерную потерю выручки за день и за типовой сезон.</p>
+    <div class="calc" id="calc-1">
+      <div class="calc-field">
+        <label for="calc-visitors">Посетителей в парке за день</label>
+        <input type="number" id="calc-visitors" inputmode="numeric" placeholder="Например, 400" min="0">
+      </div>
+      <div class="calc-field">
+        <label for="calc-lost">Доля тех, кто интересовался, но не купил билет онлайн (%)</label>
+        <input type="number" id="calc-lost" inputmode="numeric" placeholder="Например, 25" min="0" max="100">
+      </div>
+      <div class="calc-field">
+        <label for="calc-check">Средний чек одного посетителя, ₽</label>
+        <input type="number" id="calc-check" inputmode="numeric" placeholder="Например, 1200" min="0">
+      </div>
+      <div class="calc-result">
+        <span class="big" id="calc-day-result">0 ₽</span>
+        <span class="small">упущенная выручка за один день</span>
+        <span class="small" id="calc-season-result" style="display:block; margin-top:8px; font-weight:700;">0 ₽ за типовой сезон (100 дней)</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Блок 8 — чек-лист -->
+  <section class="content-block">
+    <p class="lede">Разбор 07</p>
+    <h2>Чек-лист самодиагностики</h2>
+    <div class="checklist" id="checklist-1" data-storage-key="parkflow-demo-checklist">
+      <p class="checklist-progress"><span class="done-count">0</span> из <span class="total-count">6</span> отмечено</p>
+      <label><input type="checkbox"> Билет можно купить онлайн за 2 клика с телефона</label>
+      <label><input type="checkbox"> На сайте есть онлайн-касса без звонка администратору</label>
+      <label><input type="checkbox"> Есть ремаркетинг на тех, кто зашёл, но не купил билет</label>
+      <label><input type="checkbox"> Собираете контакты у тех, кто не купил, чтобы вернуть их позже</label>
+      <label><input type="checkbox"> В межсезонье есть отдельная воронка — абонементы или сертификаты</label>
+      <label><input type="checkbox"> Знаете точную конверсию из захода на сайт в купленный билет</label>
+    </div>
+  </section>
+
+  <!-- Блок 9 — финальный CTA -->
+  <section class="content-block">
+    <div class="final-cta">
+      <h2>Разберём вашу воронку бесплатно</h2>
+      <p>20 минут созвона — покажем, где именно ваш парк теряет выручку, и что сделать в первую очередь до конца сезона.</p>
+      <!-- ДЕМО: адрес отправки — заглушка, не подключена к реальной инфраструктуре. Перед реальным использованием заменить на настоящий webhook/CRM/Telegram клиента. -->
+      <form id="lead-form" data-webhook="https://demo.parkflow.agency/api/lead">
+        <input type="text" name="name" placeholder="Как к вам обращаться" required>
+        <input type="text" name="park" placeholder="Название парка" required>
+        <input type="tel" name="contact" placeholder="Телефон или Telegram" required>
+        <button type="submit">Записаться на разбор</button>
+        <p class="form-status"></p>
+      </form>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  ParkFlow — growth-агентство для парков развлечений (демо-бренд)
+  <span class="demo-footer-note">Страница — демонстрация форматов интерактивных блоков, данные и кейсы вымышлены, не публиковалась в прод.</span>
+</footer>
+
+<script>
+(function () {
+  var METRICA_COUNTER_ID = 00000000;
+
+  // Прогресс дочитывания
+  var bar = document.getElementById('reading-progress');
+  window.addEventListener('scroll', function () {
+    var h = document.documentElement;
+    var scrolled = (h.scrollTop) / (h.scrollHeight - h.clientHeight) * 100;
+    bar.style.width = Math.min(100, Math.max(0, scrolled)) + '%';
+  }, { passive: true });
+
+  function reachGoal(name) {
+    if (typeof ym === 'function') {
+      try { ym(METRICA_COUNTER_ID, 'reachGoal', name); } catch (e) {}
+    }
+  }
+
+  // Квиз
+  document.querySelectorAll('.quiz').forEach(function (quiz) {
+    quiz.querySelectorAll('.quiz-options button').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var result = btn.getAttribute('data-result');
+        quiz.querySelectorAll('.quiz-question').forEach(function (q) { q.classList.remove('active'); });
+        quiz.querySelectorAll('.quiz-result').forEach(function (r) {
+          r.classList.toggle('active', r.getAttribute('data-result') === result);
+        });
+        reachGoal(quiz.getAttribute('data-metrica-goal') || 'quiz_completed');
+      });
+    });
+  });
+
+  // Опрос
+  document.querySelectorAll('.poll').forEach(function (poll) {
+    var resultEl = poll.querySelector('.poll-result');
+    poll.querySelectorAll('.poll-options button').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var percent = btn.getAttribute('data-percent');
+        resultEl.textContent = percent + '% парков ответили так же, как вы (демо-цифра)';
+        resultEl.style.display = 'block';
+        poll.querySelectorAll('.poll-options button').forEach(function (b) { b.disabled = true; });
+        reachGoal(poll.getAttribute('data-metrica-goal') || 'poll_answered');
+      });
+    });
+  });
+
+  // Аккордеон
+  document.querySelectorAll('.accordion-trigger').forEach(function (trigger) {
+    trigger.addEventListener('click', function () {
+      trigger.parentElement.classList.toggle('open');
+    });
+  });
+
+  // Слайдер до/после
+  document.querySelectorAll('.compare').forEach(function (compare) {
+    var handle = compare.querySelector('.compare-handle');
+    var after = compare.querySelector('.after');
+    var dragging = false;
+
+    function setPosition(clientX) {
+      var rect = compare.getBoundingClientRect();
+      var pct = Math.min(100, Math.max(0, ((clientX - rect.left) / rect.width) * 100));
+      handle.style.left = pct + '%';
+      after.style.clipPath = 'inset(0 0 0 ' + pct + '%)';
+    }
+
+    handle.addEventListener('pointerdown', function (e) { dragging = true; e.preventDefault(); });
+    window.addEventListener('pointerup', function () { dragging = false; });
+    window.addEventListener('pointermove', function (e) {
+      if (dragging) setPosition(e.clientX);
+    });
+    compare.addEventListener('click', function (e) { setPosition(e.clientX); });
+  });
+
+  // Калькулятор
+  var calcVisitors = document.getElementById('calc-visitors');
+  var calcLost = document.getElementById('calc-lost');
+  var calcCheck = document.getElementById('calc-check');
+  var calcDayResult = document.getElementById('calc-day-result');
+  var calcSeasonResult = document.getElementById('calc-season-result');
+  var calcGoalSent = false;
+
+  function updateCalc() {
+    var visitors = parseFloat(calcVisitors.value) || 0;
+    var lostPct = Math.min(100, Math.max(0, parseFloat(calcLost.value) || 0));
+    var check = parseFloat(calcCheck.value) || 0;
+    var dayLoss = visitors * (lostPct / 100) * check;
+    var seasonLoss = dayLoss * 100;
+    calcDayResult.textContent = Math.round(dayLoss).toLocaleString('ru-RU') + ' ₽';
+    calcSeasonResult.textContent = Math.round(seasonLoss).toLocaleString('ru-RU') + ' ₽ за типовой сезон (100 дней)';
+    if (dayLoss > 0 && !calcGoalSent) { reachGoal('calc_used'); calcGoalSent = true; }
+  }
+  [calcVisitors, calcLost, calcCheck].forEach(function (input) {
+    input.addEventListener('input', updateCalc);
+  });
+
+  // Чек-лист с сохранением состояния
+  document.querySelectorAll('.checklist').forEach(function (list) {
+    var key = list.getAttribute('data-storage-key') || 'checklist-default';
+    var boxes = list.querySelectorAll('input[type="checkbox"]');
+    var doneCount = list.querySelector('.done-count');
+    var totalCount = list.querySelector('.total-count');
+    totalCount.textContent = boxes.length;
+
+    function saved() {
+      try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { return []; }
+    }
+    function update() {
+      var done = 0;
+      var state = [];
+      boxes.forEach(function (box, i) { if (box.checked) done++; state[i] = box.checked; });
+      doneCount.textContent = done;
+      try { localStorage.setItem(key, JSON.stringify(state)); } catch (e) {}
+    }
+    var state = saved();
+    boxes.forEach(function (box, i) { if (state[i]) box.checked = true; });
+    update();
+    boxes.forEach(function (box) { box.addEventListener('change', update); });
+  });
+
+  // Финальная форма
+  var form = document.getElementById('lead-form');
+  if (form) {
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var status = form.querySelector('.form-status');
+      var webhook = form.getAttribute('data-webhook');
+      var data = Object.fromEntries(new FormData(form).entries());
+      status.textContent = 'Отправляем...';
+
+      fetch(webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      }).then(function (res) {
+        if (!res.ok) throw new Error('bad status');
+        status.textContent = 'Спасибо! Мы скоро свяжемся.';
+        form.reset();
+        reachGoal('lead_submit');
+      }).catch(function () {
+        status.textContent = 'Демо-форма: адрес отправки не подключён к реальной инфраструктуре.';
+      });
+    });
+  }
+})();
+</script>
+
+</body>
+</html>
