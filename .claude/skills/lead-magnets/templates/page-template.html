@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<!--
+  Базовый каркас лид-магнита-лонгрида.
+  Как использовать (см. references/build-page.md):
+  1. Скопировать в lead-magnets/pages/<slug>/index.html
+  2. Заменить все {{PLACEHOLDER}} на реальные значения
+  3. Пройтись по structure.md и наполнить .content-block текстом + нужными интерактивными блоками
+  4. Прогнать scripts/validate-page.cjs перед публикацией
+-->
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{PAGE_TITLE}}</title>
+<meta name="description" content="{{PAGE_DESCRIPTION}}">
+<meta property="og:title" content="{{PAGE_TITLE}}">
+<meta property="og:description" content="{{PAGE_DESCRIPTION}}">
+<meta property="og:image" content="{{OG_IMAGE_URL}}">
+<meta property="og:type" content="article">
+
+<!-- Яндекс.Метрика -->
+<script type="text/javascript">
+   (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+   m[i].l=1*new Date();
+   for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+   k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})
+   (window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
+   ym({{METRICA_COUNTER_ID}}, "init", {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", accurateTrackBounce:true, trackLinks:true});
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/{{METRICA_COUNTER_ID}}" style="position:absolute; left:-9999px;" alt=""/></div></noscript>
+
+<style>
+  :root {
+    /* Брендовые токены — подставить из design-system/brand skill клиента, если есть */
+    --color-primary: {{BRAND_COLOR_PRIMARY}};
+    --color-accent: {{BRAND_COLOR_ACCENT}};
+    --color-bg: {{BRAND_COLOR_BG}};
+    --color-surface: #ffffff;
+    --color-text: {{BRAND_COLOR_TEXT}};
+    --color-text-muted: #6b7280;
+    --font-heading: {{BRAND_FONT_HEADING}};
+    --font-body: {{BRAND_FONT_BODY}};
+    --radius: 16px;
+    --max-width: 720px;
+    --space: 24px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { font-family: var(--font-heading); line-height: 1.2; margin: 0 0 0.5em; }
+  img { max-width: 100%; display: block; border-radius: var(--radius); }
+  a { color: var(--color-primary); }
+  button { font-family: inherit; cursor: pointer; }
+
+  /* Прогресс дочитывания */
+  #reading-progress {
+    position: fixed; top: 0; left: 0; height: 4px; width: 0%;
+    background: var(--color-accent); z-index: 1000; transition: width 0.1s linear;
+  }
+
+  .wrap { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--space); }
+
+  .hero {
+    padding: 56px 0 40px; text-align: center;
+  }
+  .hero h1 { font-size: clamp(28px, 6vw, 44px); }
+  .hero p { color: var(--color-text-muted); font-size: 18px; }
+
+  .content-block { padding: 40px 0; border-top: 1px solid rgba(0,0,0,0.06); }
+  .content-block h2 { font-size: clamp(22px, 4vw, 30px); }
+
+  /* Квиз */
+  .quiz { background: var(--color-surface); border-radius: var(--radius); padding: var(--space); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .quiz-question { display: none; }
+  .quiz-question.active { display: block; }
+  .quiz-options { display: grid; gap: 12px; margin-top: 16px; }
+  .quiz-options button { padding: 14px 16px; border: 2px solid var(--color-primary); background: transparent; border-radius: 12px; font-size: 16px; text-align: left; min-height: 44px; }
+  .quiz-options button:active, .quiz-options button.selected { background: var(--color-primary); color: #fff; }
+  .quiz-result { display: none; }
+  .quiz-result.active { display: block; }
+
+  /* Опрос */
+  .poll-options button { display: block; width: 100%; padding: 14px 16px; margin-bottom: 10px; border: 1px solid rgba(0,0,0,0.15); border-radius: 12px; background: var(--color-surface); min-height: 44px; text-align: left; }
+  .poll-result { margin-top: 8px; color: var(--color-text-muted); font-size: 14px; display: none; }
+
+  /* Аккордеон */
+  .accordion-item { border-bottom: 1px solid rgba(0,0,0,0.1); }
+  .accordion-trigger { width: 100%; background: none; border: none; padding: 16px 0; display: flex; justify-content: space-between; align-items: center; font-size: 17px; font-weight: 600; min-height: 44px; }
+  .accordion-panel { max-height: 0; overflow: hidden; transition: max-height 0.25s ease; }
+  .accordion-item.open .accordion-panel { max-height: 500px; padding-bottom: 16px; }
+
+  /* Слайдер до/после */
+  .compare { position: relative; overflow: hidden; border-radius: var(--radius); aspect-ratio: 4/3; touch-action: none; }
+  .compare img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 0; }
+  .compare .after { clip-path: inset(0 0 0 50%); }
+  .compare-handle { position: absolute; top: 0; bottom: 0; left: 50%; width: 4px; background: #fff; cursor: ew-resize; }
+  .compare-handle::after { content: "↔"; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 40px; height: 40px; background: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+
+  /* Чек-лист */
+  .checklist-progress { font-size: 14px; color: var(--color-text-muted); margin-bottom: 12px; }
+  .checklist label { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; }
+  .checklist input { width: 20px; height: 20px; flex-shrink: 0; margin-top: 2px; }
+
+  /* Финальный CTA */
+  .final-cta { background: var(--color-primary); color: #fff; border-radius: var(--radius); padding: 32px var(--space); text-align: center; }
+  .final-cta h2 { color: #fff; }
+  .final-cta form { display: grid; gap: 12px; margin-top: 20px; }
+  .final-cta input { padding: 14px 16px; border-radius: 12px; border: none; font-size: 16px; min-height: 44px; }
+  .final-cta button[type="submit"] { padding: 14px 16px; border-radius: 12px; border: none; background: var(--color-accent); color: #fff; font-size: 16px; font-weight: 600; min-height: 44px; }
+  .form-status { font-size: 14px; margin-top: 8px; min-height: 20px; }
+
+  footer { text-align: center; padding: 32px 0; color: var(--color-text-muted); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div id="reading-progress"></div>
+
+<header class="hero wrap">
+  <h1>{{HERO_TITLE}}</h1>
+  <p>{{HERO_SUBTITLE}}</p>
+  <img src="{{HERO_IMAGE_URL}}" alt="{{HERO_IMAGE_ALT}}">
+</header>
+
+<main class="wrap">
+
+  <!-- ПРИМЕР: текстовый блок. Дублировать под каждый раздел из structure.md -->
+  <section class="content-block">
+    <h2>{{BLOCK_1_TITLE}}</h2>
+    <p>{{BLOCK_1_TEXT}}</p>
+  </section>
+
+  <!-- ПРИМЕР: квиз с ветвлением по результату -->
+  <section class="content-block">
+    <h2>{{QUIZ_TITLE}}</h2>
+    <div class="quiz" id="quiz-1" data-metrica-goal="quiz_completed">
+      <div class="quiz-question active" data-q="0">
+        <p>{{QUIZ_QUESTION_1}}</p>
+        <div class="quiz-options">
+          <button data-result="a">{{QUIZ_Q1_OPTION_A}}</button>
+          <button data-result="b">{{QUIZ_Q1_OPTION_B}}</button>
+        </div>
+      </div>
+      <div class="quiz-result" data-result="a">
+        <h3>{{QUIZ_RESULT_A_TITLE}}</h3>
+        <p>{{QUIZ_RESULT_A_TEXT}}</p>
+      </div>
+      <div class="quiz-result" data-result="b">
+        <h3>{{QUIZ_RESULT_B_TITLE}}</h3>
+        <p>{{QUIZ_RESULT_B_TEXT}}</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ПРИМЕР: опрос "а как у тебя" -->
+  <section class="content-block">
+    <h2>{{POLL_TITLE}}</h2>
+    <div class="poll" data-metrica-goal="poll_answered">
+      <div class="poll-options">
+        <button data-percent="62">{{POLL_OPTION_A}}</button>
+        <button data-percent="38">{{POLL_OPTION_B}}</button>
+      </div>
+      <p class="poll-result"></p>
+    </div>
+  </section>
+
+  <!-- ПРИМЕР: раскрывающиеся карточки -->
+  <section class="content-block">
+    <h2>{{ACCORDION_TITLE}}</h2>
+    <div class="accordion">
+      <div class="accordion-item">
+        <button class="accordion-trigger"><span>{{ACCORDION_Q1}}</span><span aria-hidden="true">+</span></button>
+        <div class="accordion-panel"><p>{{ACCORDION_A1}}</p></div>
+      </div>
+      <div class="accordion-item">
+        <button class="accordion-trigger"><span>{{ACCORDION_Q2}}</span><span aria-hidden="true">+</span></button>
+        <div class="accordion-panel"><p>{{ACCORDION_A2}}</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ПРИМЕР: слайдер до/после (удалить блок, если тема не про трансформацию) -->
+  <section class="content-block">
+    <h2>{{COMPARE_TITLE}}</h2>
+    <div class="compare" id="compare-1">
+      <img class="before" src="{{COMPARE_BEFORE_IMAGE}}" alt="{{COMPARE_BEFORE_ALT}}">
+      <img class="after" src="{{COMPARE_AFTER_IMAGE}}" alt="{{COMPARE_AFTER_ALT}}">
+      <div class="compare-handle"></div>
+    </div>
+  </section>
+
+  <!-- ПРИМЕР: чек-лист с прогрессом -->
+  <section class="content-block">
+    <h2>{{CHECKLIST_TITLE}}</h2>
+    <div class="checklist" id="checklist-1" data-storage-key="{{CHECKLIST_STORAGE_KEY}}">
+      <p class="checklist-progress"><span class="done-count">0</span> из <span class="total-count">3</span> отмечено</p>
+      <label><input type="checkbox"> {{CHECKLIST_ITEM_1}}</label>
+      <label><input type="checkbox"> {{CHECKLIST_ITEM_2}}</label>
+      <label><input type="checkbox"> {{CHECKLIST_ITEM_3}}</label>
+    </div>
+  </section>
+
+  <!-- Финальный CTA — обязательный блок -->
+  <section class="content-block">
+    <div class="final-cta">
+      <h2>{{FINAL_CTA_TITLE}}</h2>
+      <p>{{FINAL_CTA_SUBTITLE}}</p>
+      <form id="lead-form" data-webhook="{{WEBHOOK_URL}}">
+        <input type="text" name="name" placeholder="Как к вам обращаться" required>
+        <input type="tel" name="contact" placeholder="Телефон или Telegram" required>
+        <button type="submit">{{FINAL_CTA_BUTTON_TEXT}}</button>
+        <p class="form-status"></p>
+      </form>
+    </div>
+  </section>
+
+</main>
+
+<footer>{{FOOTER_TEXT}}</footer>
+
+<script>
+(function () {
+  var METRICA_COUNTER_ID = {{METRICA_COUNTER_ID}};
+
+  // Прогресс дочитывания
+  var bar = document.getElementById('reading-progress');
+  window.addEventListener('scroll', function () {
+    var h = document.documentElement;
+    var scrolled = (h.scrollTop) / (h.scrollHeight - h.clientHeight) * 100;
+    bar.style.width = Math.min(100, Math.max(0, scrolled)) + '%';
+  }, { passive: true });
+
+  function reachGoal(name) {
+    if (typeof ym === 'function') {
+      try { ym(METRICA_COUNTER_ID, 'reachGoal', name); } catch (e) {}
+    }
+  }
+
+  // Квиз
+  document.querySelectorAll('.quiz').forEach(function (quiz) {
+    quiz.querySelectorAll('.quiz-options button').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var result = btn.getAttribute('data-result');
+        quiz.querySelectorAll('.quiz-question').forEach(function (q) { q.classList.remove('active'); });
+        quiz.querySelectorAll('.quiz-result').forEach(function (r) {
+          r.classList.toggle('active', r.getAttribute('data-result') === result);
+        });
+        reachGoal(quiz.getAttribute('data-metrica-goal') || 'quiz_completed');
+      });
+    });
+  });
+
+  // Опрос
+  document.querySelectorAll('.poll').forEach(function (poll) {
+    var resultEl = poll.querySelector('.poll-result');
+    poll.querySelectorAll('.poll-options button').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var percent = btn.getAttribute('data-percent');
+        resultEl.textContent = percent + '% ответили так же, как вы';
+        resultEl.style.display = 'block';
+        poll.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+        reachGoal(poll.getAttribute('data-metrica-goal') || 'poll_answered');
+      });
+    });
+  });
+
+  // Аккордеон
+  document.querySelectorAll('.accordion-trigger').forEach(function (trigger) {
+    trigger.addEventListener('click', function () {
+      trigger.parentElement.classList.toggle('open');
+    });
+  });
+
+  // Слайдер до/после
+  document.querySelectorAll('.compare').forEach(function (compare) {
+    var handle = compare.querySelector('.compare-handle');
+    var after = compare.querySelector('.after');
+    var dragging = false;
+
+    function setPosition(clientX) {
+      var rect = compare.getBoundingClientRect();
+      var pct = Math.min(100, Math.max(0, ((clientX - rect.left) / rect.width) * 100));
+      handle.style.left = pct + '%';
+      after.style.clipPath = 'inset(0 0 0 ' + pct + '%)';
+    }
+
+    handle.addEventListener('pointerdown', function () { dragging = true; });
+    window.addEventListener('pointerup', function () { dragging = false; });
+    window.addEventListener('pointermove', function (e) {
+      if (dragging) setPosition(e.clientX);
+    });
+    compare.addEventListener('click', function (e) { setPosition(e.clientX); });
+  });
+
+  // Чек-лист с сохранением состояния
+  document.querySelectorAll('.checklist').forEach(function (list) {
+    var key = list.getAttribute('data-storage-key') || 'checklist-default';
+    var boxes = list.querySelectorAll('input[type="checkbox"]');
+    var doneCount = list.querySelector('.done-count');
+    var totalCount = list.querySelector('.total-count');
+    totalCount.textContent = boxes.length;
+
+    function saved() {
+      try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { return []; }
+    }
+    function update() {
+      var done = 0;
+      var state = [];
+      boxes.forEach(function (box, i) { if (box.checked) done++; state[i] = box.checked; });
+      doneCount.textContent = done;
+      try { localStorage.setItem(key, JSON.stringify(state)); } catch (e) {}
+    }
+    var state = saved();
+    boxes.forEach(function (box, i) { if (state[i]) box.checked = true; });
+    update();
+    boxes.forEach(function (box) { box.addEventListener('change', update); });
+  });
+
+  // Финальная форма
+  var form = document.getElementById('lead-form');
+  if (form) {
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var status = form.querySelector('.form-status');
+      var webhook = form.getAttribute('data-webhook');
+      var data = Object.fromEntries(new FormData(form).entries());
+      status.textContent = 'Отправляем...';
+
+      fetch(webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      }).then(function (res) {
+        if (!res.ok) throw new Error('bad status');
+        status.textContent = 'Спасибо! Мы скоро свяжемся.';
+        form.reset();
+        reachGoal('lead_submit');
+      }).catch(function () {
+        status.textContent = 'Не получилось отправить. Попробуйте ещё раз или напишите нам напрямую.';
+      });
+    });
+  }
+})();
+</script>
+
+</body>
+</html>
