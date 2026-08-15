@@ -34,6 +34,8 @@ export default {
     if (url.pathname === "/quiz3" || url.pathname === "/worker/quiz3") return serveQuiz3();
     if (url.pathname === "/api/quiz3-dialogue") return apiQuiz3Dialogue(request, env);
     if (url.pathname === "/api/quiz3-result") return apiQuiz3Result(request, env);
+    if (url.pathname === "/leadmagnet1") return serveLeadMagnet1();
+    if (url.pathname === "/api/leadmagnet1-submit") return apiLeadMagnet1Submit(request, env);
     if (url.pathname === "/api/task-progress") return apiTaskProgress(request, env);
     if (url.pathname === "/api/auth-email") return apiAuthEmail(request, env);
     if (url.pathname === "/api/events") return apiEvents(request, env);
@@ -1550,6 +1552,674 @@ async function callClaudeQuiz2Json(env, { system, user }) {
 // ─── QUIZ 3: ДИАЛОГ С НУТРИЦИОЛОГОМ (многоходовой диалог, голос + текст) ───
 function serveQuiz3() {
   return new Response(getQuiz3HTML(), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+// ─── LEAD MAGNET: КУДА УТЕКАЮТ ПАЦИЕНТЫ СТОМАТОЛОГИИ (Growth Autopilot) ──
+function serveLeadMagnet1() {
+  return new Response(getLeadMagnet1HTML(), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+async function apiLeadMagnet1Submit(request, env) {
+  if (request.method !== "POST") return jsonResp({ error: "Method not allowed" }, 405);
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResp({ ok: false }, 400); }
+  const name = (body.name || "").toString().trim().slice(0, 200);
+  const clinic = (body.clinic || "").toString().trim().slice(0, 200);
+  const contact = (body.contact || "").toString().trim().slice(0, 200);
+  if (!name || !contact) return jsonResp({ ok: false });
+
+  if (env.ADMIN_ID) {
+    const text = `🦷 *Заявка с лид-магнита «Куда утекают пациенты стоматологии»*\n\nИмя: ${name}\nКлиника: ${clinic || "—"}\nКонтакт: ${contact}`;
+    await tgSend(env, env.ADMIN_ID, text);
+  }
+  return jsonResp({ ok: true });
+}
+
+function getLeadMagnet1HTML() {
+  return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Куда утекают пациенты вашей стоматологии — Growth Autopilot</title>
+<meta name="description" content="Диагностика воронки стоматологии: теория, 5 мест, где теряются пациенты, ориентиры рынка, расчёт потерь в деньгах и бесплатный разбор с экспертом Growth Autopilot.">
+<meta property="og:title" content="Куда утекают пациенты вашей стоматологии">
+<meta property="og:description" content="Системный разбор воронки клиники: где теряются пациенты, сколько это стоит в деньгах — и что сделать в первую очередь.">
+<meta property="og:type" content="article">
+
+<!-- Яндекс.Метрика: ID-заглушка 00000000, заменить на реальный счётчик клиента перед публикацией в прод (см. lead-magnets/brief.md, раздел "Воронка и метрики успеха") -->
+<script type="text/javascript">
+   (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+   m[i].l=1*new Date();
+   for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+   k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})
+   (window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
+   ym(00000000, "init", {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", accurateTrackBounce:true, trackLinks:true});
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/00000000" style="position:absolute; left:-9999px;" alt=""/></div></noscript>
+
+<style>
+  /* ── Токены: "бумага диагностического отчёта" ─────────────────
+     paper — бумага, ink — текст/линии, verdigris — структурный акцент
+     (доверие, референс), red — только для денег/потерь (маркер аудитора). */
+  :root {
+    --paper: #EEF0E8;
+    --paper-raised: #FCFCF9;
+    --ink: #171D1B;
+    --ink-soft: #57635C;
+    --line: #C7CFC3;
+    --verdigris: #2E6B5E;
+    --verdigris-tint: #E1EAE4;
+    --red: #B23A22;
+    --red-tint: #F3E1D9;
+    --font-serif: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', 'Times New Roman', serif;
+    --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Consolas, 'Liberation Mono', monospace;
+    --max-width: 700px;
+    --space: 24px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-serif);
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { font-family: var(--font-serif); font-weight: 700; line-height: 1.18; margin: 0 0 0.45em; }
+  p { margin: 0 0 1.1em; }
+  a { color: var(--verdigris); }
+  button { font-family: inherit; cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--verdigris); outline-offset: 2px; }
+
+  .mono { font-family: var(--font-mono); }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 9px;
+    font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--verdigris);
+    margin-bottom: 18px;
+  }
+  .eyebrow::before { content: ""; width: 8px; height: 8px; background: var(--verdigris); }
+
+  #reading-progress {
+    position: fixed; top: 0; left: 0; height: 3px; width: 0%;
+    background: var(--red); z-index: 1000; transition: width 0.1s linear;
+  }
+
+  .wrap { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--space); }
+
+  /* ── Шапка / тезис ──────────────────────────────────────── */
+  .hero { padding: 56px 0 8px; }
+  .hero h1 { font-size: clamp(30px, 6.5vw, 46px); letter-spacing: -0.01em; }
+  .hero .dek { font-size: 18px; color: var(--ink-soft); max-width: 54ch; }
+
+  /* Диагностическая цепочка воронки — визуальный тезис страницы */
+  .funnel { position: relative; margin: 40px 0 20px; overflow-x: auto; padding-bottom: 6px; }
+  .funnel-track { position: relative; display: flex; gap: 0; min-width: 560px; }
+  .funnel-track::before {
+    content: ""; position: absolute; left: 14px; right: 14px; top: 9px; height: 1px; background: var(--line);
+  }
+  .funnel-node { flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; position: relative; z-index: 1; }
+  .funnel-dot { width: 19px; height: 19px; border-radius: 50%; background: var(--paper-raised); border: 2px solid var(--ink); margin-bottom: 12px; }
+  .funnel-node.last .funnel-dot { background: var(--verdigris); border-color: var(--verdigris); }
+  .funnel-label { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--ink-soft); line-height: 1.4; max-width: 92px; }
+
+  /* ── Контентные секции ──────────────────────────────────── */
+  .section { padding: 44px 0; border-top: 1px solid var(--line); }
+  .section h2 { font-size: clamp(23px, 4vw, 29px); }
+  .section .lede { font-family: var(--font-mono); font-size: 13px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .04em; margin: -8px 0 22px; }
+  .prose p { font-size: 17px; color: var(--ink); }
+  .prose .callout {
+    background: var(--verdigris-tint); border-left: 3px solid var(--verdigris);
+    padding: 14px 16px; font-size: 15px; color: var(--ink-soft); margin: 24px 0 0;
+  }
+
+  /* ── Квиз ───────────────────────────────────────────────── */
+  .quiz-q { font-family: var(--font-serif); font-weight: 700; font-size: 19px; margin-bottom: 16px; }
+  .quiz-options { display: grid; gap: 10px; margin-bottom: 4px; }
+  .quiz-options button {
+    padding: 15px 18px; border: 1.5px solid var(--ink); background: var(--paper-raised);
+    font-family: var(--font-serif); font-size: 16px; text-align: left; min-height: 48px;
+    color: var(--ink); transition: background .12s ease, color .12s ease;
+  }
+  .quiz-options button:hover { background: var(--ink); color: var(--paper); }
+  .quiz-question { display: none; }
+  .quiz-question.active { display: block; }
+  .quiz-result { display: none; }
+  .quiz-result.active { display: block; animation: reveal .3s ease; }
+  @keyframes reveal { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+  .quiz-tag {
+    display: inline-block; font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+    letter-spacing: .05em; text-transform: uppercase; color: var(--verdigris);
+    border: 1px solid var(--verdigris); padding: 4px 10px; margin-bottom: 12px;
+  }
+  .quiz-result h3 { font-size: 20px; }
+
+  /* ── 5 мест утечки — нумерованные строки дела ──────────────── */
+  .case-list { margin-top: 8px; }
+  .case-row { display: grid; grid-template-columns: 44px 1fr; gap: 18px; padding: 28px 0; border-top: 1px solid var(--line); }
+  .case-row:first-child { border-top: none; padding-top: 4px; }
+  .case-num { font-family: var(--font-mono); font-size: 15px; font-weight: 700; color: var(--line); padding-top: 3px; }
+  .case-row h3 { font-size: 19px; margin-bottom: 10px; }
+  .case-row p { font-size: 16px; }
+  .case-check { font-size: 14.5px; color: var(--ink-soft); }
+  .case-check .mono-label { font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--ink); margin-right: 6px; }
+
+  /* ── Ориентиры рынка — таблица-леджер ──────────────────────── */
+  .ledger { margin: 22px 0; border-top: 1px solid var(--ink); }
+  .ledger-row { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; padding: 13px 0; border-bottom: 1px dotted var(--line); }
+  .ledger-row .label { font-size: 15.5px; }
+  .ledger-row .value { font-family: var(--font-mono); font-size: 15px; font-weight: 700; color: var(--verdigris); white-space: nowrap; }
+
+  /* ── Калькулятор-чек — сигнатурный элемент ─────────────────── */
+  .receipt-wrap { margin-top: 8px; }
+  .receipt {
+    position: relative; background: var(--paper-raised); border: 1px solid var(--ink);
+    padding: 30px 26px 26px; margin-top: 8px;
+  }
+  .receipt::before {
+    content: ""; position: absolute; top: -1px; left: 0; right: 0; height: 10px;
+    background-image: radial-gradient(circle at 7px 0, var(--paper) 6px, transparent 6.5px);
+    background-size: 14px 10px; background-repeat: repeat-x; background-position: top;
+  }
+  .receipt-title { font-family: var(--font-mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); margin-bottom: 4px; }
+  .receipt-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 13px 0; border-bottom: 1px dotted var(--line); }
+  .receipt-row label { font-family: var(--font-mono); font-size: 12.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--ink-soft); }
+  .receipt-row input {
+    border: none; border-bottom: 1.5px solid var(--ink); background: transparent;
+    font-family: var(--font-mono); font-size: 17px; text-align: right; width: 108px;
+    color: var(--ink); padding: 2px 0;
+  }
+  .receipt-row input:focus { outline: none; border-color: var(--verdigris); }
+  .receipt-total { display: flex; justify-content: space-between; align-items: baseline; margin-top: 20px; padding-top: 18px; border-top: 2px dashed var(--ink); }
+  .receipt-total .rt-label { font-family: var(--font-mono); font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); }
+  .receipt-total .rt-value { font-family: var(--font-mono); font-size: 32px; font-weight: 700; color: var(--red); }
+  .receipt-note { font-size: 13.5px; color: var(--ink-soft); font-style: italic; margin: 16px 0 0; }
+
+  /* ── Чек-лист ───────────────────────────────────────────── */
+  .checklist-progress { font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--verdigris); text-transform: uppercase; letter-spacing: .03em; margin: 0 0 4px; }
+  .checklist { margin-top: 12px; }
+  .checklist label { display: flex; gap: 14px; align-items: flex-start; padding: 13px 0; border-bottom: 1px solid var(--line); font-size: 16px; }
+  .checklist label:last-child { border-bottom: none; }
+  .checklist input { width: 20px; height: 20px; flex-shrink: 0; margin-top: 2px; accent-color: var(--verdigris); }
+
+  /* ── Финал — штамп ──────────────────────────────────────── */
+  .stamp { background: var(--ink); color: var(--paper); padding: 42px var(--space) 38px; }
+  .stamp h2 { color: #fff; font-size: clamp(23px, 4vw, 28px); }
+  .stamp p.dek { color: #C7CDC5; font-size: 16.5px; max-width: 46ch; }
+  .stamp form { display: grid; gap: 16px; margin-top: 26px; max-width: 420px; }
+  .stamp-field label { display: block; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: #9AA69E; margin-bottom: 6px; }
+  .stamp-field input {
+    width: 100%; background: transparent; border: none; border-bottom: 1.5px solid #4A544E;
+    color: #fff; font-family: var(--font-serif); font-size: 16px; padding: 8px 0; min-height: 30px;
+  }
+  .stamp-field input::placeholder { color: #6B756F; }
+  .stamp-field input:focus { outline: none; border-color: var(--red); }
+  .stamp button[type="submit"] {
+    margin-top: 6px; padding: 15px 22px; border: none; background: var(--red); color: #fff;
+    font-family: var(--font-mono); font-size: 13.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+    min-height: 48px;
+  }
+  .stamp button[type="submit"]:hover { background: #99311D; }
+  .form-status { font-size: 14px; margin-top: 4px; min-height: 20px; color: #C7CDC5; }
+
+  footer { text-align: center; padding: 28px 0 120px; color: var(--ink-soft); font-size: 12.5px; font-family: var(--font-mono); }
+
+  /* ── Навигация по разделам ──────────────────────────────── */
+  .nav-next {
+    position: fixed; right: 22px; bottom: 22px; z-index: 900;
+    display: none; align-items: center; gap: 10px;
+    background: var(--ink); color: var(--paper); border: none;
+    padding: 13px 18px; max-width: 320px;
+    font-family: var(--font-mono); font-size: 12.5px; text-align: left;
+    box-shadow: 0 6px 18px rgba(23,29,27,.25);
+    opacity: 0; transform: translateY(8px); transition: opacity .2s ease, transform .2s ease;
+    pointer-events: none;
+  }
+  .nav-next.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  .nav-next .nn-label { display: block; color: #9AA69E; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; }
+  .nav-next .nn-title { display: block; font-family: var(--font-serif); font-size: 14.5px; color: #fff; }
+  .nav-next .nn-arrow { flex: none; font-size: 16px; }
+
+  .nav-scrub {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 900;
+    background: var(--paper-raised); border-top: 1px solid var(--ink);
+    padding: 10px 18px calc(10px + env(safe-area-inset-bottom));
+    display: none; opacity: 0; transform: translateY(100%); transition: opacity .2s ease, transform .2s ease;
+  }
+  .nav-scrub.visible { opacity: 1; transform: translateY(0); }
+  .nav-scrub .ns-label { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); margin-bottom: 6px; }
+  .nav-scrub .ns-title { font-family: var(--font-serif); font-weight: 700; font-size: 14px; }
+  .nav-scrub input[type="range"] {
+    width: 100%; margin-top: 8px; accent-color: var(--red); height: 22px;
+  }
+
+  @media (min-width: 860px) {
+    .nav-next { display: flex; }
+  }
+  @media (max-width: 859px) {
+    .nav-scrub { display: block; }
+    footer { padding-bottom: 96px; }
+  }
+  @media (max-width: 640px) {
+    .funnel { overflow-x: visible; }
+    .funnel-track { min-width: 0; flex-wrap: wrap; row-gap: 22px; }
+    .funnel-track::before { display: none; }
+    .funnel-node { flex: 0 0 33.333%; }
+  }
+</style>
+</head>
+<body>
+
+<div id="reading-progress"></div>
+
+<header class="hero wrap" id="top">
+  <div class="eyebrow">Диагностика воронки · Growth Autopilot</div>
+  <h1>Куда утекают пациенты вашей стоматологии</h1>
+  <p class="dek">Трафик вроде есть, а свободных окон в расписании всё равно не хватает? Разберём, как устроена воронка стоматологии, где она чаще всего течёт, во сколько это обходится в деньгах — и что сделать в первую очередь.</p>
+
+  <div class="funnel" aria-hidden="true">
+    <div class="funnel-track">
+      <div class="funnel-node"><span class="funnel-dot"></span><span class="funnel-label">Реклама / трафик</span></div>
+      <div class="funnel-node"><span class="funnel-dot"></span><span class="funnel-label">Сайт, соцсети</span></div>
+      <div class="funnel-node"><span class="funnel-dot"></span><span class="funnel-label">Заявка, звонок</span></div>
+      <div class="funnel-node"><span class="funnel-dot"></span><span class="funnel-label">Запись на время</span></div>
+      <div class="funnel-node"><span class="funnel-dot"></span><span class="funnel-label">Дошёл до приёма</span></div>
+      <div class="funnel-node last"><span class="funnel-dot"></span><span class="funnel-label">Стал постоянным</span></div>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- Теория воронки -->
+  <section class="section wrap prose" id="s-theory1" data-nav-label="Почему воронка течёт">
+    <p class="lede">Раздел 1</p>
+    <h2>Почему трафик есть, а очереди из пациентов нет</h2>
+    <p>Когда стоматология жалуется на нехватку пациентов, первая реакция обычно одна: добавить бюджет на рекламу. Логика понятна — если заявок мало, значит, надо привести больше людей на сайт. Но в большинстве случаев проблема не в количестве трафика, а в том, что происходит с ним дальше.</p>
+    <p>У любой стоматологии есть воронка — путь, который проходит человек от первого касания с клиникой до того, как он садится в кресло, а затем возвращается снова (см. схему выше). Каждый переход между этими этапами — точка, где часть людей отваливается. И вот в чём проблема: почти весь маркетинговый бюджет и всё внимание уходят на первый этап — «привести трафик». Это самая заметная и самая измеримая часть: есть цифры показов, кликов, цена за клик. Середина и низ воронки — заявка → запись → дошёл → вернулся — почти никогда не считаются с той же тщательностью, хотя именно там теряется больше денег.</p>
+    <p>Возьмём типичный пример. Клиника тратит на рекламу 100 000 ₽ в месяц и получает 80 заявок по 1 250 ₽ за штуку — цифра выглядит нормально, отчёт «по лидам выполнен». Но если из этих 80 заявок реально доходит до кресла 40 человек — потому что часть не дозвонилась, часть передумала, пока ждала обратного звонка, часть не смогла найти удобное время — настоящая цена привлечённого пациента уже не 1 250 ₽, а 2 500 ₽. И это без учёта того, сколько из дошедших вообще вернутся повторно.</p>
+    <p>Отсюда правило, на котором строится весь этот разбор: если у клиники есть трафик, но нет очереди из пациентов, чинить нужно не верх воронки, а середину и низ. Это дешевле, чем удвоение рекламного бюджета, и почти всегда быстрее — правки в скрипты звонков или скорость реакции на заявку можно внести за 1-2 дня, а не ждать нового рекламного цикла.</p>
+    <p class="callout">Дальше — конкретно 5 мест, где эта потеря происходит чаще всего.</p>
+  </section>
+
+  <!-- Квиз-калибровка -->
+  <section class="section wrap" id="s-quiz" data-nav-label="Какая у вас клиника">
+    <p class="lede">Раздел 2</p>
+    <h2>Сначала — пара слов о вашей клинике</h2>
+    <div class="quiz" id="quiz-1" data-metrica-goal="quiz_completed">
+      <div class="quiz-question active" data-q="0">
+        <p class="quiz-q">Какая у вас стоматология?</p>
+        <div class="quiz-options">
+          <button data-result="solo">Один кабинет / соло-практика</button>
+          <button data-result="network">Сеть из нескольких клиник</button>
+        </div>
+      </div>
+      <div class="quiz-result" data-result="solo">
+        <span class="quiz-tag">Соло-практика</span>
+        <h3>Вы сами и врач, и управляющий, и часто маркетолог</h3>
+        <p>Узнаём. У соло-практик обычно нет ресурса тестировать десять каналов сразу — важно быстро найти 1-2 места, где теряется больше всего, и закрыть именно их. Ниже — 5 мест, где чаще всего теряют пациентов именно небольшие клиники.</p>
+      </div>
+      <div class="quiz-result" data-result="network">
+        <span class="quiz-tag">Сеть клиник</span>
+        <h3>У вас уже есть на кого делегировать трафик</h3>
+        <p>Значит, вопрос не в том, «делать ли маркетинг», а в том, где именно воронка течёт при масштабировании — то, что незаметно в одной клинике, на сети превращается в заметные потери. Ниже разберём, где именно искать.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 мест утечки -->
+  <section class="section wrap" id="s-leaks" data-nav-label="5 мест утечки">
+    <p class="lede">Раздел 3</p>
+    <h2>5 мест, где стоматология теряет пациентов</h2>
+    <div class="case-list">
+      <div class="case-row">
+        <div class="case-num">01</div>
+        <div>
+          <h3>Сайт и оффер: непонятно, зачем звонить именно вам</h3>
+          <p>Пациент, который ищет стоматологию, за один вечер открывает 4-5 сайтов подряд. Если ваш ничем не выделяется — список услуг, цены «от», фото врачей — он ничем не отличается от остальных вкладок в браузере. Человек либо звонит туда, где увидел конкретную причину прийти именно сюда, либо откладывает решение и в итоге не звонит никуда.</p>
+          <p>Работающий оффер — это не «скидка 10%» мелким шрифтом внизу страницы. Это понятная причина обратиться именно сейчас и именно к вам: бесплатная диагностика с рентгеном при записи на приём, гарантия на пломбы, фиксированная цена на популярную услугу без «от», ограниченное число мест на консультацию в этом месяце. Оффер должен быть виден в первые 3 секунды на сайте — в заголовке, а не в третьем экране вниз.</p>
+          <p class="case-check"><span class="mono-label">Проверить</span>откройте свой сайт как будто видите его впервые. Понятно ли за 3 секунды, что вам предлагают и почему стоит выбрать именно эту клинику?</p>
+        </div>
+      </div>
+      <div class="case-row">
+        <div class="case-num">02</div>
+        <div>
+          <h3>Заявка обрабатывается не сразу</h3>
+          <p>Пациент, который оставил заявку или позвонил в стоматологию, в этот момент сравнивает несколько клиник одновременно — это нормальное поведение при выборе медицинской услуги. Если администратор перезванивает через 2-3 часа, а не через 5-10 минут, велика вероятность, что человек уже записался туда, где ответили быстрее.</p>
+          <p>Дело не в лени администратора — чаще всего дело в отсутствии процесса: заявки падают в общий чат или на почту, где их не видно сразу, нет ответственного, который обязан перезвонить в течение конкретного времени, нет уведомлений о новой заявке на телефон.</p>
+          <p class="case-check"><span class="mono-label">Проверить</span>сделайте контрольную заявку на своём сайте в обычный будний день и засеките, через сколько минут вам перезвонят.</p>
+        </div>
+      </div>
+      <div class="case-row">
+        <div class="case-num">03</div>
+        <div>
+          <h3>Скрипты звонков — про информирование, а не про запись</h3>
+          <p>Разговор администратора с пациентом часто выглядит так: рассказали про врачей, про цены, ответили на вопросы — и попрощались словами «хорошо, подумайте, будут вопросы — звоните». Формально всё вежливо и правильно. По факту разговор закончился ничем, потому что в нём не было момента, ради которого он вообще происходил, — записи на конкретное время.</p>
+          <p>Хороший скрипт звонка не «информирует», а ведёт к записи с первой фразы. После ответа на 1-2 вопроса администратор должен сам предложить конкретное время: «Могу записать вас на четверг в 15:00 или на пятницу утром — что удобнее?». Выбор из двух вариантов работает лучше, чем открытый вопрос «когда вам удобно» — человеку проще выбрать, чем формулировать.</p>
+          <p class="case-check"><span class="mono-label">Проверить</span>попросите коллегу или знакомого позвонить как обычный пациент и посчитать, сколько раз за разговор администратор предложил конкретное время записи.</p>
+        </div>
+      </div>
+      <div class="case-row">
+        <div class="case-num">04</div>
+        <div>
+          <h3>Отзывы и Яндекс.Карты не работают на вас</h3>
+          <p>Прежде чем позвонить, большинство людей открывают Яндекс.Карты и смотрят рейтинг и последние отзывы клиники — это происходит до звонка, поэтому в рекламной статистике этот этап вообще не виден. Если рейтинг ниже 4.5, отзывов мало или последний негативный отзыв висит без ответа клиники несколько месяцев — часть трафика отваливается именно здесь, а в отчётах по рекламе это выглядит как «низкая конверсия сайта», хотя причина в другом месте.</p>
+          <p>Работа с репутацией — это не разовая акция «накрутим отзывов», а процесс: после каждого визита администратор или врач просит оставить отзыв, на негатив отвечают быстро и по существу, карточка на Яндекс.Картах заполнена полностью.</p>
+          <p class="case-check"><span class="mono-label">Проверить</span>откройте свою клинику в Яндекс.Картах глазами незнакомого человека. Захотелось бы вам позвонить за первые 10 секунд?</p>
+        </div>
+      </div>
+      <div class="case-row">
+        <div class="case-num">05</div>
+        <div>
+          <h3>Реклама крутится без аналитики по дошедшим</h3>
+          <p>Почти любая рекламная система покажет вам, сколько стоила заявка. Но заявка — это ещё не пациент. Часть заявок — это ошибочные звонки, спам, люди, которые передумали, не подтвердили запись или не дошли до приёма. Без связи между рекламным кабинетом и тем, что происходит дальше, невозможно понять, какой канал реально приводит пациентов, а какой просто красиво выглядит в отчёте по цене клика.</p>
+          <p>Минимальная версия этой аналитики — не сложная сквозная система, а обычная таблица или CRM, где на каждую заявку фиксируется источник и итоговый статус (дошёл / не дошёл / записан на будущее / отказ).</p>
+          <p class="case-check"><span class="mono-label">Проверить</span>сможете ли вы сейчас назвать не цену заявки, а цену дошедшего пациента по каждому рекламному каналу за последний месяц?</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Ориентиры рынка -->
+  <section class="section wrap prose" id="s-benchmarks" data-nav-label="Ориентиры рынка">
+    <p class="lede">Раздел 4</p>
+    <h2>Как выглядит здоровая воронка стоматологии</h2>
+    <p>Чтобы понимать, где именно ваша воронка проседает, полезно иметь ориентиры — не эталон, к которому нужно прийти любой ценой, а средние по рынку значения, с которыми можно сравнить свою ситуацию.</p>
+    <div class="ledger">
+      <div class="ledger-row"><span class="label">Скорость реакции на заявку</span><span class="value">5–10 мин</span></div>
+      <div class="ledger-row"><span class="label">Конверсия заявки в запись</span><span class="value">50–70%</span></div>
+      <div class="ledger-row"><span class="label">Запись → «дошёл» (с напоминаниями)</span><span class="value">70–85%</span></div>
+      <div class="ledger-row"><span class="label">Доля повторных пациентов</span><span class="value">30–40%</span></div>
+      <div class="ledger-row"><span class="label">Рейтинг в Яндекс.Картах</span><span class="value">от 4.5</span></div>
+    </div>
+    <p>Скорость реакции на заявку — в клиниках, где выстроен процесс, среднее время до первого звонка после заявки укладывается в 5-10 минут в рабочие часы. Если у вас это часы, а не минуты — здесь чаще всего теряется больше всего заявок, и это самое дешёвое место для правки: не нужен новый бюджет, нужен процесс и ответственный.</p>
+    <p>Доля повторных пациентов — показатель, который реже всего кто-то считает, хотя именно он определяет, окупается ли маркетинг в долгую. Клиника, где 30-40% визитов — от уже знакомых пациентов, тратит на привлечение заметно меньше, чем клиника, которая каждый месяц строит расписание заново с нуля.</p>
+    <p class="callout">Если по своей клинике вы не можете сходу назвать хотя бы 2-3 из этих цифр — это тоже диагноз: скорее всего, воронка теряет пациентов именно там, где её не измеряют. Проверьте себя по короткому чек-листу ниже — он собран как раз из этих ориентиров.</p>
+  </section>
+
+  <!-- Калькулятор потерь -->
+  <section class="section wrap" id="s-calc" data-nav-label="Калькулятор потерь">
+    <p class="lede">Раздел 5</p>
+    <h2>Сколько теряет ваша клиника в деньгах</h2>
+    <div class="receipt-wrap">
+      <div class="receipt" id="calc-1" data-metrica-goal="calculator_used">
+        <p class="receipt-title">Расчёт упущенной выручки / мес</p>
+        <div class="receipt-row">
+          <label for="calc-leads">Заявок в месяц</label>
+          <input type="number" id="calc-leads" inputmode="numeric" min="0" value="60">
+        </div>
+        <div class="receipt-row">
+          <label for="calc-lost">Не доходят до записи, %</label>
+          <input type="number" id="calc-lost" inputmode="numeric" min="0" max="100" value="30">
+        </div>
+        <div class="receipt-row">
+          <label for="calc-check">Средний чек, ₽</label>
+          <input type="number" id="calc-check" inputmode="numeric" min="0" value="4000">
+        </div>
+        <div class="receipt-total">
+          <span class="rt-label">Итого теряете / мес</span>
+          <span class="rt-value"><span id="calc-output">72 000</span> ₽</span>
+        </div>
+        <p class="receipt-note">Это только первичные визиты — без учёта повторных посещений и допродаж, с которыми реальная сумма обычно выше.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Чек-лист -->
+  <section class="section wrap" id="s-checklist" data-nav-label="Чек-лист">
+    <p class="lede">Раздел 6</p>
+    <h2>Проверьте свою воронку за 2 минуты</h2>
+    <p class="checklist-progress"><span class="done-count">0</span> / <span class="total-count">6</span> отмечено</p>
+    <div class="checklist" id="checklist-1" data-storage-key="dental-checklist-v1">
+      <label><input type="checkbox"> Отвечаем на заявку/звонок в течение 10-15 минут</label>
+      <label><input type="checkbox"> У администраторов есть скрипт, который заканчивается конкретной записью на время</label>
+      <label><input type="checkbox"> На сайте есть понятный оффер, а не только список цен</label>
+      <label><input type="checkbox"> Рейтинг в Яндекс.Картах выше 4.5, негатив отрабатывается</label>
+      <label><input type="checkbox"> Знаем, сколько стоит не заявка, а дошедший пациент, по каждому каналу</label>
+      <label><input type="checkbox"> Есть система напоминаний о повторных визитах</label>
+    </div>
+  </section>
+
+  <!-- Финальный CTA -->
+  <section class="section" id="s-cta" data-nav-label="Запись на разбор" style="border-top:none; padding:0;">
+    <div class="stamp">
+      <div class="wrap" style="padding:0;">
+        <p class="lede" style="color:#9AA69E;">Раздел 7</p>
+        <h2>Бесплатно разберём воронку вашей клиники за 20 минут</h2>
+        <p class="dek">Покажем 2-3 конкретных места, где вы теряете пациентов прямо сейчас, и что с этим делать в первую очередь — без обязательств и без «универсального» решения под копирку.</p>
+        <form id="lead-form" data-webhook="/api/leadmagnet1-submit">
+          <div class="stamp-field">
+            <label for="f-name">Как к вам обращаться</label>
+            <input type="text" id="f-name" name="name" required>
+          </div>
+          <div class="stamp-field">
+            <label for="f-clinic">Название клиники</label>
+            <input type="text" id="f-clinic" name="clinic" required>
+          </div>
+          <div class="stamp-field">
+            <label for="f-contact">Телефон или Telegram</label>
+            <input type="tel" id="f-contact" name="contact" required>
+          </div>
+          <button type="submit">Записаться на разбор</button>
+          <p class="form-status"></p>
+        </form>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="mono">Growth Autopilot — агентство лидогенерации для стоматологий</footer>
+
+<!-- Навигация: десктоп — кнопка "следующий раздел", мобильный — перемотка -->
+<button class="nav-next mono" id="nav-next" type="button">
+  <span>
+    <span class="nn-label">Далее</span>
+    <span class="nn-title" id="nav-next-title"></span>
+  </span>
+  <span class="nn-arrow" aria-hidden="true">→</span>
+</button>
+
+<div class="nav-scrub" id="nav-scrub">
+  <div class="ns-label">Раздел <span id="ns-index">1</span> / <span id="ns-total"></span></div>
+  <div class="ns-title" id="ns-title"></div>
+  <input type="range" id="ns-range" min="0" max="0" step="1" value="0" aria-label="Перемотка по разделам">
+</div>
+
+<script>
+(function () {
+  var METRICA_COUNTER_ID = 00000000;
+
+  var bar = document.getElementById('reading-progress');
+  window.addEventListener('scroll', function () {
+    var h = document.documentElement;
+    var scrolled = (h.scrollTop) / (h.scrollHeight - h.clientHeight) * 100;
+    bar.style.width = Math.min(100, Math.max(0, scrolled)) + '%';
+  }, { passive: true });
+
+  function reachGoal(name) {
+    if (typeof ym === 'function') {
+      try { ym(METRICA_COUNTER_ID, 'reachGoal', name); } catch (e) {}
+    }
+  }
+
+  // Квиз
+  document.querySelectorAll('.quiz').forEach(function (quiz) {
+    quiz.querySelectorAll('.quiz-options button').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var result = btn.getAttribute('data-result');
+        quiz.querySelectorAll('.quiz-question').forEach(function (q) { q.classList.remove('active'); });
+        quiz.querySelectorAll('.quiz-result').forEach(function (r) {
+          r.classList.toggle('active', r.getAttribute('data-result') === result);
+        });
+        reachGoal(quiz.getAttribute('data-metrica-goal') || 'quiz_completed');
+      });
+    });
+  });
+
+  // Калькулятор
+  document.querySelectorAll('.receipt').forEach(function (calc) {
+    var leadsInput = calc.querySelector('#calc-leads');
+    var lostInput = calc.querySelector('#calc-lost');
+    var checkInput = calc.querySelector('#calc-check');
+    var output = calc.querySelector('#calc-output');
+    var fired = false;
+
+    function recalc() {
+      var leads = Math.max(0, parseFloat(leadsInput.value) || 0);
+      var lostPct = Math.min(100, Math.max(0, parseFloat(lostInput.value) || 0));
+      var check = Math.max(0, parseFloat(checkInput.value) || 0);
+      var lost = Math.round(leads * (lostPct / 100) * check);
+      output.textContent = lost.toLocaleString('ru-RU');
+      if (!fired) { fired = true; reachGoal(calc.getAttribute('data-metrica-goal') || 'calculator_used'); }
+    }
+
+    [leadsInput, lostInput, checkInput].forEach(function (input) {
+      input.addEventListener('input', recalc);
+    });
+    recalc();
+  });
+
+  // Чек-лист с сохранением состояния
+  document.querySelectorAll('.checklist').forEach(function (list) {
+    var key = list.getAttribute('data-storage-key') || 'checklist-default';
+    var boxes = list.querySelectorAll('input[type="checkbox"]');
+    var section = list.closest('.section');
+    var doneCount = section.querySelector('.done-count');
+    var totalCount = section.querySelector('.total-count');
+    totalCount.textContent = boxes.length;
+
+    function saved() {
+      try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { return []; }
+    }
+    function update() {
+      var done = 0;
+      var state = [];
+      boxes.forEach(function (box, i) { if (box.checked) done++; state[i] = box.checked; });
+      doneCount.textContent = done;
+      try { localStorage.setItem(key, JSON.stringify(state)); } catch (e) {}
+    }
+    var state = saved();
+    boxes.forEach(function (box, i) { if (state[i]) box.checked = true; });
+    update();
+    boxes.forEach(function (box) { box.addEventListener('change', update); });
+  });
+
+  // Финальная форма
+  var form = document.getElementById('lead-form');
+  if (form) {
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var status = form.querySelector('.form-status');
+      var webhook = form.getAttribute('data-webhook');
+      var data = Object.fromEntries(new FormData(form).entries());
+      status.textContent = 'Отправляем...';
+
+      fetch(webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      }).then(function (res) {
+        if (!res.ok) throw new Error('bad status');
+        status.textContent = 'Спасибо! Мы скоро свяжемся.';
+        form.reset();
+        reachGoal('lead_submit');
+      }).catch(function () {
+        status.textContent = 'Не получилось отправить. Попробуйте ещё раз или напишите нам напрямую.';
+      });
+    });
+  }
+
+  // ── Навигация по разделам: следующий раздел (десктоп) + перемотка (моб.) ──
+  var sections = Array.prototype.map.call(document.querySelectorAll('main .section[id]'), function (el) {
+    return { id: el.id, label: el.getAttribute('data-nav-label') || el.id, el: el };
+  });
+
+  var navNext = document.getElementById('nav-next');
+  var navNextTitle = document.getElementById('nav-next-title');
+  var navScrub = document.getElementById('nav-scrub');
+  var nsRange = document.getElementById('ns-range');
+  var nsTitle = document.getElementById('ns-title');
+  var nsIndex = document.getElementById('ns-index');
+  var nsTotal = document.getElementById('ns-total');
+  var hero = document.getElementById('top');
+
+  nsRange.max = String(sections.length - 1);
+  nsTotal.textContent = String(sections.length);
+
+  var dragging = false;
+  var currentIndex = 0;
+
+  function scrollToSection(i) {
+    var target = sections[Math.max(0, Math.min(sections.length - 1, i))];
+    if (target) target.el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function computeCurrentIndex() {
+    var probe = window.scrollY + 140;
+    var idx = 0;
+    for (var i = 0; i < sections.length; i++) {
+      if (sections[i].el.offsetTop <= probe) idx = i;
+    }
+    return idx;
+  }
+
+  function updateNav() {
+    var pastHero = window.scrollY > (hero.offsetTop + hero.offsetHeight - 80);
+    navNext.classList.toggle('visible', pastHero);
+    navScrub.classList.toggle('visible', pastHero);
+    if (!pastHero) return;
+
+    currentIndex = computeCurrentIndex();
+
+    var next = sections[currentIndex + 1];
+    if (next) {
+      navNext.style.display = '';
+      navNextTitle.textContent = next.label;
+    } else {
+      navNext.classList.remove('visible');
+    }
+
+    nsTitle.textContent = sections[currentIndex].label;
+    nsIndex.textContent = String(currentIndex + 1);
+    if (!dragging) nsRange.value = String(currentIndex);
+  }
+
+  navNext.addEventListener('click', function () {
+    scrollToSection(currentIndex + 1);
+  });
+
+  nsRange.addEventListener('pointerdown', function () { dragging = true; });
+  window.addEventListener('pointerup', function () {
+    if (dragging) { dragging = false; scrollToSection(parseInt(nsRange.value, 10)); }
+  });
+  nsRange.addEventListener('input', function () {
+    var i = parseInt(nsRange.value, 10);
+    nsTitle.textContent = sections[i].label;
+    nsIndex.textContent = String(i + 1);
+  });
+
+  var ticking = false;
+  window.addEventListener('scroll', function () {
+    if (!ticking) {
+      window.requestAnimationFrame(function () { updateNav(); ticking = false; });
+      ticking = true;
+    }
+  }, { passive: true });
+  window.addEventListener('resize', updateNav);
+  updateNav();
+})();
+</script>
+
+</body>
+</html>`;
 }
 
 // Фиксированные темы вопросов 2-4 — сам вопрос показывает фронт, сюда идёт
