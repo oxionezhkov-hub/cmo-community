@@ -41,6 +41,7 @@ export default {
     if (url.pathname === "/api/events") return apiEvents(request, env);
     if (url.pathname === '/api/request-access') return apiRequestAccess(request, env);
     if (url.pathname === '/api/kb') return apiKB(request, env);
+    if (url.pathname === '/api/tags') return apiTags(request, env);
     if (url.pathname === '/api/coffee/join') return apiCoffeeJoin(request, env);
 if (url.pathname === '/api/coffee/profile') return apiCoffeeProfile(request, env);
 if (url.pathname === '/api/coffee/toggle') return apiCoffeeToggle(request, env);
@@ -78,21 +79,25 @@ if (url.pathname === '/api/admin/coffee/send-now') {
     return new Response("Not found", { status: 404 });
   },
   async scheduled(event, env, ctx) {
-  const now = new Date();
-  const day = now.getUTCDay(); // 1=пн, 5=пт
-  const hour = now.getUTCHours();
-  // 9 = 12:00 МСК
-  if (hour === 9) {
-    if (day === 1) {
-      // понедельник — если админ не назначил пары вручную, формируем их автоматически (избегая повторов)
-      const weekId = COFFEE_WEEK();
-      const existing = await env.KV.get(`coffee:round:${weekId}`, 'json');
-      if (!existing) await coffeeAutoGeneratePairs(env, weekId);
-      await coffeeSendPairs(env); // рассылка пар
+  try {
+    const now = new Date();
+    const day = now.getUTCDay(); // 1=пн, 5=пт
+    const hour = now.getUTCHours();
+    // 9 = 12:00 МСК
+    if (hour === 9) {
+      if (day === 1) {
+        // понедельник — если админ не назначил пары вручную, формируем их автоматически (избегая повторов)
+        const weekId = COFFEE_WEEK();
+        const existing = await env.KV.get(`coffee:round:${weekId}`, 'json');
+        if (!existing) await coffeeAutoGeneratePairs(env, weekId);
+        await coffeeSendPairs(env); // рассылка пар
+      }
+      if (day === 5) await coffeeSendReminder(env); // пятница — напоминание + оценка
     }
-    if (day === 5) await coffeeSendReminder(env); // пятница — напоминание + оценка
+    await coffeeSendNewbieReminders(env);
+  } catch(err) {
+    await notifyAdminError(env, 'scheduled', err);
   }
-  await coffeeSendNewbieReminders(env);
 }
 };
 
@@ -141,16 +146,22 @@ async function apiAuthEmail(request, env) {
   if (!email) return jsonResp({ ok: false, error: "No email" }, 400);
   const emailLower = email.toLowerCase().trim();
 
+  const parsed = initData ? parseTgInitData(initData) : null;
+
   const emails = await env.KV.get("emails:approved", "json") || [];
   const found = emails.some(e => e.toLowerCase() === emailLower);
-  if (!found) return jsonResp({ ok: false, error: "Email не найден в списке участников" });
+  if (!found) {
+    // Доступ выдаётся сразу — админ может закрыть его отдельно, если участник не оплатил
+    emails.push(emailLower);
+    await env.KV.put("emails:approved", JSON.stringify(emails));
+    await notifyAdminNewAccess(env, emailLower, parsed?.user);
+  }
 
   // Try to get existing mapping
   let userId = await env.KV.get(`email_to_user:${emailLower}`);
 
   // If no mapping yet but we have initData — create it now
   if (!userId && initData) {
-    const parsed = parseTgInitData(initData);
     if (parsed?.user) {
       const tgId = String(parsed.user.id);
       await env.KV.put(`email_to_user:${emailLower}`, tgId);
@@ -189,35 +200,17 @@ async function apiRequestAccess(request, env) {
   if (request.method !== 'POST') return jsonResp({ error: 'Method not allowed' }, 405);
   const { email, initData } = await request.json();
   if (!email) return jsonResp({ ok: false });
+  const emailLower = email.toLowerCase().trim();
 
-  // Получить tgId если есть
-  let tgId = null;
-  let name = email.split('@')[0];
-  if (initData) {
-    const parsed = parseTgInitData(initData);
-    if (parsed?.user) {
-      tgId = parsed.user.id;
-      name = parsed.user.first_name || name;
-    }
-  }
+  const parsed = initData ? parseTgInitData(initData) : null;
 
-  // Добавить в pending:list если ещё нет
-  const pending = await env.KV.get('pending:list', 'json') || [];
-  const already = pending.some(p => p.email === email.toLowerCase());
-  if (!already) {
-    pending.unshift({ email: email.toLowerCase(), tgId, name, date: Date.now() });
-    await env.KV.put('pending:list', JSON.stringify(pending));
+  // Доступ выдаётся сразу — админ может закрыть его отдельно, если участник не оплатил
+  const emails = await env.KV.get('emails:approved', 'json') || [];
+  if (!emails.some(e => e.toLowerCase() === emailLower)) {
+    emails.push(emailLower);
+    await env.KV.put('emails:approved', JSON.stringify(emails));
   }
-
-  // Уведомить админа
-  if (env.ADMIN_ID) {
-    const text = `🔔 *Заявка на доступ*\n\nEmail: \`${email}\`\nИмя: ${name}${tgId ? `\nTG ID: ${tgId}` : ''}`;
-    const keyboard = tgId ? { inline_keyboard: [[
-      { text: '✅ Одобрить', callback_data: `approve_${tgId}_${email}` },
-      { text: '❌ Отклонить', callback_data: `reject_${tgId}` }
-    ]] } : null;
-    await tgSend(env, env.ADMIN_ID, text, keyboard);
-  }
+  await notifyAdminNewAccess(env, emailLower, parsed?.user);
 
   return jsonResp({ ok: true });
 }
@@ -241,37 +234,6 @@ async function handleMessage(msg, env) {
     username: msg.from.username || '',
     startedAt: Date.now()
   }));
-
-  // ★★★ ОБРАБОТКА /start circle (deep link) ★★★
-  if (text === "/start circle" || text === "/start circle" || (text === "/start" && msg.text?.includes("circle"))) {
-    await env.KV.put(`coffee:pending_circle:${userId}`, '1', { expirationTtl: 3600 });
-    await tgSend(env, userId,
-      '🎥 Запиши кружочек — короткое приветствие для твоего будущего партнёра по нетворку.\n\nПросто запиши и отправь сюда. Кружочек будет отправляться каждому новому партнёру автоматически.',
-      { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'coffee_circle_skip' }]] }
-    );
-    return;
-  }
-
-  // В handleMessage, добавить обработку
-if (text === "/start circle_onboarding" || text === "/start?start=circle_onboarding") {
-  await env.KV.put(`coffee:pending_circle:${userId}`, '1', { expirationTtl: 3600 });
-  // Сохраняем флаг, что это онбординг
-  await env.KV.put(`coffee:onboarding_mode:${userId}`, 'true', { expirationTtl: 3600 });
-  await tgSend(env, userId,
-    '🎥 Запиши приветственный кружочек для Рандом Кофе\n\nПросто запиши и отправь сюда. Кружочек будет отправляться каждому новому партнёру автоматически.\n\nПосле записи вернись в приложение и заверши регистрацию.',
-    { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'coffee_circle_skip_onboarding' }]] }
-  );
-  return;
-}
-
-  if (text === "/start circle_edit" || text === "/start?start=circle_edit") {
-  await env.KV.put(`coffee:pending_circle:${userId}`, '1', { expirationTtl: 3600 });
-  await tgSend(env, userId,
-    '🎥 Перезапись кружочка\n\nЗапиши новый кружочек — он заменит старый. Партнёры будут видеть его при знакомстве.\n\nПросто запиши и отправь сюда.',
-    { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'coffee_circle_skip' }]] }
-  );
-  return;
-}
 
   if (text === "/start") {
     const userData = await env.KV.get(`user:${userId}`, "json");
@@ -302,65 +264,7 @@ if (text === "/start circle_onboarding" || text === "/start?start=circle_onboard
   } 
   else if (text.includes("@") && text.includes(".")) {
     await handleEmailCheck(msg, env, text.trim().toLowerCase());
-  } 
-  else if (text === 'circle') {
-    await env.KV.put(`coffee:pending_circle:${userId}`, '1', { expirationTtl: 3600 });
-    await tgSend(env, userId,
-      '🎥 Запиши кружочек — короткое приветствие для твоего будущего партнёра по нетворку.\n\nПросто запиши и отправь сюда. Кружочек будет отправляться каждому новому партнёру автоматически.',
-      { inline_keyboard: [[{ text: '❌ Отмена', callback_data: 'coffee_circle_skip' }]] }
-    );
-    return;
-  } else if (msg.video_note) {
-  const pending = await env.KV.get(`coffee:pending_circle:${userId}`);
-  const isOnboarding = await env.KV.get(`coffee:onboarding_mode:${userId}`);
-  
-  if (pending) {
-    let profile = await env.KV.get(`coffee:user:${userId}`, 'json');
-    if (!profile) {
-      profile = {
-        tgId: userId,
-        circleFileId: msg.video_note.file_id,
-        name: msg.from.first_name || '',
-        active: false,
-        joinedAt: Date.now(),
-        updatedAt: Date.now()
-      };
-    } else {
-      profile.circleFileId = msg.video_note.file_id;
-      profile.updatedAt = Date.now();
-    }
-    await env.KV.put(`coffee:user:${userId}`, JSON.stringify(profile));
-    await env.KV.delete(`coffee:pending_circle:${userId}`);
-    
-    if (isOnboarding) {
-      await env.KV.delete(`coffee:onboarding_mode:${userId}`);
-      // Возвращаемся в приложение
-      await tgSend(env, userId,
-        '✅ Кружочек сохранён!\n\nВернись в приложение и заверши регистрацию, заполнив профиль.',
-        { 
-          inline_keyboard: [[{ 
-            text: '☕ Продолжить регистрацию', 
-            web_app: { url: `${WORKER_URL}/app` }
-          }]] 
-        }
-      );
-    } else {
-      // Обычное сохранение кружочка (редактирование)
-      const hasProfile = profile.name && profile.bio && profile.request;
-      if (!hasProfile) {
-        await tgSend(env, userId, '🎉 Кружочек сохранён!\n\nТеперь заполни профиль в приложении, чтобы начать участвовать в Рандом Кофе 👇',
-          { inline_keyboard: [[{ text: '☕ Заполнить профиль', web_app: { url: `${WORKER_URL}/app` } }]] }
-        );
-      } else {
-        await tgSend(env, userId, '🎉 Кружочек сохранён! Партнёры по нетворку увидят его при знакомстве.',
-          { inline_keyboard: [[{ text: '↩️ Вернуться в приложение', web_app: { url: `${WORKER_URL}/app` } }]] }
-        );
-      }
-    }
-  } else {
-    await tgSend(env, userId, '🎥 Отправь команду /circle, чтобы записать приветственный кружочек.');
   }
-}
   else {
     // любое другое сообщение — считается вопросом
     const questions = await env.KV.get("questions:list", "json") || [];
@@ -386,48 +290,32 @@ async function handleEmailCheck(msg, env, email) {
   const emails = await env.KV.get("emails:approved", "json") || [];
   const found = emails.some(e => e.toLowerCase() === email);
 
-  if (found) {
-    const userData = {
-      tgId: userId,
-      email,
-      approved: true,
-      name: msg.from.first_name,
-      lastName: msg.from.last_name || "",
-      username: msg.from.username || "",
-      enrolledAt: Date.now()
-    };
-    await env.KV.put(`user:${userId}`, JSON.stringify(userData));
-    await env.KV.put(`email_to_user:${email}`, String(userId));
-    const keyboard = {
-      inline_keyboard: [[
-        { text: "📚 Открыть приложение", web_app: { url: `${WORKER_URL}/app` } }
-      ]]
-    };
-    await tgSend(env, chatId, `✅ *Доступ подтверждён!*\n\nТвой email \`${email}\` найден в базе участников.\n\nНажми кнопку ниже, чтобы войти в приложение.`, keyboard);
-  } else {
-    const pending = await env.KV.get("pending:list", "json") || [];
-    const exists = pending.find(p => p.email === email);
-    if (!exists) {
-      pending.push({ email, tgId: userId, name: msg.from.first_name, date: Date.now() });
-      await env.KV.put("pending:list", JSON.stringify(pending));
-      const keyboard = {
-  inline_keyboard: [[
-    { text: "✅ Одобрить", callback_data: `approve_${userId}_${email}` },
-    { text: "❌ Отклонить", callback_data: `reject_${userId}` }
-  ]]
-};
-await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    chat_id: env.ADMIN_ID,
-    text: `🔔 Запрос на доступ\n\nEmail: ${email}\nИмя: ${msg.from.first_name}\n@${msg.from.username || '—'}\nID: ${userId}`,
-    reply_markup: keyboard
-  })
-});
-    }
-    await tgSend(env, chatId, `❌ Email \`${email}\` не найден в списке участников.\n\n💳 Чтобы присоединиться, оплати участие по ссылке:\n${PAYMENT_LINK}\n\nЕсли ты уже оплатил — администратор проверит и добавит тебя в ближайшее время.`);
+  if (!found) {
+    // Доступ выдаётся сразу — админ может закрыть его отдельно, если участник не оплатил
+    emails.push(email);
+    await env.KV.put("emails:approved", JSON.stringify(emails));
+    await notifyAdminNewAccess(env, email, msg.from);
   }
+
+  const existing = await env.KV.get(`user:${userId}`, "json");
+  const userData = {
+    ...(existing || {}),
+    tgId: userId,
+    email,
+    approved: true,
+    name: existing?.name || msg.from.first_name,
+    lastName: existing?.lastName || msg.from.last_name || "",
+    username: existing?.username || msg.from.username || "",
+    enrolledAt: existing?.enrolledAt || Date.now()
+  };
+  await env.KV.put(`user:${userId}`, JSON.stringify(userData));
+  await env.KV.put(`email_to_user:${email}`, String(userId));
+  const keyboard = {
+    inline_keyboard: [[
+      { text: "📚 Открыть приложение", web_app: { url: `${WORKER_URL}/app` } }
+    ]]
+  };
+  await tgSend(env, chatId, `✅ *Доступ подтверждён!*\n\nТвой email \`${email}\` активирован.\n\nНажми кнопку ниже, чтобы войти в приложение.`, keyboard);
 }
 
 async function handleCallback(cq, env) {
@@ -462,6 +350,34 @@ if (data.startsWith('approve_')) {
   const keyboard = { inline_keyboard: [[{ text: "📚 Открыть приложение", web_app: { url: `${WORKER_URL}/app` } }]] };
   await tgSend(env, Number(userId), `✅ Доступ одобрен!\n\nТвой email \`${email}\` подтверждён администратором.`, keyboard);
   await tgSend(env, cq.message.chat.id, `✅ Одобрено: ${email}`);
+} else if (data.startsWith('closeaccess_')) {
+  const token = data.replace('closeaccess_', '');
+  const info = await env.KV.get(`accessrevoke:${token}`, 'json');
+  if (info) {
+    const { tgId, email } = info;
+    const emails = await env.KV.get('emails:approved', 'json') || [];
+    const filtered = emails.filter(e => e.toLowerCase() !== String(email).toLowerCase());
+    await env.KV.put('emails:approved', JSON.stringify(filtered));
+
+    const userData = await env.KV.get(`user:${tgId}`, 'json');
+    if (userData) {
+      userData.approved = false;
+      await env.KV.put(`user:${tgId}`, JSON.stringify(userData));
+    }
+    await env.KV.delete(`email_to_user:${String(email).toLowerCase()}`);
+    await env.KV.delete(`accessrevoke:${token}`);
+
+    await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/editMessageReplyMarkup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [] } })
+    });
+
+    await tgSend(env, tgId, `🚫 Доступ к разделам «Ядро» и «База знаний» закрыт администратором.\n\nЕсли ты уже оплатил участие — напиши администратору Олегу Ежкову, чтобы восстановить доступ.`);
+    await tgSend(env, cq.message.chat.id, `🚫 Доступ закрыт: ${email}`);
+  } else {
+    await tgSend(env, cq.message.chat.id, `⚠️ Ссылка на закрытие доступа устарела.`);
+  }
 } else if (data === 'coffee_restore') {
   const tgId = cq.from.id;  // ← вот так правильно
   const profile = await env.KV.get(`coffee:user:${tgId}`, 'json');
@@ -472,18 +388,6 @@ if (data.startsWith('approve_')) {
     await env.KV.put(`coffee:user:${tgId}`, JSON.stringify(profile));
     await tgSend(env, tgId, '✅ Ты снова в подборе! В следующий понедельник получишь нового партнёра ☕');
   }
-} else if (data === 'coffee_circle_skip_onboarding') {
-  const userId = cq.from.id;
-  await env.KV.delete(`coffee:pending_circle:${userId}`);
-  await env.KV.delete(`coffee:onboarding_mode:${userId}`);
-  await tgSend(env, userId, 'Окей, кружочек пропустим. Можешь продолжить регистрацию в приложении.',
-    { inline_keyboard: [[{ text: '☕ Продолжить регистрацию', web_app: { url: `${WORKER_URL}/app` } }]] }
-  );
-} else if (data === 'coffee_circle_skip') {
-  // Исправлено: получаем userId из cq.from.id
-  const userId = cq.from.id;
-  await env.KV.delete(`coffee:pending_circle:${userId}`);
-  await tgSend(env, userId, 'Окей, кружочек пропустим. Ты всё равно уже в Рандом Кофе 🎉');
 }
 
 if (data.startsWith('reject_')) {
@@ -516,6 +420,32 @@ async function tgSend(env, chatId, text, replyMarkup) {
     body: JSON.stringify(body)
   });
   return res.json(); // ← добавь return
+}
+
+async function notifyAdminError(env, context, err) {
+  try {
+    if (!env.ADMIN_ID) return;
+    const detail = (err && err.stack) ? String(err.stack) : String(err);
+    await tgSend(env, env.ADMIN_ID, `⚠️ Ошибка в Random Coffee (${context})\n\n${detail.slice(0, 800)}`);
+  } catch(e) {}
+}
+
+// Доступ в Ядро и базу знаний выдаётся автоматически по email.
+// Админ получает уведомление и может закрыть доступ, если участник не оплатил.
+async function notifyAdminNewAccess(env, email, tgUser) {
+  try {
+    if (!env.ADMIN_ID) return;
+    const tgId = tgUser?.id || null;
+    const name = tgUser?.first_name || email.split('@')[0];
+    let keyboard = null;
+    if (tgId) {
+      const token = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      await env.KV.put(`accessrevoke:${token}`, JSON.stringify({ tgId, email }), { expirationTtl: 60 * 60 * 24 * 30 });
+      keyboard = { inline_keyboard: [[{ text: '🚫 Закрыть доступ (не оплатил)', callback_data: `closeaccess_${token}` }]] };
+    }
+    const text = `✅ *Доступ в Ядро выдан автоматически*\n\nEmail: \`${email}\`\nИмя: ${name}${tgId ? `\nTG ID: ${tgId}` : ''}\n\nЕсли участник не оплатил — закрой доступ кнопкой ниже.`;
+    await tgSend(env, env.ADMIN_ID, text, keyboard);
+  } catch(e) {}
 }
 
 function icsStartFromDatetime(dtStr) {
@@ -630,6 +560,11 @@ async function apiProgram(request, env) {
 
   const program = await env.KV.get(`program:${programId}`, "json");
   return jsonResp(program);
+}
+
+async function apiTags(request, env) {
+  const tags = await env.KV.get("program:tags", "json") || [];
+  return jsonResp({ tags });
 }
 
 // ─── API: PROGRESS ───────────────────────────────────────────
@@ -1156,9 +1091,34 @@ if (action === "notify" && request.method === "POST") {
     const { programId } = await request.json();
     const program = await env.KV.get(`program:${programId}`, "json");
     const newId = "m" + (program.modules.length + 1) + "_" + Date.now();
-    program.modules.push({ id: newId, title: "Новый модуль", description: "", embedUrl: "", files: [], available: false });
+    program.modules.push({ id: newId, title: "Новый модуль", description: "", embedUrl: "", files: [], available: false, date: new Date().toISOString().slice(0, 10), tags: [] });
     await env.KV.put(`program:${programId}`, JSON.stringify(program));
     return jsonResp({ ok: true, program });
+  }
+
+  if (action === "tags" && request.method === "GET") {
+    const tags = await env.KV.get("program:tags", "json") || [];
+    return jsonResp({ tags });
+  }
+
+  if (action === "add-tag" && request.method === "POST") {
+    const { name } = await request.json();
+    const trimmed = (name || "").trim();
+    if (!trimmed) return jsonResp({ ok: false, error: "Пустое имя тега" });
+    const tags = await env.KV.get("program:tags", "json") || [];
+    if (!tags.includes(trimmed)) {
+      tags.push(trimmed);
+      await env.KV.put("program:tags", JSON.stringify(tags));
+    }
+    return jsonResp({ ok: true, tags });
+  }
+
+  if (action === "delete-tag" && request.method === "POST") {
+    const { name } = await request.json();
+    let tags = await env.KV.get("program:tags", "json") || [];
+    tags = tags.filter(t => t !== name);
+    await env.KV.put("program:tags", JSON.stringify(tags));
+    return jsonResp({ ok: true, tags });
   }
 
   if (action === "delete-module" && request.method === "POST") {
@@ -2407,67 +2367,82 @@ const COFFEE_WEEK = () => {
 
 async function apiCoffeeJoin(request, env) {
   if (request.method !== 'POST') return jsonResp({ error: 'Method not allowed' }, 405);
-  const { tgId, name, city, bio, request: userRequest, skills, circleFileId, active } = await request.json();
-  if (!tgId) return jsonResp({ ok: false, error: 'No tgId' });
+  try {
+    const { tgId, name, city, bio, request: userRequest, skills, active } = await request.json();
+    if (!tgId) return jsonResp({ ok: false, error: 'No tgId' });
 
-  const existing = await env.KV.get(`coffee:user:${tgId}`, 'json') || {};
-// Подтянуть username из botuser если не пришёл явно
-const botuserData = await env.KV.get(`botuser:${tgId}`, 'json');
-const resolvedUsername = botuserData?.username || existing.username || null;
-const profile = {
-  ...existing,
-  tgId, name, city, bio,
-  username: resolvedUsername,  // ← новое поле
-  request: userRequest,
-  skills: skills || [],
-    active: active !== undefined ? active : true, // по умолчанию true
-    circleFileId: circleFileId || existing.circleFileId || null, // сохраняем кружочек
-    joinedAt: existing.joinedAt || Date.now(),
-    updatedAt: Date.now()
-  };
-  await env.KV.put(`coffee:user:${tgId}`, JSON.stringify(profile));
+    const existing = await env.KV.get(`coffee:user:${tgId}`, 'json') || {};
+    // Подтянуть username из botuser если не пришёл явно
+    const botuserData = await env.KV.get(`botuser:${tgId}`, 'json');
+    const resolvedUsername = botuserData?.username || existing.username || null;
+    const profile = {
+      ...existing,
+      tgId, name, city, bio,
+      username: resolvedUsername,  // ← новое поле
+      request: userRequest,
+      skills: skills || [],
+      active: active !== undefined ? active : true, // по умолчанию true
+      joinedAt: existing.joinedAt || Date.now(),
+      updatedAt: Date.now()
+    };
+    await env.KV.put(`coffee:user:${tgId}`, JSON.stringify(profile));
 
-  // Добавить в индекс участников
-  const idx = await env.KV.get('coffee:participants', 'json') || [];
-  if (!idx.includes(tgId)) {
-    idx.push(tgId);
-    await env.KV.put('coffee:participants', JSON.stringify(idx));
+    // Добавить в индекс участников
+    const idx = await env.KV.get('coffee:participants', 'json') || [];
+    if (!idx.includes(tgId)) {
+      idx.push(tgId);
+      await env.KV.put('coffee:participants', JSON.stringify(idx));
+    }
+
+    return jsonResp({ ok: true });
+  } catch(err) {
+    await notifyAdminError(env, 'apiCoffeeJoin', err);
+    return jsonResp({ ok: false, error: 'internal' }, 500);
   }
-
-  return jsonResp({ ok: true });
 }
 
 async function apiCoffeeProfile(request, env) {
   if (request.method !== 'POST') return jsonResp({ error: 'Method not allowed' }, 405);
-  const { tgId, ...fields } = await request.json();
-  if (!tgId) return jsonResp({ ok: false, error: 'No tgId' });
+  try {
+    const { tgId, ...fields } = await request.json();
+    if (!tgId) return jsonResp({ ok: false, error: 'No tgId' });
 
-  const profile = await env.KV.get(`coffee:user:${tgId}`, 'json');
-  if (!profile) return jsonResp({ ok: false, error: 'Not found' });
+    const profile = await env.KV.get(`coffee:user:${tgId}`, 'json');
+    if (!profile) return jsonResp({ ok: false, error: 'Not found' });
 
-  const updated = { ...profile, ...fields, updatedAt: Date.now() };
-  await env.KV.put(`coffee:user:${tgId}`, JSON.stringify(updated));
-  return jsonResp({ ok: true });
+    const updated = { ...profile, ...fields, updatedAt: Date.now() };
+    await env.KV.put(`coffee:user:${tgId}`, JSON.stringify(updated));
+    return jsonResp({ ok: true });
+  } catch(err) {
+    await notifyAdminError(env, 'apiCoffeeProfile', err);
+    return jsonResp({ ok: false, error: 'internal' }, 500);
+  }
 }
 
 async function apiCoffeeToggle(request, env) {
   if (request.method !== 'POST') return jsonResp({ error: 'Method not allowed' }, 405);
-  const { tgId } = await request.json();
-  if (!tgId) return jsonResp({ ok: false });
+  try {
+    const { tgId } = await request.json();
+    if (!tgId) return jsonResp({ ok: false });
 
-  const profile = await env.KV.get(`coffee:user:${tgId}`, 'json');
-  if (!profile) return jsonResp({ ok: false, error: 'Not found' });
+    const profile = await env.KV.get(`coffee:user:${tgId}`, 'json');
+    if (!profile) return jsonResp({ ok: false, error: 'Not found' });
 
-  profile.active = !profile.active;
-  profile.updatedAt = Date.now();
-  await env.KV.put(`coffee:user:${tgId}`, JSON.stringify(profile));
-  return jsonResp({ ok: true, active: profile.active });
+    profile.active = !profile.active;
+    profile.updatedAt = Date.now();
+    await env.KV.put(`coffee:user:${tgId}`, JSON.stringify(profile));
+    return jsonResp({ ok: true, active: profile.active });
+  } catch(err) {
+    await notifyAdminError(env, 'apiCoffeeToggle', err);
+    return jsonResp({ ok: false, error: 'internal' }, 500);
+  }
 }
 
 async function apiCoffeeStatus(request, env) {
   const tgId = new URL(request.url).searchParams.get('tgId');
   if (!tgId) return jsonResp({ ok: false });
 
+  try {
   const profile = await env.KV.get(`coffee:user:${tgId}`, 'json');
   const match = await env.KV.get(`coffee:match:${tgId}`, 'json');
   const history = await env.KV.get(`coffee:history:${tgId}`, 'json') || [];
@@ -2516,10 +2491,15 @@ if (match?.partnerId) {
     avgRating,
     totalMeetings: history.length
   });
+  } catch(err) {
+    await notifyAdminError(env, 'apiCoffeeStatus', err);
+    return jsonResp({ ok: false, error: 'internal' }, 500);
+  }
 }
 
 async function apiCoffeeRate(request, env) {
   if (request.method !== 'POST') return jsonResp({ error: 'Method not allowed' }, 405);
+  try {
   const { tgId, weekId, stars, complaint, note } = await request.json();
   if (!tgId || !weekId) return jsonResp({ ok: false });
 
@@ -2558,6 +2538,10 @@ async function apiCoffeeRate(request, env) {
   }
 
   return jsonResp({ ok: true });
+  } catch(err) {
+    await notifyAdminError(env, 'apiCoffeeRate', err);
+    return jsonResp({ ok: false, error: 'internal' }, 500);
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -2704,34 +2688,6 @@ if (!auth.includes("admin_session_" + ADMIN_PASSWORD)) {
     return jsonResp({ ok: true });
   }
 
-  // POST /api/admin/coffee/send-circle — прислать кружочек участника админу
-  if (request.method === 'POST' && sub === '/send-circle') {
-    const { tgId } = await request.json();
-    const profile = await env.KV.get(`coffee:user:${tgId}`, 'json');
-    if (!profile?.circleFileId) return jsonResp({ ok: false, error: 'Кружочек не найден' });
-
-    // Отправляем имя отдельным сообщением перед кружочком (caption у video_note не поддерживается API)
-    await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: 1326867567,
-        text: `👤 *${profile.name || '—'}*\ntgId: \`${tgId}\`${profile.city ? '\n📍 ' + profile.city : ''}${profile.bio ? '\n\n' + profile.bio : ''}`,
-        parse_mode: 'Markdown'
-      })
-    });
-
-    await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendVideoNote`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: 1326867567,
-        video_note: profile.circleFileId
-      })
-    });
-
-    return jsonResp({ ok: true });
-  }
 // POST /api/admin/coffee/send-now — ручная рассылка пар
 if (request.method === 'POST' && sub === '/send-now') {
   const weekId = COFFEE_WEEK();
@@ -2821,71 +2777,70 @@ if (request.method === 'POST' && sub === '/sync-usernames') {
 // ══════════════════════════════════════════════
 
 async function coffeeSendPairs(env) {
-  const weekId = COFFEE_WEEK();
-  const round = await env.KV.get(`coffee:round:${weekId}`, 'json');
-  if (!round || round.sentAt) return; // нет пар или уже отправлено
+  try {
+    const weekId = COFFEE_WEEK();
+    const round = await env.KV.get(`coffee:round:${weekId}`, 'json');
+    if (!round || round.sentAt) return; // нет пар или уже отправлено
 
-  for (const pair of round.pairs) {
-    const p1 = await env.KV.get(`coffee:user:${pair.a}`, 'json');
-    const p2 = await env.KV.get(`coffee:user:${pair.b}`, 'json');
-    if (!p1 || !p2) continue;
+    for (const pair of round.pairs) {
+      const p1 = await env.KV.get(`coffee:user:${pair.a}`, 'json');
+      const p2 = await env.KV.get(`coffee:user:${pair.b}`, 'json');
+      if (!p1 || !p2) continue;
 
-    // Сохранить матчи
-    await env.KV.put(`coffee:match:${pair.a}`, JSON.stringify({ partnerId: pair.b, weekId, status: 'active' }));
-    await env.KV.put(`coffee:match:${pair.b}`, JSON.stringify({ partnerId: pair.a, weekId, status: 'active' }));
+      // Сохранить матчи
+      await env.KV.put(`coffee:match:${pair.a}`, JSON.stringify({ partnerId: pair.b, weekId, status: 'active' }));
+      await env.KV.put(`coffee:match:${pair.b}`, JSON.stringify({ partnerId: pair.a, weekId, status: 'active' }));
 
-    // Добавить в историю
-    await coffeeAddHistory(env, pair.a, pair.b, weekId);
-    await coffeeAddHistory(env, pair.b, pair.a, weekId);
+      // Добавить в историю
+      await coffeeAddHistory(env, pair.a, pair.b, weekId);
+      await coffeeAddHistory(env, pair.b, pair.a, weekId);
 
-    // Отправить уведомления с карточкой партнёра
-    await coffeeSendMatchNotification(env, pair.a, p2);
-    await coffeeSendMatchNotification(env, pair.b, p1);
+      // Отправить уведомления с карточкой партнёра
+      await coffeeSendMatchNotification(env, pair.a, p2);
+      await coffeeSendMatchNotification(env, pair.b, p1);
+    }
+
+    round.sentAt = Date.now();
+    await env.KV.put(`coffee:round:${weekId}`, JSON.stringify(round));
+  } catch(err) {
+    await notifyAdminError(env, 'coffeeSendPairs', err);
   }
-
-  round.sentAt = Date.now();
-  await env.KV.put(`coffee:round:${weekId}`, JSON.stringify(round));
 }
 
 async function coffeeSendReminder(env) {
-  const weekId = COFFEE_WEEK();
-  const round = await env.KV.get(`coffee:round:${weekId}`, 'json');
-  if (!round) return;
+  try {
+    const weekId = COFFEE_WEEK();
+    const round = await env.KV.get(`coffee:round:${weekId}`, 'json');
+    if (!round) return;
 
-  for (const pair of round.pairs) {
-    for (const tgId of [pair.a, pair.b]) {
-      const match = await env.KV.get(`coffee:match:${tgId}`, 'json');
-      if (match?.status !== 'active') continue; // уже оценили или пожаловались
+    for (const pair of round.pairs) {
+      for (const tgId of [pair.a, pair.b]) {
+        const match = await env.KV.get(`coffee:match:${tgId}`, 'json');
+        if (match?.status !== 'active') continue; // уже оценили или пожаловались
 
-      await tgSend(env, tgId,
-        `☕ Рандом Кофе — напоминание\n\nЭта неделя заканчивается. Ты уже успел(а) пообщаться со своим партнёром?\n\nНе забудь оценить встречу 👇`,
-        {
-          inline_keyboard: [
-            [{ text: '⭐ Оценить встречу', callback_data: `coffee_rate_${weekId}` }],
-            [{ text: '🚩 Партнёр не вышел на связь', callback_data: `coffee_complaint_${weekId}` }]
-          ]
-        }
-      );
+        await tgSend(env, tgId,
+          `☕ Рандом Кофе — напоминание\n\nЭта неделя заканчивается. Ты уже успел(а) пообщаться со своим партнёром?\n\nНе забудь оценить встречу 👇`,
+          {
+            inline_keyboard: [
+              [{ text: '⭐ Оценить встречу', callback_data: `coffee_rate_${weekId}` }],
+              [{ text: '🚩 Партнёр не вышел на связь', callback_data: `coffee_complaint_${weekId}` }]
+            ]
+          }
+        );
 
-      // Крючок в Ядро — органично в пятничное сообщение
-      await tgSend(env, tgId,
-        `💡 Кстати, в разделе *Ядро* уже собраны участники, которые готовы к глубокому нетворку — с профилями, запросами и историей встреч. Загляни 👇`,
-        { parse_mode: 'Markdown', inline_keyboard: [[{ text: '🌟 Открыть Ядро', web_app: { url: 'https://cmo-razbory.oxion-ezhkov.workers.dev/app' } }]] }
-      );
+        // Крючок в Ядро — органично в пятничное сообщение
+        await tgSend(env, tgId,
+          `💡 Кстати, в разделе *Ядро* уже собраны участники, которые готовы к глубокому нетворку — с профилями, запросами и историей встреч. Загляни 👇`,
+          { parse_mode: 'Markdown', inline_keyboard: [[{ text: '🌟 Открыть Ядро', web_app: { url: 'https://cmo-razbory.oxion-ezhkov.workers.dev/app' } }]] }
+        );
+      }
     }
+  } catch(err) {
+    await notifyAdminError(env, 'coffeeSendReminder', err);
   }
 }
 
 async function coffeeSendMatchNotification(env, tgId, partnerProfile) {
-  // Если есть кружочек — сначала его
-  if (partnerProfile.circleFileId) {
-    await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/sendVideoNote`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: tgId, video_note: partnerProfile.circleFileId })
-    });
-  }
-
   const skillsText = partnerProfile.skills?.length
     ? `\n\n🤝 Готов(а) помочь с:\n${partnerProfile.skills.map(s => `• ${s}`).join('\n')}`
     : '';
@@ -2932,39 +2887,44 @@ function shuffleArray(arr) {
 // Автоматически формирует пары активных участников на неделю, стараясь не повторять
 // партнёров, с которыми пользователь уже встречался ранее (по coffee:history).
 async function coffeeAutoGeneratePairs(env, weekId) {
-  const idx = await env.KV.get('coffee:participants', 'json') || [];
-  const profiles = await Promise.all(idx.map(tgId => env.KV.get(`coffee:user:${tgId}`, 'json')));
-  const activeIds = idx.filter((tgId, i) => profiles[i]?.active).map(String);
+  try {
+    const idx = await env.KV.get('coffee:participants', 'json') || [];
+    const profiles = await Promise.all(idx.map(tgId => env.KV.get(`coffee:user:${tgId}`, 'json')));
+    const activeIds = idx.filter((tgId, i) => profiles[i]?.active).map(String);
 
-  const histories = await Promise.all(activeIds.map(tgId => env.KV.get(`coffee:history:${tgId}`, 'json')));
-  const historyMap = new Map();
-  activeIds.forEach((tgId, i) => {
-    historyMap.set(tgId, new Set((histories[i] || []).map(h => String(h.partnerId))));
-  });
+    const histories = await Promise.all(activeIds.map(tgId => env.KV.get(`coffee:history:${tgId}`, 'json')));
+    const historyMap = new Map();
+    activeIds.forEach((tgId, i) => {
+      historyMap.set(tgId, new Set((histories[i] || []).map(h => String(h.partnerId))));
+    });
 
-  let pool = shuffleArray(activeIds);
-  const pairs = [];
-  while (pool.length > 1) {
-    const a = pool.shift();
-    let pickIdx = pool.findIndex(b => !historyMap.get(a)?.has(b));
-    if (pickIdx === -1) pickIdx = 0; // все возможные партнёры уже были — придётся повторить
-    const b = pool.splice(pickIdx, 1)[0];
-    pairs.push({ a, b });
-  }
-  const unmatched = pool.length === 1 ? [pool[0]] : [];
-
-  const round = { pairs, weekId, createdAt: Date.now(), sentAt: null, auto: true, unmatched };
-  await env.KV.put(`coffee:round:${weekId}`, JSON.stringify(round));
-
-  if (unmatched.length) {
-    for (const tgId of unmatched) {
-      await tgSend(env, tgId,
-        `☕ На этой неделе для тебя, к сожалению, не нашлось пары (нечётное число участников). На следующей неделе тебя подберут в первую очередь!`
-      );
+    let pool = shuffleArray(activeIds);
+    const pairs = [];
+    while (pool.length > 1) {
+      const a = pool.shift();
+      let pickIdx = pool.findIndex(b => !historyMap.get(a)?.has(b));
+      if (pickIdx === -1) pickIdx = 0; // все возможные партнёры уже были — придётся повторить
+      const b = pool.splice(pickIdx, 1)[0];
+      pairs.push({ a, b });
     }
-  }
+    const unmatched = pool.length === 1 ? [pool[0]] : [];
 
-  return round;
+    const round = { pairs, weekId, createdAt: Date.now(), sentAt: null, auto: true, unmatched };
+    await env.KV.put(`coffee:round:${weekId}`, JSON.stringify(round));
+
+    if (unmatched.length) {
+      for (const tgId of unmatched) {
+        await tgSend(env, tgId,
+          `☕ На этой неделе для тебя, к сожалению, не нашлось пары (нечётное число участников). На следующей неделе тебя подберут в первую очередь!`
+        );
+      }
+    }
+
+    return round;
+  } catch(err) {
+    await notifyAdminError(env, 'coffeeAutoGeneratePairs', err);
+    return null;
+  }
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────
@@ -3935,6 +3895,43 @@ function getMiniAppHTML() {
     border: 1px solid var(--border);
   }
 
+  /* ── TAG FILTER ── */
+  .tag-filter-row {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 2px 0 16px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .tag-filter-row::-webkit-scrollbar { display: none; }
+
+  .tag-chip {
+    flex: 0 0 auto;
+    padding: 7px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text2);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: transform 0.15s cubic-bezier(.34,1.56,.64,1), background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  }
+  .tag-chip:active { transform: scale(0.92); }
+  .tag-chip.active {
+    background: var(--text);
+    border-color: var(--text);
+    color: var(--bg);
+    animation: tagChipPop 0.28s cubic-bezier(.34,1.56,.64,1);
+  }
+  @keyframes tagChipPop {
+    0% { transform: scale(0.88); }
+    55% { transform: scale(1.08); }
+    100% { transform: scale(1); }
+  }
+
   /* ── PROGRESS BAR ── */
   .progress-wrap {
     background: var(--card);
@@ -4217,51 +4214,6 @@ function getMiniAppHTML() {
     border-color: rgba(255,255,255,0.2);
     color: var(--text);
   }
-
-  /* ── QUESTION SECTION ── */
-  .question-section {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 14px;
-    margin-top: 24px;
-  }
-
-  .question-label { font-size: 12px; color: var(--text3); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 10px; }
-
-  .question-textarea {
-    width: 100%;
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 12px;
-    color: var(--text);
-    font-family: 'Geologica', sans-serif;
-    font-size: 13px;
-    resize: none;
-    outline: none;
-    min-height: 80px;
-    margin-bottom: 8px;
-    transition: border-color 0.2s;
-  }
-
-  .question-textarea:focus { border-color: rgba(255,255,255,0.2); }
-  .question-textarea::placeholder { color: var(--text3); }
-
-  .question-send {
-    width: 100%;
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text2);
-    border-radius: 8px;
-    padding: 10px;
-    font-family: 'Geologica', sans-serif;
-    font-size: 12px;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .question-send:active { border-color: rgba(255,255,255,0.3); color: var(--text); }
 
   /* ── BOTTOM NAV ── */
   .bottom-nav {
@@ -4696,37 +4648,6 @@ function getMiniAppHTML() {
     gap: 8px;
   }
  
-  /* Кружочек-блок */
-  .coffee-circle-block {
-    background: var(--bg3);
-    border: 1px dashed var(--border-hover);
-    border-radius: var(--radius);
-    padding: 16px;
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    cursor: pointer;
-    transition: border-color .15s;
-  }
-  .coffee-circle-block:active { border-color: var(--text2); }
-  .coffee-circle-icon {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 22px;
-    flex-shrink: 0;
-  }
-  .coffee-circle-block.recorded .coffee-circle-icon { border-color: #6bffb8; }
-  .coffee-circle-block.recorded { border-color: rgba(107,255,184,0.3); }
-  .coffee-circle-text { flex: 1; }
-  .coffee-circle-title { font-size: 13px; font-weight: 500; margin-bottom: 2px; }
-  .coffee-circle-sub { font-size: 12px; color: var(--text3); line-height: 1.4; }
- 
   /* История встреч */
   .coffee-history-item {
     margin: 0 16px 10px;
@@ -5046,6 +4967,40 @@ function getMiniAppHTML() {
   background: var(--bg);
   overflow-y: auto;
 }
+
+/* ── DESKTOP ADAPTATION ──
+   Мини-ап показывается «телефоном» по центру широкого экрана.
+   Полноценная десктоп-версия платформы появится отдельно. */
+@media (min-width: 720px) {
+  html { background: #000; }
+  body { background: #000; }
+
+  .screen.active {
+    max-width: 480px;
+    margin: 0 auto;
+    min-height: 100vh;
+    box-shadow: 0 0 0 1px var(--border), 0 24px 70px rgba(0,0,0,0.55);
+  }
+
+  .bottom-nav,
+  .coffee-form .coffee-btn-primary,
+  #coffeeEditModal,
+  .desktop-fixed-bar {
+    width: 480px !important;
+    max-width: 480px !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+  }
+
+  .desktop-fixed-inset-bar {
+    width: 448px !important;
+    max-width: 448px !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+  }
+}
 </style>
 </head>
 <body>
@@ -5075,9 +5030,9 @@ function getMiniAppHTML() {
 <!-- MAIN APP -->
 <div id="appScreen" class="screen">
   <div class="topbar">
-    <div class="topbar-logo" onclick="toggleProgramMenu()" style="cursor:pointer;display:flex;align-items:center;gap:6px">
-      <span id="currentProgramName">ИИ-контент</span>
-      <span id="dropdownArrow" style="font-size:10px;transition:transform 0.2s">▼</span>
+    <div class="topbar-logo" style="display:flex;align-items:center;gap:6px">
+      <span id="currentProgramName">Ядро</span>
+      <span id="dropdownArrow" style="font-size:10px;transition:transform 0.2s;display:none"></span>
     </div>
     <div class="topbar-user">
       <span class="topbar-name" id="topbarName"></span>
@@ -5288,20 +5243,7 @@ function getMiniAppHTML() {
           <input class="coffee-input" id="edit_skill2" type="text" placeholder="Навык 3"/>
         </div>
       </div>
- 
-      <div class="coffee-circle-block" onclick="openCoffeeCircle()">
-        <div class="coffee-circle-icon" id="editCircleIcon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M10 8l6 4-6 4V8z"/></svg>
-        </div>
-        <div class="coffee-circle-text">
-          <div class="coffee-circle-title" id="editCircleTitle">Перезаписать кружочек</div>
-          <div class="coffee-circle-sub" id="editCircleSub">Короткое видео — партнёр увидит перед знакомством</div>
-        </div>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3);flex-shrink:0">
-    <path d="M9 18l6-6-6-6"/>
-   </svg>
-      </div>
- 
+
     </div>
     <div class="coffee-edit-footer">
       <button class="coffee-join-btn" id="coffeeEditSaveBtn" onclick="saveCoffeeEdit()">Сохранить</button>
@@ -5387,6 +5329,7 @@ window.addEventListener('load', async () => {
 
   // Грузим данные для всех
   await loadUserData();
+  updateEventsNavVisibility();
 
   // Показываем нужный экран
   showScreen('appScreen');
@@ -5407,6 +5350,22 @@ function showAuthError(title, text) {
   document.getElementById('emailWrap').style.display = 'block';
   document.getElementById('checkEmailBtn').style.display = 'block';
   showScreen('authScreen');
+}
+
+async function updateEventsNavVisibility() {
+  try {
+    const data = await fetch('/api/events').then(r => r.json());
+    const now = Date.now();
+    const hasUpcoming = (data.events || []).some(function(ev) {
+      const endTime = new Date(ev.datetime).getTime() + (ev.duration || 90) * 60 * 1000;
+      return endTime > now;
+    });
+    const navBtn = document.getElementById('nav-ask');
+    if (navBtn) navBtn.style.display = hasUpcoming ? '' : 'none';
+    if (!hasUpcoming && currentSection === 'questions') {
+      navTo('progress');
+    }
+  } catch(e) {}
 }
 
 function formatEventDate(dt) {
@@ -5674,10 +5633,9 @@ async function checkNucleusEmail() {
 // ── RENDER CONTENT ───────────────────────────────────────────
 function renderContent() {
   const container = document.getElementById('mainContent');
-  const prog = programData[currentProgram];
 
   if (currentSection === 'knowledge') {
-    renderKnowledge(container, prog);
+    renderKnowledge(container);
   } else if (currentSection === 'kb') {
     renderKBPage(container);
   } else if (currentSection === 'progress') {
@@ -5717,7 +5675,6 @@ async function renderCoffeeStub(container) {
 }
 
 function renderCoffeeOnboarding(container, tgId) {
-  const hasCircle = false;
   container.innerHTML = \`
     <div style="padding: 16px 0;">
       <div class="coffee-form-title" style="padding: 0 16px;">☕ Рандом Кофе</div>
@@ -5758,7 +5715,7 @@ function renderCoffeeOnboarding(container, tgId) {
  
     </div>
 
-    <div style="position: fixed; left: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom)); padding: 0 16px; z-index: 60;">
+    <div class="desktop-fixed-bar" style="position: fixed; left: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom)); padding: 0 16px; z-index: 60;">
       <button class="coffee-btn coffee-btn-primary" id="coffeeSubmitBtn" style="width: 100%; height: 52px;" onclick="submitCoffeeOnboarding('\${tgId}')">
         Присоединиться к Рандом Кофе
       </button>
@@ -5805,30 +5762,6 @@ function restoreOnboardingFormData() {
   }
 }
 
-
-function openCoffeeCircleOnboarding() {
-  const tgId = currentUser?.tgId || tg?.initDataUnsafe?.user?.id;
-  if (!tgId) return;
-  
-  // Сохраняем флаг, что мы в процессе онбординга
-  sessionStorage.setItem('coffee_onboarding_mode', 'true');
-  
-  // Сохраняем текущие данные формы перед закрытием
-  const formData = {
-    name: document.getElementById('cf_name')?.value,
-    city: document.getElementById('cf_city')?.value,
-    bio: document.getElementById('cf_bio')?.value,
-    request: document.getElementById('cf_request')?.value,
-    skills: [0,1,2].map(i => document.getElementById(\`cf_skill\${i}\`)?.value)
-  };
-  sessionStorage.setItem('coffee_onboarding_form_data', JSON.stringify(formData));
-  
-  if (window.Telegram?.WebApp) {
-    Telegram.WebApp.openTelegramLink('https://t.me/' + BOT_USERNAME + '?start=circle_onboarding');
-    // Закрываем мини-апп
-    Telegram.WebApp.close();
-  }
-}
 
 function renderCoffeeMain(container, data, tgId) {
   const { profile, match, history, avgRating, totalMeetings } = data;
@@ -5921,25 +5854,6 @@ function renderCoffeeProfileCard(profile, avgRating, tgId) {
   \`;
 }
 
-function openCoffeeCircleEdit() {
-  const tgId = currentUser?.tgId || tg?.initDataUnsafe?.user?.id;
-  if (!tgId) return;
-  
-  // Сохраняем флаг, что это редактирование, а не онбординг
-  sessionStorage.setItem('coffee_circle_edit_mode', 'true');
-  
-  if (window.Telegram?.WebApp) {
-    Telegram.WebApp.openTelegramLink('https://t.me/' + BOT_USERNAME + '?start=circle_edit');
-  } else {
-    window.open('https://t.me/' + BOT_USERNAME + '?start=circle_edit', '_blank');
-  }
-  
-  // Закрываем мини-апп
-  if (window.Telegram?.WebApp) {
-    Telegram.WebApp.close();
-  }
-}
-
 function openCoffeeProfileEdit() {
   if (!coffeeData?.profile) return;
   const p = coffeeData.profile;
@@ -5986,7 +5900,7 @@ function openCoffeeProfileEdit() {
           </div>
         </div>
  
-        <button class="coffee-btn coffee-btn-primary" id="saveProfileBtn" style="position: fixed; bottom: 20px; left: 16px; right: 16px; width: auto; border-radius: 30px; padding: 16px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.3);" onclick="saveCoffeeProfileEdit()">
+        <button class="coffee-btn coffee-btn-primary desktop-fixed-inset-bar" id="saveProfileBtn" style="position: fixed; bottom: 20px; left: 16px; right: 16px; width: auto; border-radius: 30px; padding: 16px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.3);" onclick="saveCoffeeProfileEdit()">
           Сохранить изменения
         </button>
       </div>
@@ -6202,40 +6116,58 @@ function renderCoffeeHistoryTab(history) {
   return \`<div class="coffee-section-title">Все встречи</div>\` + items;
 }
 
-function renderKnowledge(container, prog) {
-  if (!prog || !prog.modules) {
+let allTagsPool = null;
+let activeModuleTagFilters = new Set();
+
+async function renderKnowledge(container) {
+  const aiMods = (programData.ai?.modules || []).map(m => Object.assign({}, m, { _programId: 'ai' }));
+  const funnelMods = (programData.funnels?.modules || []).map(m => Object.assign({}, m, { _programId: 'funnels' }));
+  const allMods = aiMods.concat(funnelMods);
+
+  if (!allMods.length) {
     container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📂</div><div class="empty-state-text">Загрузка материалов...</div></div>';
     return;
   }
 
-  const completedModules = progressData[currentProgram]?.completed || [];
-const completedTasks = taskProgressData[currentProgram]?.completed || [];
-const totalModules = (prog?.modules || []).filter(m => m.available).length;
-const totalTasks = (tasksData[currentProgram] || []).length;
-const total = totalModules + totalTasks;
-const doneModules = (prog?.modules || []).filter(m => m.available && completedModules.includes(m.id)).length;
-const doneTasks = completedTasks.length;
-const done = doneModules + doneTasks;
-const completed = completedModules;
+  // Новые модули сверху
+  allMods.sort((a, b) => {
+    const da = a.date ? new Date(a.date).getTime() : 0;
+    const db = b.date ? new Date(b.date).getTime() : 0;
+    return db - da;
+  });
+
+  if (allTagsPool === null) {
+    try {
+      const res = await fetch('/api/tags').then(r => r.json());
+      allTagsPool = res.tags || [];
+    } catch(e) {
+      allTagsPool = [];
+    }
+  }
 
   let html = '';
 
-  if (total > 0) {
-    const pct = Math.round((done / total) * 100);
-    html += \`
-      <div class="progress-wrap">
-        <div class="progress-label">
-          <span>Достижение результата</span>
-          <span class="progress-pct">\${pct}%</span>
-        </div>
-        <div class="progress-bar-track">
-          <div class="progress-bar-fill" style="width:\${pct}%"></div>
-        </div>
-      </div>\`;
+  if (allTagsPool.length) {
+    html += '<div class="tag-filter-row">';
+    html += \`<span class="tag-chip\${activeModuleTagFilters.size === 0 ? ' active' : ''}" data-tag-all="1">Все</span>\`;
+    allTagsPool.forEach(t => {
+      html += \`<span class="tag-chip\${activeModuleTagFilters.has(t) ? ' active' : ''}" data-tag="\${escapeHtml(t)}">\${escapeHtml(t)}</span>\`;
+    });
+    html += '</div>';
   }
 
+  const filtered = activeModuleTagFilters.size
+    ? allMods.filter(m => (m.tags || []).some(t => activeModuleTagFilters.has(t)))
+    : allMods;
+
   html += '<div class="module-list">';
-  prog.modules.forEach((mod, i) => {
+
+  if (!filtered.length) {
+    html += '<div class="empty-state"><div class="empty-state-icon">🔍</div><div class="empty-state-text">Нет модулей с выбранными тегами</div></div>';
+  }
+
+  filtered.forEach(mod => {
+    const completed = progressData[mod._programId]?.completed || [];
     const isDone = completed.includes(mod.id);
     const isLocked = !mod.available;
     let cls = 'module-card';
@@ -6248,14 +6180,19 @@ const completed = completedModules;
     else if (isDone) tag = '<span class="module-tag">✓ Пройдено</span>';
 
     const desc = mod.description ? \`<div class="module-desc">\${mod.description}</div>\` : '';
+    const dateLabel = mod.date ? \`<div class="module-num">\${formatModuleDate(mod.date)}</div>\` : '';
+    const modTagsHtml = (mod.tags && mod.tags.length)
+      ? \`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px">\${mod.tags.map(t => \`<span class="module-tag" style="text-transform:none">\${escapeHtml(t)}</span>\`).join('')}</div>\`
+      : '';
 
     html += \`
-      <div class="\${cls}" onclick="\${isLocked ? '' : "openModule('" + mod.id + "')"}">
+      <div class="\${cls}" onclick="\${isLocked ? '' : "openModule('" + mod.id + "','" + mod._programId + "')"}">
         <div class="module-top">
           <div>
-            <div class="module-num">МОДУЛЬ \${i + 1}</div>
+            \${dateLabel}
             <div class="module-title">\${mod.title}</div>
             \${desc}
+            \${modTagsHtml}
             \${tag}
           </div>
           <div class="module-status \${isDone ? 'done' : ''}">\${isDone ? '✓' : ''}</div>
@@ -6265,6 +6202,30 @@ const completed = completedModules;
   html += '</div>';
 
   container.innerHTML = html;
+}
+
+function toggleModuleTagFilter(t) {
+  if (activeModuleTagFilters.has(t)) activeModuleTagFilters.delete(t);
+  else activeModuleTagFilters.add(t);
+  renderContent();
+}
+
+function clearModuleTagFilter() {
+  activeModuleTagFilters.clear();
+  renderContent();
+}
+
+document.addEventListener('click', function(e) {
+  const chip = e.target.closest('.tag-chip');
+  if (!chip) return;
+  if (chip.dataset.tagAll) clearModuleTagFilter();
+  else if (chip.dataset.tag) toggleModuleTagFilter(chip.dataset.tag);
+});
+
+function formatModuleDate(dateStr) {
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('ru', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 // ── KNOWLEDGE BASE RENDER ────────────────────────────────────
@@ -6446,15 +6407,6 @@ function updateCoffeeCount(el, countId, max) {
   el2.classList.toggle('warn', len > max * 0.9);
 }
  
-function openCoffeeCircle() {
-  const tgId = currentUser?.tgId || tg?.initDataUnsafe?.user?.id;
-  if (!tgId) return;
-  // Открываем бота с deep link
-  if (window.Telegram?.WebApp) {
-    Telegram.WebApp.openTelegramLink('https://t.me/' + BOT_USERNAME + '?start=circle');
-  }
-}
- 
 async function toggleCoffeeActive(tgId, checkbox) {
   try {
     const res = await fetch('/api/coffee/toggle', {
@@ -6484,12 +6436,6 @@ function openCoffeeEdit() {
   document.getElementById('edit_skill2').value = p.skills?.[2] || '';
   document.getElementById('edit_bio_count').textContent = (p.bio || '').length + ' / 280';
   document.getElementById('edit_request_count').textContent = (p.request || '').length + ' / 200';
-  // Показать статус кружочка
-  const hasCircle = !!p.circleFileId;
-  document.getElementById('editCircleTitle').textContent = hasCircle ? 'Перезаписать кружочек' : 'Записать кружочек';
-  document.getElementById('editCircleSub').textContent = hasCircle
-    ? 'Кружочек уже записан — нажми чтобы обновить'
-    : 'Короткое видео — партнёр увидит перед знакомством';
   document.getElementById('coffeeEditOverlay').classList.add('open');
 }
  
@@ -6553,19 +6499,11 @@ async function submitCoffeeOnboarding(tgId) {
   btn.textContent = 'Сохраняем...';
  
   try {
-    // Проверяем, есть ли уже кружочек
-    let circleFileId = null;
-    const existingProfile = coffeeData?.profile;
-    if (existingProfile?.circleFileId) {
-      circleFileId = existingProfile.circleFileId;
-    }
-    
     const res = await fetch('/api/coffee/join', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
+      body: JSON.stringify({
         tgId, name, city, bio, request, skills,
-        circleFileId: circleFileId,  // сохраняем кружочек если был
         active: true  // ★ активен по умолчанию
       })
     }).then(r => r.json());
@@ -6834,7 +6772,8 @@ document.addEventListener('click', function(e) {
 });
 
 // ── MODULE DETAIL ─────────────────────────────────────────────
-function openModule(moduleId) {
+function openModule(moduleId, programId) {
+  if (programId) currentProgram = programId;
   const prog = programData[currentProgram];
   if (!prog) return;
   const mod = prog.modules.find(m => m.id === moduleId);
@@ -6948,12 +6887,7 @@ if (mod.timecodes && mod.timecodes.length > 0 && mod.embedUrl) {
     \${moduleTasksHtml}
     <button class="\${doneBtnClass}" id="doneBtn" onclick="toggleDone('\${moduleId}')">
       \${isDone ? '✓ Пройдено' : '○ Отметить как пройденное'}
-    </button>
-    <div class="question-section" style="margin-top:24px">
-      <div class="question-label">Вопрос по этому модулю</div>
-      <textarea class="question-textarea" id="detailQuestionText" placeholder="Напиши вопрос..."></textarea>
-      <button class="question-send" onclick="sendDetailQuestion('\${moduleId}', '\${mod.title}')">Отправить →</button>
-    </div>\`;
+    </button>\`;
 
   showScreen('detailScreen');
   document.querySelectorAll('[data-task-id]').forEach(el => {
@@ -7129,14 +7063,6 @@ async function sendQuestion() {
   if (!text) return;
   await submitQuestion(text);
   document.getElementById('questionText').value = '';
-  showToast('Вопрос отправлен!');
-}
-
-async function sendDetailQuestion(moduleId, moduleTitle) {
-  const text = document.getElementById('detailQuestionText').value.trim();
-  if (!text) return;
-  await submitQuestion(\`[Модуль: \${moduleTitle}] \${text}\`);
-  document.getElementById('detailQuestionText').value = '';
   showToast('Вопрос отправлен!');
 }
 
@@ -7932,6 +7858,15 @@ function getAdminHTML() {
       <!-- PROGRAMS -->
       <div class="page" id="page-programs">
         <div class="page-title">Программы</div>
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-title">Теги модулей</div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Теги показываются участникам как фильтр в объединённом списке модулей Ядра.</div>
+          <div id="tagsPoolChips" class="chip-row" style="margin-bottom:12px"></div>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="newTagInput" placeholder="Название тега" style="flex:1" onkeydown="if(event.key==='Enter')addTagToPool()"/>
+            <button class="btn btn-ghost btn-sm" onclick="addTagToPool()">+ Добавить тег</button>
+          </div>
+        </div>
         <div style="display:flex;gap:8px;margin-bottom:20px">
           <button class="btn btn-w" id="pb-ai" onclick="selectProgAdmin('ai')">🤖 ИИ-контент</button>
           <button class="btn btn-ghost" id="pb-funnels" onclick="selectProgAdmin('funnels')">🔻 Воронки</button>
@@ -8260,6 +8195,14 @@ function getAdminHTML() {
       <textarea id="mDesc" placeholder="Описание модуля..."></textarea>
     </div>
     <div class="field">
+      <label>Дата модуля</label>
+      <input type="date" id="mDate"/>
+    </div>
+    <div class="field">
+      <label>Теги</label>
+      <div id="mTagsChips" class="chip-row"></div>
+    </div>
+    <div class="field">
       <label>Ссылка на видео (YouTube / Vimeo)</label>
       <input type="url" id="mEmbed" placeholder="https://youtube.com/watch?v=..."/>
     </div>
@@ -8553,6 +8496,7 @@ window.addEventListener('load', () => {
     loadDashboard();
     loadParticipants();
     loadProgramAdmin(savedProg);
+    loadTagsPool();
     loadQuestions();
     showPage(savedPage);
     selectProgAdmin(savedProg);
@@ -8588,6 +8532,7 @@ async function adminLogin() {
   loadDashboard();
   loadParticipants();
   loadProgramAdmin(savedProg);
+  loadTagsPool();
   loadQuestions();
   showPage(savedPage);
   selectProgAdmin(savedProg);
@@ -9398,12 +9343,15 @@ function renderModuleList(modules) {
     const lockLabel = mod.available ? '<span style="color:var(--success);font-size:11px">● Доступен</span>' : '<span style="color:var(--text3);font-size:11px">● Заблокирован</span>';
     const modTasks = tasks.filter(t => t.moduleId === mod.id);
 
+    const dateLabel = mod.date ? \`<div style="font-size:10px;color:var(--text3);margin-bottom:2px">\${mod.date}</div>\` : '';
+    const tagsLabel = (mod.tags && mod.tags.length) ? \` · \${mod.tags.join(', ')}\` : '';
+
     html += \`<div class="module-item">
       <div class="module-item-top">
         <div>
-          <div style="font-size:10px;color:var(--text3);margin-bottom:2px">МОДУЛЬ \${i+1}</div>
+          \${dateLabel}
           <div class="module-item-title">\${mod.title}</div>
-          <div style="margin-top:4px">\${lockLabel} \${modTasks.length ? \`<span style="color:var(--text3);font-size:11px"> · \${modTasks.length} \${modTasks.length === 1 ? 'задание' : 'заданий'}</span>\` : ''}</div>
+          <div style="margin-top:4px">\${lockLabel} \${modTasks.length ? \`<span style="color:var(--text3);font-size:11px"> · \${modTasks.length} \${modTasks.length === 1 ? 'задание' : 'заданий'}</span>\` : ''}<span style="color:var(--text3);font-size:11px">\${tagsLabel}</span></div>
         </div>
         <div class="module-item-actions">
           <button class="btn btn-ghost btn-sm" onclick="editModule('\${mod.id}')">Изменить</button>
@@ -9424,8 +9372,10 @@ function editModule(modId) {
   document.getElementById('mId').value = mod.id;
   document.getElementById('mTitle').value = mod.title;
   document.getElementById('mDesc').value = mod.description || '';
+  document.getElementById('mDate').value = mod.date || '';
   document.getElementById('mEmbed').value = mod.embedUrl || '';
   document.getElementById('mAvailable').checked = mod.available || false;
+  renderModuleTagChips(mod.tags || []);
 
   const tcRows = document.getElementById('mTimecodesRows');
   tcRows.innerHTML = '';
@@ -9444,6 +9394,81 @@ function editModule(modId) {
   document.getElementById('mDeleteBtn').style.display = 'inline-block';
   document.getElementById('moduleMsg').textContent = '';
   document.getElementById('moduleModal').classList.add('open');
+}
+
+let adminTagsList = [];
+
+async function loadTagsPool() {
+  try {
+    const res = await fetch('/api/admin/tags', { headers: aHeaders() }).then(r => r.json());
+    adminTagsList = res.tags || [];
+    renderTagsPoolChips();
+  } catch(e) {}
+}
+
+function renderTagsPoolChips() {
+  const el = document.getElementById('tagsPoolChips');
+  if (!el) return;
+  el.innerHTML = adminTagsList.length
+    ? adminTagsList.map(t => \`<span class="chip active" style="display:inline-flex;align-items:center;gap:8px">\${escapeAdminHtml(t)}<span class="tag-pool-del" data-tag="\${escapeAdminHtml(t)}" style="cursor:pointer;opacity:0.7">✕</span></span>\`).join('')
+    : '<span style="color:var(--text3);font-size:12px">Тегов пока нет — добавь первый ниже</span>';
+}
+
+document.addEventListener('click', function(e) {
+  const delBtn = e.target.closest('.tag-pool-del');
+  if (delBtn) { deleteTagFromPool(delBtn.dataset.tag); return; }
+  const mtagChip = e.target.closest('.mtag-chip');
+  if (mtagChip) { toggleModuleTag(mtagChip.dataset.tag, mtagChip); }
+});
+
+async function addTagToPool() {
+  const input = document.getElementById('newTagInput');
+  const name = input.value.trim();
+  if (!name) return;
+  try {
+    const res = await fetch('/api/admin/add-tag', {
+      method: 'POST', headers: aHeaders(),
+      body: JSON.stringify({ name })
+    }).then(r => r.json());
+    if (res.ok) {
+      adminTagsList = res.tags;
+      renderTagsPoolChips();
+      input.value = '';
+    }
+  } catch(e) {}
+}
+
+async function deleteTagFromPool(name) {
+  try {
+    const res = await fetch('/api/admin/delete-tag', {
+      method: 'POST', headers: aHeaders(),
+      body: JSON.stringify({ name })
+    }).then(r => r.json());
+    if (res.ok) {
+      adminTagsList = res.tags;
+      renderTagsPoolChips();
+    }
+  } catch(e) {}
+}
+
+function renderModuleTagChips(selected) {
+  window._moduleSelectedTags = new Set(selected || []);
+  const el = document.getElementById('mTagsChips');
+  if (!el) return;
+  if (!adminTagsList.length) {
+    el.innerHTML = '<span style="color:var(--text3);font-size:12px">Сначала добавь теги в разделе «Теги модулей» выше</span>';
+    return;
+  }
+  el.innerHTML = adminTagsList.map(t =>
+    \`<span class="chip mtag-chip\${window._moduleSelectedTags.has(t) ? ' active' : ''}" data-tag="\${escapeAdminHtml(t)}">\${escapeAdminHtml(t)}</span>\`
+  ).join('');
+}
+
+function toggleModuleTag(tag, el) {
+  const set = window._moduleSelectedTags || new Set();
+  if (set.has(tag)) { set.delete(tag); el.classList.remove('active'); }
+  else { set.add(tag); el.classList.add('active'); }
+  window._moduleSelectedTags = set;
 }
 
 async function addModule() {
@@ -9466,8 +9491,10 @@ async function saveModule() {
   const modId = document.getElementById('mId').value;
   const title = document.getElementById('mTitle').value.trim();
   const desc = document.getElementById('mDesc').value.trim();
+  const date = document.getElementById('mDate').value;
   const embed = document.getElementById('mEmbed').value.trim();
   const available = document.getElementById('mAvailable').checked;
+  const tags = Array.from(window._moduleSelectedTags || []);
   const msg = document.getElementById('moduleMsg');
 
   if (!title) { msg.className='msg err'; msg.textContent='Введи название'; return; }
@@ -9482,7 +9509,7 @@ async function saveModule() {
     label: row.querySelector('.tc-label').value.trim()
   })).filter(t => t.time && t.label);
 
-  const module = { id: modId, title, description: desc, embedUrl: embed, files, timecodes, available };
+  const module = { id: modId, title, description: desc, date, embedUrl: embed, files, timecodes, available, tags };
 
   try {
     await fetch('/api/admin/module', {
@@ -9975,22 +10002,6 @@ function renderCoffeeInfoCard(p) {
     : '<span style="color:var(--text3);font-size:12px">— нет username</span>'
   }
 </div>
-      <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
-        \${p.circleFileId 
-          ? \`<span style="font-size:11px;color:var(--text3)">🎥 Кружочек записан</span>
-             <button onclick="sendCircleToAdmin('\${p.tgId}')" 
-               style="background:var(--bg3);border:1px solid var(--border);border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:border-color 0.2s"
-               title="Прислать кружочек в Telegram"
-               onmouseover="this.style.borderColor='var(--border-h)'" 
-               onmouseout="this.style.borderColor='var(--border)'">
-               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                 <circle cx="12" cy="8" r="4"/>
-                 <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-               </svg>
-             </button>\`
-          : '<span style="font-size:11px;color:var(--text3)">— кружочек не записан</span>'
-        }
-      </div>
     </div>
   \`;
 }
@@ -10148,20 +10159,6 @@ function showAdminToast(msg) {
   t.textContent = msg;
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 2500);
-}
-
-async function sendCircleToAdmin(tgId) {
-  try {
-    const res = await fetch('/api/admin/coffee/send-circle', {
-      method: 'POST',
-      headers: aHeaders(),
-      body: JSON.stringify({ tgId })
-    }).then(r => r.json());
-    if (res.ok) showAdminToast('☕ Кружочек отправлен в Telegram');
-    else showAdminToast('Ошибка: ' + (res.error || 'неизвестно'));
-  } catch(e) {
-    showAdminToast('Ошибка подключения');
-  }
 }
 
 // ── KB ADMIN ──────────────────────────────────────────────────
