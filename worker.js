@@ -9794,18 +9794,18 @@ async function loadModuleOrder() {
 function renderModuleOrderList() {
   const el = document.getElementById('moduleOrderList');
   if (!el) return;
-  el.innerHTML = adminModuleOrderItems.map((m, i) => `
+  el.innerHTML = adminModuleOrderItems.map((m, i) => \`
     <div class="module-item" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
       <div>
-        <div style="font-size:10px;color:var(--text3);margin-bottom:2px">${m.programId === 'ai' ? '🤖 ИИ-контент' : '🔻 Воронки'}</div>
-        <div class="module-item-title">${escapeAdminHtml(m.title)}</div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:2px">\${m.programId === 'ai' ? '🤖 ИИ-контент' : '🔻 Воронки'}</div>
+        <div class="module-item-title">\${escapeAdminHtml(m.title)}</div>
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0">
-        <button class="btn btn-ghost btn-sm" data-order-move="up" data-order-idx="${i}" ${i === 0 ? 'disabled' : ''}>↑</button>
-        <button class="btn btn-ghost btn-sm" data-order-move="down" data-order-idx="${i}" ${i === adminModuleOrderItems.length - 1 ? 'disabled' : ''}>↓</button>
+        <button class="btn btn-ghost btn-sm" data-order-move="up" data-order-idx="\${i}" \${i === 0 ? 'disabled' : ''}>↑</button>
+        <button class="btn btn-ghost btn-sm" data-order-move="down" data-order-idx="\${i}" \${i === adminModuleOrderItems.length - 1 ? 'disabled' : ''}>↓</button>
       </div>
     </div>
-  `).join('') || '<p style="color:var(--text3);font-size:13px">Нет модулей</p>';
+  \`).join('') || '<p style="color:var(--text3);font-size:13px">Нет модулей</p>';
 }
 
 document.addEventListener('click', function(e) {
@@ -9823,7 +9823,7 @@ document.addEventListener('click', function(e) {
 });
 
 async function saveModuleOrder() {
-  const order = adminModuleOrderItems.map(m => `${m.programId}:${m.id}`);
+  const order = adminModuleOrderItems.map(m => \`\${m.programId}:\${m.id}\`);
   try {
     await fetch('/api/admin/save-module-order', {
       method: 'POST', headers: aHeaders(),
