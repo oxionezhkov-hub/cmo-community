@@ -665,8 +665,17 @@ async function apiProgram(request, env) {
   return jsonResp(program);
 }
 
+const DEFAULT_MODULE_TAGS = ["Игровой миникурс", "Контент", "Сайты", "Воронки"];
+
+async function getOrSeedTags(env) {
+  const tags = await env.KV.get("program:tags", "json");
+  if (tags && tags.length) return tags;
+  await env.KV.put("program:tags", JSON.stringify(DEFAULT_MODULE_TAGS));
+  return DEFAULT_MODULE_TAGS;
+}
+
 async function apiTags(request, env) {
-  const tags = await env.KV.get("program:tags", "json") || [];
+  const tags = await getOrSeedTags(env);
   return jsonResp({ tags });
 }
 
@@ -755,6 +764,7 @@ async function apiAdminAction(request, env, url) {
   const action = url.pathname.replace("/api/admin/", "");
 
   if (action === "events" && request.method === "GET") {
+  await ensureSeedEvents(env);
   const events = await env.KV.get("events:list", "json") || [];
   return jsonResp({ events });
 }
@@ -1259,7 +1269,7 @@ if (action === "notify" && request.method === "POST") {
   }
 
   if (action === "tags" && request.method === "GET") {
-    const tags = await env.KV.get("program:tags", "json") || [];
+    const tags = await getOrSeedTags(env);
     return jsonResp({ tags });
   }
 
@@ -1325,7 +1335,50 @@ async function handleAdmin(request, env, url) {
   return new Response(getAdminHTML(), { headers: { "Content-Type": "text/html; charset=utf-8" } });
 }
 
+// Разовый идемпотентный сид расписания: воркшопы по субботам и форум-группа.
+// Помечается флагом events:seeded_workshops_v1, чтобы не дублировать при повторных вызовах.
+async function ensureSeedEvents(env) {
+  const seeded = await env.KV.get("events:seeded_workshops_v1");
+  if (seeded) return;
+
+  const events = await env.KV.get("events:list", "json") || [];
+  const exists = (title, dateStr) => events.some(e => e.title === title && String(e.datetime || "").startsWith(dateStr));
+
+  const toAdd = [];
+  const WORKSHOP_TITLE = "Воркшоп по ИИ-маркетингу";
+  const WORKSHOP_DATES = ["2026-08-22", "2026-08-29", "2026-09-05", "2026-09-12", "2026-09-19", "2026-09-26"];
+  for (const d of WORKSHOP_DATES) {
+    if (!exists(WORKSHOP_TITLE, d)) {
+      toAdd.push({
+        title: WORKSHOP_TITLE, author: "", datetime: `${d}T12:15`, photo: "",
+        actionType: "register", actionUrl: "https://t.me/oleg_ezhkov", tags: [], authorUrl: ""
+      });
+    }
+  }
+
+  const FORUM_TITLE = "Форум-группа";
+  const FORUM_DATES = ["2026-08-27", "2026-09-10", "2026-09-24"];
+  for (const d of FORUM_DATES) {
+    if (!exists(FORUM_TITLE, d)) {
+      toAdd.push({
+        title: FORUM_TITLE, author: "", datetime: `${d}T19:00`, photo: "",
+        actionType: "register", actionUrl: "https://t.me/oleg_ezhkov", tags: [], authorUrl: ""
+      });
+    }
+  }
+
+  if (toAdd.length) {
+    const now = Date.now();
+    toAdd.forEach((ev, i) => { ev.id = now + i; });
+    const merged = events.concat(toAdd);
+    merged.sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+    await env.KV.put("events:list", JSON.stringify(merged));
+  }
+  await env.KV.put("events:seeded_workshops_v1", "1");
+}
+
 async function apiEvents(request, env) {
+  await ensureSeedEvents(env);
   const events = await env.KV.get("events:list", "json") || [];
   return jsonResp({ events });
 }
@@ -3945,7 +3998,7 @@ function getMiniAppHTML() {
   .auth-msg.success { color: #6bffb8; }
 
   /* ── MAIN APP ── */
-  #appScreen { padding-bottom: 80px; }
+  #appScreen { padding-bottom: 96px; }
 
   /* ── TOP BAR ── */
   .topbar {
@@ -4489,8 +4542,8 @@ function getMiniAppHTML() {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 10px 2px;
-  gap: 3px;
+  padding: 16px 2px 14px;
+  gap: 4px;
   cursor: pointer;
   border: none;
   background: transparent;
@@ -4512,8 +4565,8 @@ function getMiniAppHTML() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;    /* добавить */
 }
 
@@ -5289,7 +5342,7 @@ function getMiniAppHTML() {
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H12a8.38 8.38 0 0 1-4-1L3 20l1-5a8.38 8.38 0 0 1-1-4 8.5 8.5 0 0 1 8.5-8.5h.5a8.5 8.5 0 0 1 8.5 8.5z"/></svg>
       </span>
       <span role="button" tabindex="0" onclick="event.stopPropagation();openTgDeepLink('https://t.me/oleg_ezhkov')" class="topbar-icon-btn" title="Поддержка">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2 1.8-2 3.5"/><circle cx="12" cy="16.3" r=".4" fill="currentColor" stroke="none"/></svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><line x1="5.4" y1="5.4" x2="8.6" y2="8.6"/><line x1="15.4" y1="15.4" x2="18.6" y2="18.6"/><line x1="15.4" y1="8.6" x2="18.6" y2="5.4"/><line x1="5.4" y1="18.6" x2="8.6" y2="15.4"/></svg>
       </span>
     </div>
     <div class="topbar-user">
@@ -5949,7 +6002,7 @@ function renderCoffeeOnboarding(container, tgId) {
  
     </div>
 
-    <div class="desktop-fixed-bar" style="position: fixed; left: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom)); padding: 0 16px; z-index: 60;">
+    <div class="desktop-fixed-bar" style="position: fixed; left: 0; right: 0; bottom: calc(76px + env(safe-area-inset-bottom)); padding: 0 16px; z-index: 60;">
       <button class="coffee-btn coffee-btn-primary" id="coffeeSubmitBtn" style="width: 100%; height: 52px;" onclick="submitCoffeeOnboarding('\${tgId}')">
         Присоединиться к Рандом Кофе
       </button>
@@ -6424,9 +6477,7 @@ async function renderKnowledge(container) {
     else if (isDone) cls += ' done available';
     else cls += ' available';
 
-    let tag = '';
-    if (isLocked) tag = '<span class="module-tag locked-tag">🔒 Скоро</span>';
-    else if (isDone) tag = '<span class="module-tag">✓ Пройдено</span>';
+    const tag = isLocked ? '<span class="module-tag locked-tag">🔒 Скоро</span>' : '';
 
     const desc = mod.description ? \`<div class="module-desc">\${mod.description}</div>\` : '';
     const modTagsHtml = (mod.tags && mod.tags.length)
