@@ -483,7 +483,11 @@ async function buildTopParticipantsDigest(env) {
   const admins = await env.KV.get("admins:list", "json") || [];
   const adminEmails = new Set(admins.map(a => a.email.toLowerCase()));
 
-  // Сообщения в чате — суммарно по всем чатам, на одного участника
+  // Имя/email/telegram берём из CRM (getCRMParticipants) — это та же карточка,
+  // что видит админ на CRM-доске, и там уже учтена вручную заполненная связка почта↔имя↔telegram.
+  const participants = await getCRMParticipants(env);
+
+  // Сообщения в чате — суммарно по всем чатам, на одного участника (по tgId)
   const chatIdx = await env.KV.get('chatactivity:chats', 'json') || [];
   const messagesByUser = new Map();
   for (const chatId of chatIdx) {
@@ -495,16 +499,13 @@ async function buildTopParticipantsDigest(env) {
     });
   }
 
-  const userList = await env.KV.list({ prefix: "user:" });
   const stats = [];
-  for (const key of userList.keys) {
-    const u = await env.KV.get(key.name, "json");
-    if (!u?.approved) continue;
-    if (adminEmails.has((u.email || '').toLowerCase())) continue;
-    const userId = String(u.tgId);
+  for (const p of participants) {
+    if (!p.tgId) continue; // без телеграм-аккаунта активность не считаем
+    if (p.email && adminEmails.has(p.email.toLowerCase())) continue;
+    const userId = String(p.tgId);
 
-    const [launches, progAi, progFun, tpAi, tpFun] = await Promise.all([
-      env.KV.get(`userstat:${userId}:launches`, "json"),
+    const [progAi, progFun, tpAi, tpFun] = await Promise.all([
       env.KV.get(`progress:${userId}:ai`, "json"),
       env.KV.get(`progress:${userId}:funnels`, "json"),
       env.KV.get(`taskprogress:${userId}:ai`, "json"),
@@ -514,14 +515,15 @@ async function buildTopParticipantsDigest(env) {
     const completed = (progAi?.completed?.length || 0) + (progFun?.completed?.length || 0)
       + (tpAi?.completed?.length || 0) + (tpFun?.completed?.length || 0);
     const messages = messagesByUser.get(userId) || 0;
-    const launchCount = launches || 0;
-    const score = messages + launchCount + completed;
+    const launches = p.launches || 0;
+    const score = messages + launches + completed;
     if (score === 0) continue;
 
     stats.push({
-      name: u.name || u.first_name || (u.email ? u.email.split('@')[0] : 'Без имени'),
-      username: u.username || '',
-      messages, launches: launchCount, completed, score
+      name: p.name || p.telegram || (p.email ? p.email.split('@')[0] : 'Без имени'),
+      username: p.telegram || '',
+      email: p.email || '',
+      messages, launches, completed, score
     });
   }
 
@@ -540,7 +542,8 @@ async function sendWeeklyDigest(env) {
     let text = '📊 *Топ-10 участников за неделю*\n\n_Сообщения в чате · заходы в мини-ап · выполненные модули/задания_\n\n';
     top.forEach((p, i) => {
       const handle = p.username ? ` (@${p.username})` : '';
-      text += `${i + 1}. *${p.name}*${handle}\n   💬 ${p.messages} · 📱 ${p.launches} · ✅ ${p.completed}\n`;
+      const emailLine = p.email ? `\n   ✉️ ${p.email}` : '';
+      text += `${i + 1}. *${p.name}*${handle}${emailLine}\n   💬 ${p.messages} · 📱 ${p.launches} · ✅ ${p.completed}\n`;
     });
     await tgSend(env, env.ADMIN_ID, text);
   } catch(err) {
@@ -3981,6 +3984,7 @@ function getMiniAppHTML() {
     color: var(--text2);
     text-decoration: none;
     flex-shrink: 0;
+    cursor: pointer;
     transition: border-color 0.2s, color 0.2s;
   }
   .topbar-icon-btn:active { border-color: var(--border-h); color: var(--text); }
@@ -5281,12 +5285,12 @@ function getMiniAppHTML() {
     <div class="topbar-logo" style="display:flex;align-items:center;gap:8px">
       <span id="currentProgramName" style="display:none"></span>
       <span id="dropdownArrow" style="font-size:10px;transition:transform 0.2s;display:none"></span>
-      <a href="https://t.me/+Lh27u2ZjQMA3NDcy" target="_blank" onclick="event.stopPropagation();tgOpenLink('https://t.me/+Lh27u2ZjQMA3NDcy');return false;" class="topbar-icon-btn" title="Чат">
+      <span role="button" tabindex="0" onclick="event.stopPropagation();openTgDeepLink('https://t.me/+Lh27u2ZjQMA3NDcy')" class="topbar-icon-btn" title="Чат">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H12a8.38 8.38 0 0 1-4-1L3 20l1-5a8.38 8.38 0 0 1-1-4 8.5 8.5 0 0 1 8.5-8.5h.5a8.5 8.5 0 0 1 8.5 8.5z"/></svg>
-      </a>
-      <a href="https://t.me/oleg_ezhkov" target="_blank" onclick="event.stopPropagation();tgOpenLink('https://t.me/oleg_ezhkov');return false;" class="topbar-icon-btn" title="Поддержка">
+      </span>
+      <span role="button" tabindex="0" onclick="event.stopPropagation();openTgDeepLink('https://t.me/oleg_ezhkov')" class="topbar-icon-btn" title="Поддержка">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2 1.8-2 3.5"/><circle cx="12" cy="16.3" r=".4" fill="currentColor" stroke="none"/></svg>
-      </a>
+      </span>
     </div>
     <div class="topbar-user">
       <span class="topbar-name" id="topbarName"></span>
@@ -5767,7 +5771,9 @@ function navTo(page) {
   document.getElementById('nucleusGateScreen').style.display = 'none';
   document.getElementById('mainContent').style.display = 'block';
 
-  // Топбар (иконки чата/поддержки + профиль) теперь одинаков на всех страницах
+  // Топбар (иконки чата/поддержки + профиль) виден только на вкладке «Ядро»
+  const topbarEl = document.querySelector('.topbar');
+  if (topbarEl) topbarEl.style.display = page === 'home' ? 'flex' : 'none';
   document.getElementById('programMenu').style.display = 'none';
 
   showScreen('appScreen');
@@ -6627,6 +6633,18 @@ function renderKBEntry(catId, entryId) {
 
 function tgOpenLink(url) {
   if (window.Telegram?.WebApp?.openLink) {
+    window.Telegram.WebApp.openLink(url);
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
+// Для ссылок вида t.me/... — открывает чат/профиль внутри Telegram напрямую,
+// без промежуточного открытия системного браузера.
+function openTgDeepLink(url) {
+  if (window.Telegram?.WebApp?.openTelegramLink) {
+    window.Telegram.WebApp.openTelegramLink(url);
+  } else if (window.Telegram?.WebApp?.openLink) {
     window.Telegram.WebApp.openLink(url);
   } else {
     window.open(url, '_blank');
