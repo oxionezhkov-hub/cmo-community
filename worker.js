@@ -42,6 +42,7 @@ export default {
     if (url.pathname === '/api/request-access') return apiRequestAccess(request, env);
     if (url.pathname === '/api/kb') return apiKB(request, env);
     if (url.pathname === '/api/tags') return apiTags(request, env);
+    if (url.pathname === '/api/module-order') return apiModuleOrder(request, env);
     if (url.pathname === '/api/coffee/join') return apiCoffeeJoin(request, env);
 if (url.pathname === '/api/coffee/profile') return apiCoffeeProfile(request, env);
 if (url.pathname === '/api/coffee/toggle') return apiCoffeeToggle(request, env);
@@ -91,6 +92,7 @@ if (url.pathname === '/api/admin/coffee/send-now') {
         const existing = await env.KV.get(`coffee:round:${weekId}`, 'json');
         if (!existing) await coffeeAutoGeneratePairs(env, weekId);
         await coffeeSendPairs(env); // рассылка пар
+        await sendWeeklyDigest(env); // сводка топ-10 участников
       }
       if (day === 5) await coffeeSendReminder(env); // пятница — напоминание + оценка
     }
@@ -448,6 +450,103 @@ async function notifyAdminNewAccess(env, email, tgUser) {
   } catch(e) {}
 }
 
+// Уведомление админу о проблеме со списанием от edsofa.ai
+async function notifyAdminPaymentProblem(env, email, telegram, payload) {
+  try {
+    if (!env.ADMIN_ID) return;
+    let tgId = null;
+    let name = telegram || (email ? email.split('@')[0] : 'неизвестно');
+    if (email) {
+      const mappedId = await env.KV.get(`email_to_user:${email.toLowerCase()}`);
+      if (mappedId) {
+        tgId = mappedId;
+        const u = await env.KV.get(`user:${mappedId}`, 'json');
+        if (u?.name) name = u.name;
+      }
+    }
+
+    let keyboard = null;
+    if (tgId && email) {
+      const token = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      await env.KV.put(`accessrevoke:${token}`, JSON.stringify({ tgId, email }), { expirationTtl: 60 * 60 * 24 * 30 });
+      keyboard = { inline_keyboard: [[{ text: '⏸ Приостановить доступ', callback_data: `closeaccess_${token}` }]] };
+    }
+
+    const text = `⚠️ *Проблема со списанием (edsofa)*\n\nEmail: \`${email || '—'}\`\nИмя: ${name}${telegram ? `\nTelegram: @${telegram}` : ''}${tgId ? `\nTG ID: ${tgId}` : '\n\n⚠️ Не удалось найти Telegram-аккаунт участника — доступ придётся закрыть вручную.'}`;
+    await tgSend(env, env.ADMIN_ID, text, keyboard);
+  } catch(e) {}
+}
+
+// ── ЕЖЕНЕДЕЛЬНАЯ СВОДКА ТОП-10 УЧАСТНИКОВ ──────────────────────
+async function buildTopParticipantsDigest(env) {
+  const admins = await env.KV.get("admins:list", "json") || [];
+  const adminEmails = new Set(admins.map(a => a.email.toLowerCase()));
+
+  // Сообщения в чате — суммарно по всем чатам, на одного участника
+  const chatIdx = await env.KV.get('chatactivity:chats', 'json') || [];
+  const messagesByUser = new Map();
+  for (const chatId of chatIdx) {
+    const keys = await env.KV.list({ prefix: `chatuser:${chatId}:` });
+    const records = await Promise.all(keys.keys.map(k => env.KV.get(k.name, 'json')));
+    records.filter(Boolean).forEach(r => {
+      const uid = String(r.userId);
+      messagesByUser.set(uid, (messagesByUser.get(uid) || 0) + (r.messageCount || 0));
+    });
+  }
+
+  const userList = await env.KV.list({ prefix: "user:" });
+  const stats = [];
+  for (const key of userList.keys) {
+    const u = await env.KV.get(key.name, "json");
+    if (!u?.approved) continue;
+    if (adminEmails.has((u.email || '').toLowerCase())) continue;
+    const userId = String(u.tgId);
+
+    const [launches, progAi, progFun, tpAi, tpFun] = await Promise.all([
+      env.KV.get(`userstat:${userId}:launches`, "json"),
+      env.KV.get(`progress:${userId}:ai`, "json"),
+      env.KV.get(`progress:${userId}:funnels`, "json"),
+      env.KV.get(`taskprogress:${userId}:ai`, "json"),
+      env.KV.get(`taskprogress:${userId}:funnels`, "json")
+    ]);
+
+    const completed = (progAi?.completed?.length || 0) + (progFun?.completed?.length || 0)
+      + (tpAi?.completed?.length || 0) + (tpFun?.completed?.length || 0);
+    const messages = messagesByUser.get(userId) || 0;
+    const launchCount = launches || 0;
+    const score = messages + launchCount + completed;
+    if (score === 0) continue;
+
+    stats.push({
+      name: u.name || u.first_name || (u.email ? u.email.split('@')[0] : 'Без имени'),
+      username: u.username || '',
+      messages, launches: launchCount, completed, score
+    });
+  }
+
+  stats.sort((a, b) => b.score - a.score);
+  return stats.slice(0, 10);
+}
+
+async function sendWeeklyDigest(env) {
+  try {
+    if (!env.ADMIN_ID) return;
+    const top = await buildTopParticipantsDigest(env);
+    if (!top.length) {
+      await tgSend(env, env.ADMIN_ID, '📊 *Еженедельная сводка активности*\n\nПока нет данных об активности участников.');
+      return;
+    }
+    let text = '📊 *Топ-10 участников за неделю*\n\n_Сообщения в чате · заходы в мини-ап · выполненные модули/задания_\n\n';
+    top.forEach((p, i) => {
+      const handle = p.username ? ` (@${p.username})` : '';
+      text += `${i + 1}. *${p.name}*${handle}\n   💬 ${p.messages} · 📱 ${p.launches} · ✅ ${p.completed}\n`;
+    });
+    await tgSend(env, env.ADMIN_ID, text);
+  } catch(err) {
+    await notifyAdminError(env, 'sendWeeklyDigest', err);
+  }
+}
+
 function icsStartFromDatetime(dtStr) {
   const d = new Date(dtStr);
   return d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0') +
@@ -565,6 +664,35 @@ async function apiProgram(request, env) {
 async function apiTags(request, env) {
   const tags = await env.KV.get("program:tags", "json") || [];
   return jsonResp({ tags });
+}
+
+// Хронология объединённого списка модулей Ядра (обе программы вместе).
+// Хранится как список ключей "programId:moduleId" в порядке отображения (сверху вниз).
+async function getModulesOrder(env) {
+  let order = await env.KV.get("modules:order", "json");
+  if (order && Array.isArray(order)) return order;
+
+  const [ai, funnels] = await Promise.all([
+    env.KV.get("program:ai", "json"),
+    env.KV.get("program:funnels", "json")
+  ]);
+  const all = [
+    ...(ai?.modules || []).map(m => ({ ...m, _p: "ai" })),
+    ...(funnels?.modules || []).map(m => ({ ...m, _p: "funnels" }))
+  ];
+  all.sort((a, b) => {
+    const da = a.date ? new Date(a.date).getTime() : 0;
+    const db = b.date ? new Date(b.date).getTime() : 0;
+    return db - da; // новые сверху при первичной инициализации
+  });
+  order = all.map(m => `${m._p}:${m.id}`);
+  await env.KV.put("modules:order", JSON.stringify(order));
+  return order;
+}
+
+async function apiModuleOrder(request, env) {
+  const order = await getModulesOrder(env);
+  return jsonResp({ order });
 }
 
 // ─── API: PROGRESS ───────────────────────────────────────────
@@ -1093,7 +1221,37 @@ if (action === "notify" && request.method === "POST") {
     const newId = "m" + (program.modules.length + 1) + "_" + Date.now();
     program.modules.push({ id: newId, title: "Новый модуль", description: "", embedUrl: "", files: [], available: false, date: new Date().toISOString().slice(0, 10), tags: [] });
     await env.KV.put(`program:${programId}`, JSON.stringify(program));
+
+    // Новый модуль сразу ставим сверху в общей хронологии
+    const order = await getModulesOrder(env);
+    order.unshift(`${programId}:${newId}`);
+    await env.KV.put("modules:order", JSON.stringify(order));
+
     return jsonResp({ ok: true, program });
+  }
+
+  if (action === "module-order" && request.method === "GET") {
+    const order = await getModulesOrder(env);
+    const [ai, funnels] = await Promise.all([
+      env.KV.get("program:ai", "json"),
+      env.KV.get("program:funnels", "json")
+    ]);
+    const modMap = new Map();
+    (ai?.modules || []).forEach(m => modMap.set(`ai:${m.id}`, { ...m, programId: "ai" }));
+    (funnels?.modules || []).forEach(m => modMap.set(`funnels:${m.id}`, { ...m, programId: "funnels" }));
+    const items = order.map(key => modMap.get(key)).filter(Boolean);
+    return jsonResp({ items });
+  }
+
+  if (action === "save-module-order" && request.method === "POST") {
+    const { order } = await request.json();
+    await env.KV.put("modules:order", JSON.stringify(Array.isArray(order) ? order : []));
+    return jsonResp({ ok: true });
+  }
+
+  if (action === "send-digest-now" && request.method === "POST") {
+    await sendWeeklyDigest(env);
+    return jsonResp({ ok: true });
   }
 
   if (action === "tags" && request.method === "GET") {
@@ -1127,6 +1285,9 @@ if (action === "notify" && request.method === "POST") {
     if (!program) return jsonResp({ ok: false, error: "Программа не найдена" });
     program.modules = (program.modules || []).filter(m => m.id !== moduleId);
     await env.KV.put(`program:${programId}`, JSON.stringify(program));
+
+    const order = (await getModulesOrder(env)).filter(key => key !== `${programId}:${moduleId}`);
+    await env.KV.put("modules:order", JSON.stringify(order));
 
     // Отвязать (не удалять) задания, привязанные к удалённому модулю
     const tasks = await env.KV.get(`tasks:${programId}`, "json") || [];
@@ -3185,8 +3346,17 @@ async function apiPaymentsWebhook(request, env) {
   let payload;
   try { payload = await request.json(); } catch (e) { return jsonResp({ error: 'Invalid JSON' }, 400); }
 
-  const email = payload.email || payload.buyer_email || null;
-  const telegram = payload.telegram || payload.username || payload.tg_username || null;
+  const email = payload.email || payload.buyer_email || payload.customer?.email || null;
+  const telegram = payload.telegram || payload.username || payload.tg_username || payload.customer?.telegram || null;
+
+  // Колбек о проблеме со списанием — отдельно уведомляем админа, без применения оплаты
+  const statusRaw = String(payload.status || payload.event || payload.type || '').toLowerCase();
+  const isPaymentProblem = ['fail', 'declin', 'error', 'problem', 'chargeback', 'refund'].some(k => statusRaw.includes(k));
+  if (isPaymentProblem) {
+    await notifyAdminPaymentProblem(env, email, telegram, payload);
+    return jsonResp({ ok: true, problem: true });
+  }
+
   const paidAtTs = payload.paid_at ? new Date(payload.paid_at).getTime() : Date.now();
   const monthKey = currentMonthStr(Number.isNaN(paidAtTs) ? Date.now() : paidAtTs);
 
@@ -3738,6 +3908,22 @@ function getMiniAppHTML() {
     white-space: nowrap;
   }
 
+  .topbar-icon-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text2);
+    text-decoration: none;
+    flex-shrink: 0;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .topbar-icon-btn:active { border-color: var(--border-h); color: var(--text); }
+
   .topbar-user {
     display: flex;
     align-items: center;
@@ -3870,6 +4056,7 @@ function getMiniAppHTML() {
     align-items: center;
     justify-content: center;
     font-size: 10px;
+    cursor: pointer;
   }
 
   .module-status.done {
@@ -5030,9 +5217,15 @@ function getMiniAppHTML() {
 <!-- MAIN APP -->
 <div id="appScreen" class="screen">
   <div class="topbar">
-    <div class="topbar-logo" style="display:flex;align-items:center;gap:6px">
-      <span id="currentProgramName">Ядро</span>
+    <div class="topbar-logo" style="display:flex;align-items:center;gap:8px">
+      <span id="currentProgramName" style="display:none"></span>
       <span id="dropdownArrow" style="font-size:10px;transition:transform 0.2s;display:none"></span>
+      <a href="https://t.me/+Lh27u2ZjQMA3NDcy" target="_blank" onclick="event.stopPropagation();tgOpenLink('https://t.me/+Lh27u2ZjQMA3NDcy');return false;" class="topbar-icon-btn" title="Чат">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H12a8.38 8.38 0 0 1-4-1L3 20l1-5a8.38 8.38 0 0 1-1-4 8.5 8.5 0 0 1 8.5-8.5h.5a8.5 8.5 0 0 1 8.5 8.5z"/></svg>
+      </a>
+      <a href="https://t.me/oleg_ezhkov" target="_blank" onclick="event.stopPropagation();tgOpenLink('https://t.me/oleg_ezhkov');return false;" class="topbar-icon-btn" title="Поддержка">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2 1.8-2 3.5"/><circle cx="12" cy="16.3" r=".4" fill="currentColor" stroke="none"/></svg>
+      </a>
     </div>
     <div class="topbar-user">
       <span class="topbar-name" id="topbarName"></span>
@@ -5513,26 +5706,8 @@ function navTo(page) {
   document.getElementById('nucleusGateScreen').style.display = 'none';
   document.getElementById('mainContent').style.display = 'block';
 
-  // Переключалка программ — только для ядра
-  const programSwitcher = document.querySelector('.topbar-logo');
-  const dropdownArrow = document.getElementById('dropdownArrow');
-  if (page === 'home') {
-    programSwitcher.style.pointerEvents = 'auto';
-    programSwitcher.style.opacity = '1';
-    if (dropdownArrow) dropdownArrow.style.display = 'inline';
-    document.getElementById('currentProgramName').style.display = 'inline';
-        document.querySelector('.topbar-user').style.display = 'flex';
-
-  } else {
-    programSwitcher.style.pointerEvents = 'none';
-    programSwitcher.style.opacity = '0.3';
-    document.getElementById('currentProgramName').style.display = 'none';
-    if (dropdownArrow) dropdownArrow.style.display = 'none';
-    // Закрыть меню если открыто
-    document.getElementById('programMenu').style.display = 'none';
-        document.querySelector('.topbar-user').style.display = 'none';
-
-  }
+  // Топбар (иконки чата/поддержки + профиль) теперь одинаков на всех страницах
+  document.getElementById('programMenu').style.display = 'none';
 
   showScreen('appScreen');
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -5568,14 +5743,6 @@ function showNucleusGate() {
   document.getElementById('nucleusGateScreen').style.display = 'block';
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('nav-home').classList.add('active');
-  // Скрыть переключалку программ
-  const programSwitcher = document.querySelector('.topbar-logo');
-  if (programSwitcher) {
-    programSwitcher.style.pointerEvents = 'none';
-    programSwitcher.style.opacity = '0.3';
-  }
-  const dropdownArrow = document.getElementById('dropdownArrow');
-  if (dropdownArrow) dropdownArrow.style.display = 'none';
 }
 
 function showNucleusEmailForm() {
@@ -6118,23 +6285,38 @@ function renderCoffeeHistoryTab(history) {
 
 let allTagsPool = null;
 let activeModuleTagFilters = new Set();
+let moduleOrderCache = null;
 
 async function renderKnowledge(container) {
   const aiMods = (programData.ai?.modules || []).map(m => Object.assign({}, m, { _programId: 'ai' }));
   const funnelMods = (programData.funnels?.modules || []).map(m => Object.assign({}, m, { _programId: 'funnels' }));
-  const allMods = aiMods.concat(funnelMods);
+  const modsByKey = new Map();
+  aiMods.concat(funnelMods).forEach(m => modsByKey.set(m._programId + ':' + m.id, m));
 
-  if (!allMods.length) {
+  if (!modsByKey.size) {
     container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📂</div><div class="empty-state-text">Загрузка материалов...</div></div>';
     return;
   }
 
-  // Новые модули сверху
-  allMods.sort((a, b) => {
-    const da = a.date ? new Date(a.date).getTime() : 0;
-    const db = b.date ? new Date(b.date).getTime() : 0;
-    return db - da;
+  if (moduleOrderCache === null) {
+    try {
+      const res = await fetch('/api/module-order').then(r => r.json());
+      moduleOrderCache = res.order || [];
+    } catch(e) {
+      moduleOrderCache = [];
+    }
+  }
+
+  // Порядок задаётся хронологией из админки; модули, которых там ещё нет, показываем сверху
+  const allMods = [];
+  const seenKeys = new Set();
+  moduleOrderCache.forEach(key => {
+    const mod = modsByKey.get(key);
+    if (mod) { allMods.push(mod); seenKeys.add(key); }
   });
+  const unordered = [];
+  modsByKey.forEach((mod, key) => { if (!seenKeys.has(key)) unordered.push(mod); });
+  allMods.unshift(...unordered);
 
   if (allTagsPool === null) {
     try {
@@ -6180,28 +6362,42 @@ async function renderKnowledge(container) {
     else if (isDone) tag = '<span class="module-tag">✓ Пройдено</span>';
 
     const desc = mod.description ? \`<div class="module-desc">\${mod.description}</div>\` : '';
-    const dateLabel = mod.date ? \`<div class="module-num">\${formatModuleDate(mod.date)}</div>\` : '';
     const modTagsHtml = (mod.tags && mod.tags.length)
       ? \`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px">\${mod.tags.map(t => \`<span class="module-tag" style="text-transform:none">\${escapeHtml(t)}</span>\`).join('')}</div>\`
       : '';
+    const statusClick = isLocked ? '' : "event.stopPropagation();toggleModuleDoneFromList('" + mod._programId + "','" + mod.id + "')";
 
     html += \`
       <div class="\${cls}" onclick="\${isLocked ? '' : "openModule('" + mod.id + "','" + mod._programId + "')"}">
         <div class="module-top">
           <div>
-            \${dateLabel}
             <div class="module-title">\${mod.title}</div>
             \${desc}
             \${modTagsHtml}
             \${tag}
           </div>
-          <div class="module-status \${isDone ? 'done' : ''}">\${isDone ? '✓' : ''}</div>
+          <div class="module-status \${isDone ? 'done' : ''}" onclick="\${statusClick}">\${isDone ? '✓' : ''}</div>
         </div>
       </div>\`;
   });
   html += '</div>';
 
   container.innerHTML = html;
+}
+
+async function toggleModuleDoneFromList(programId, moduleId) {
+  const completed = progressData[programId]?.completed || [];
+  const isDone = completed.includes(moduleId);
+  try {
+    const res = await api('/api/progress', { initData, programId, moduleId, done: !isDone }, 'POST');
+    if (res.ok) {
+      progressData[programId] = res.progress;
+      showToast(!isDone ? 'Отмечено как пройденное ✓' : 'Отметка снята');
+      renderContent();
+    }
+  } catch(e) {
+    showToast('Ошибка. Попробуй снова.');
+  }
 }
 
 function toggleModuleTagFilter(t) {
@@ -6878,7 +7074,7 @@ if (mod.timecodes && mod.timecodes.length > 0 && mod.embedUrl) {
   const doneBtnText = isDone ? '✓ Пройдено' : 'Отметить как пройденное';
 
   document.getElementById('detailContent').innerHTML = \`
-    <div class="detail-num">МОДУЛЬ \${idx + 1} · \${currentProgram === 'ai' ? 'ИИ-КОНТЕНТ' : 'ВОРОНКИ'}</div>
+    <div class="detail-num">МОДУЛЬ \${idx + 1} · \${currentProgram === 'ai' ? 'ИИ-КОНТЕНТ' : 'ВОРОНКИ'}\${mod.date ? ' · ' + formatModuleDate(mod.date) : ''}</div>
     <div class="detail-title">\${mod.title}</div>
     \${mod.description ? \`<div class="detail-desc">\${mod.description}</div>\` : ''}
     \${embedHtml}
@@ -7629,7 +7825,10 @@ function getAdminHTML() {
 
       <!-- DASHBOARD -->
       <div class="page active" id="page-dashboard">
-        <div class="page-title">Дашборд</div>
+        <div class="page-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span>Дашборд</span>
+          <button class="btn btn-ghost btn-sm" onclick="sendDigestNow()">📊 Отправить сводку топ-10 сейчас</button>
+        </div>
 
         <div class="health-card">
           <div class="health-ring">
@@ -7871,12 +8070,18 @@ function getAdminHTML() {
           <button class="btn btn-w" id="pb-ai" onclick="selectProgAdmin('ai')">🤖 ИИ-контент</button>
           <button class="btn btn-ghost" id="pb-funnels" onclick="selectProgAdmin('funnels')">🔻 Воронки</button>
         </div>
-        <div class="card">
+        <div class="card" style="margin-bottom:16px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
             <div class="card-title" style="margin-bottom:0">Модули программы</div>
             <button class="btn btn-ghost btn-sm" onclick="addModule()">+ Добавить модуль</button>
           </div>
           <div id="moduleList"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Хронология в общем списке (Ядро)</div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:12px">Порядок, в котором участники видят модули обеих программ. Новый модуль автоматически встаёт сверху.</div>
+          <div id="moduleOrderList"></div>
         </div>
       </div>
 
@@ -8497,6 +8702,7 @@ window.addEventListener('load', () => {
     loadParticipants();
     loadProgramAdmin(savedProg);
     loadTagsPool();
+    loadModuleOrder();
     loadQuestions();
     showPage(savedPage);
     selectProgAdmin(savedProg);
@@ -8533,6 +8739,7 @@ async function adminLogin() {
   loadParticipants();
   loadProgramAdmin(savedProg);
   loadTagsPool();
+  loadModuleOrder();
   loadQuestions();
   showPage(savedPage);
   selectProgAdmin(savedProg);
@@ -8764,6 +8971,13 @@ function goInsight(target, filter) {
   if (target === 'participants' && filter) {
     setTimeout(() => setCrmFilter(filter), 50);
   }
+}
+
+async function sendDigestNow() {
+  try {
+    const res = await fetch('/api/admin/send-digest-now', { method: 'POST', headers: aHeaders() }).then(r => r.json());
+    showAdminToast(res.ok ? '📊 Сводка отправлена админу в Telegram' : 'Ошибка отправки');
+  } catch(e) { showAdminToast('Ошибка подключения'); }
 }
 
 async function loadDashboard() {
@@ -9480,6 +9694,7 @@ async function addModule() {
     if (res.ok) {
       adminProgramData[adminProgram] = res.program;
       renderModuleList(res.program.modules || []);
+      loadModuleOrder();
       // Edit the last added module
       const last = res.program.modules[res.program.modules.length - 1];
       if (last) editModule(last.id);
@@ -9561,8 +9776,60 @@ async function deleteModuleFromModal() {
       showAdminToast('Модуль удалён');
       closeModal();
       loadProgramAdmin(adminProgram);
+      loadModuleOrder();
     } else alert('Ошибка удаления');
   } catch(e) { alert('Ошибка подключения'); }
+}
+
+let adminModuleOrderItems = [];
+
+async function loadModuleOrder() {
+  try {
+    const res = await fetch('/api/admin/module-order', { headers: aHeaders() }).then(r => r.json());
+    adminModuleOrderItems = res.items || [];
+    renderModuleOrderList();
+  } catch(e) {}
+}
+
+function renderModuleOrderList() {
+  const el = document.getElementById('moduleOrderList');
+  if (!el) return;
+  el.innerHTML = adminModuleOrderItems.map((m, i) => \`
+    <div class="module-item" style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:2px">\${m.programId === 'ai' ? '🤖 ИИ-контент' : '🔻 Воронки'}</div>
+        <div class="module-item-title">\${escapeAdminHtml(m.title)}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn btn-ghost btn-sm" data-order-move="up" data-order-idx="\${i}" \${i === 0 ? 'disabled' : ''}>↑</button>
+        <button class="btn btn-ghost btn-sm" data-order-move="down" data-order-idx="\${i}" \${i === adminModuleOrderItems.length - 1 ? 'disabled' : ''}>↓</button>
+      </div>
+    </div>
+  \`).join('') || '<p style="color:var(--text3);font-size:13px">Нет модулей</p>';
+}
+
+document.addEventListener('click', function(e) {
+  const btn = e.target.closest('[data-order-move]');
+  if (!btn) return;
+  const idx = Number(btn.dataset.orderIdx);
+  const dir = btn.dataset.orderMove;
+  const swapIdx = dir === 'up' ? idx - 1 : idx + 1;
+  if (swapIdx < 0 || swapIdx >= adminModuleOrderItems.length) return;
+  const tmp = adminModuleOrderItems[idx];
+  adminModuleOrderItems[idx] = adminModuleOrderItems[swapIdx];
+  adminModuleOrderItems[swapIdx] = tmp;
+  renderModuleOrderList();
+  saveModuleOrder();
+});
+
+async function saveModuleOrder() {
+  const order = adminModuleOrderItems.map(m => \`\${m.programId}:\${m.id}\`);
+  try {
+    await fetch('/api/admin/save-module-order', {
+      method: 'POST', headers: aHeaders(),
+      body: JSON.stringify({ order })
+    });
+  } catch(e) {}
 }
 
 function closeModal() {
