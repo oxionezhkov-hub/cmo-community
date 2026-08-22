@@ -37,6 +37,8 @@ export default {
     if (url.pathname === "/api/quiz3-result") return apiQuiz3Result(request, env);
     if (url.pathname === "/leadmagnet1") return serveLeadMagnet1();
     if (url.pathname === "/api/leadmagnet1-submit") return apiLeadMagnet1Submit(request, env);
+    if (url.pathname === "/leadmagnet2") return serveLeadMagnet2();
+    if (url.pathname === "/api/leadmagnet2-submit") return apiLeadMagnet2Submit(request, env);
     if (url.pathname === "/api/task-progress") return apiTaskProgress(request, env);
     if (url.pathname === "/api/auth-email") return apiAuthEmail(request, env);
     if (url.pathname === "/api/events") return apiEvents(request, env);
@@ -2495,6 +2497,955 @@ function getLeadMagnet1HTML() {
 
 </body>
 </html>`;
+}
+
+// ─── LEAD MAGNET 2: КУДА УТЕКАЕТ ВЫРУЧКА ПАРКА РАЗВЛЕЧЕНИЙ (демо-ниша) ──
+function serveLeadMagnet2() {
+  return new Response(getLeadMagnet2HTML(), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+async function apiLeadMagnet2Submit(request, env) {
+  if (request.method !== "POST") return jsonResp({ error: "Method not allowed" }, 405);
+  let body;
+  try { body = await request.json(); } catch (e) { return jsonResp({ ok: false }, 400); }
+  const name = (body.name || "").toString().trim().slice(0, 200);
+  const park = (body.park || "").toString().trim().slice(0, 200);
+  const contact = (body.contact || "").toString().trim().slice(0, 200);
+  if (!name || !contact) return jsonResp({ ok: false });
+
+  if (env.ADMIN_ID) {
+    const text = `🎡 *Заявка с лид-магнита «Куда утекает выручка парка развлечений» (демо-ниша)*\n\nИмя: ${name}\nПарк: ${park || "—"}\nКонтакт: ${contact}`;
+    await tgSend(env, env.ADMIN_ID, text);
+  }
+  return jsonResp({ ok: true });
+}
+
+function getLeadMagnet2HTML() {
+  return `<!DOCTYPE html>
+<!--
+  ДЕМО-НИША. Бренд "ParkFlow", кейсы и цифры на этой странице — вымышленные:
+  цель — показать 10 разных интерактивных механик (игры, перетаскивание,
+  диаграммы), а не описать реального клиента Growth Autopilot. Форма ниже
+  подключена к тому же Telegram-каналу, что и остальные лид-магниты воркера.
+  См. lead-magnets/pages/kuda-utekaet-vyruchka-parka/structure.md.
+-->
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Куда утекает выручка вашего парка развлечений — ParkFlow (демо)</title>
+<meta name="description" content="Игровая диагностика воронки продажи билетов сезонного парка развлечений: 10 разных интерактивных механик — колесо, карта утечек, перетаскивание, свайпы, игра на память и другие.">
+<meta property="og:title" content="Куда утекает выручка вашего парка развлечений">
+<meta property="og:description" content="10 игровых механик вместо скучной теории: найдите свои точки утечки выручки и получите бесплатный разбор воронки.">
+<meta property="og:type" content="article">
+
+<!-- Яндекс.Метрика: ID-заглушка 00000000 — демо-материал, не публиковалось в прод, реальный счётчик не подставлен -->
+<script type="text/javascript">
+   (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+   m[i].l=1*new Date();
+   for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+   k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})
+   (window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
+   ym(00000000, "init", {ssr:true, webvisor:true, clickmap:true, ecommerce:"dataLayer", accurateTrackBounce:true, trackLinks:true});
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/00000000" style="position:absolute; left:-9999px;" alt=""/></div></noscript>
+
+<style>
+  :root {
+    --ticket: #FFF6E7;
+    --ticket-raised: #FFFFFF;
+    --ink: #2A1E1A;
+    --ink-soft: #7A6659;
+    --line: #F0DEB8;
+    --red: #E63946;
+    --red-tint: #FBE0E1;
+    --gold: #F1A208;
+    --gold-tint: #FDECC8;
+    --teal: #0F8B8D;
+    --teal-tint: #DCF1EF;
+    --font-heading: -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-body: -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --radius: 20px;
+    --max-width: 720px;
+    --space: 24px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+  body {
+    margin: 0;
+    background: var(--ticket);
+    color: var(--ink);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { font-family: var(--font-heading); font-weight: 800; line-height: 1.2; margin: 0 0 0.5em; letter-spacing: -0.01em; }
+  p { margin: 0 0 1.1em; }
+  a { color: var(--teal); }
+  button { font-family: inherit; cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--teal); outline-offset: 2px; }
+
+  .demo-flag { background: var(--ink); color: var(--gold-tint); font-size: 12px; font-weight: 700; text-align: center; padding: 8px 12px; letter-spacing: .03em; }
+  #reading-progress { position: fixed; top: 0; left: 0; height: 5px; width: 0%; background: linear-gradient(90deg, var(--red), var(--gold)); z-index: 1000; transition: width 0.1s linear; }
+  .wrap { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--space); }
+
+  .eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--red); margin-bottom: 14px; }
+  .eyebrow::before { content: "🎡"; font-size: 15px; }
+
+  .hero { padding: 48px 0 36px; text-align: center; }
+  .hero h1 { font-size: clamp(28px, 6.4vw, 44px); }
+  .hero p { color: var(--ink-soft); font-size: 18px; max-width: 52ch; margin: 0 auto 28px; }
+  .fair-scene { display: flex; justify-content: center; gap: 10px; margin-bottom: 8px; }
+
+  .ticket-card { background: var(--ticket-raised); border-radius: var(--radius); padding: 20px var(--space); margin-top: 8px; box-shadow: 0 10px 30px rgba(42,30,26,0.08); position: relative; border: 2px dashed var(--line); }
+  .ticket-card::before, .ticket-card::after { content: ""; position: absolute; top: 50%; width: 22px; height: 22px; background: var(--ticket); border-radius: 50%; transform: translateY(-50%); }
+  .ticket-card::before { left: -13px; }
+  .ticket-card::after { right: -13px; }
+  .ticket-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .ticket-stat b { display: block; font-size: 22px; color: var(--red); }
+  .ticket-stat span { font-size: 12.5px; color: var(--ink-soft); }
+
+  .content-block { padding: 40px 0; border-top: 1px dashed var(--line); }
+  .content-block h2 { font-size: clamp(22px, 4.2vw, 29px); }
+  .content-block .lede { font-size: 13px; color: var(--red); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; margin: -6px 0 18px; }
+  .content-block .hint { font-size: 15px; color: var(--ink-soft); }
+  .card-surface { background: var(--ticket-raised); border-radius: var(--radius); padding: var(--space); box-shadow: 0 4px 18px rgba(42,30,26,0.06); }
+
+  /* ── 1. Колесо фортуны ─────────────────────────────────── */
+  .wheel-wrap { text-align: center; }
+  .wheel-pointer { font-size: 26px; color: var(--red); margin-bottom: -10px; }
+  .wheel { width: 250px; height: 250px; border-radius: 50%; margin: 0 auto; position: relative; border: 6px solid var(--ticket-raised); box-shadow: 0 8px 24px rgba(42,30,26,0.18); background: conic-gradient(var(--red) 0deg 45deg, var(--gold) 45deg 90deg, var(--teal) 90deg 135deg, var(--ink) 135deg 180deg, var(--red) 180deg 225deg, var(--gold) 225deg 270deg, var(--teal) 270deg 315deg, var(--ink) 315deg 360deg); transition: transform 4s cubic-bezier(.17,.67,.12,1); }
+  .wheel-label { position: absolute; top: 50%; left: 50%; width: 2px; height: 2px; }
+  .wheel-label span { position: absolute; left: -52px; top: -112px; width: 104px; text-align: center; font-size: 10px; font-weight: 800; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.4); display: block; }
+  .wheel-btn { margin-top: 22px; background: var(--red); color: #fff; border: none; border-radius: 999px; padding: 15px 30px; font-weight: 800; font-size: 16px; min-height: 48px; box-shadow: 0 6px 16px rgba(230,57,70,.35); }
+  .wheel-btn:disabled { opacity: .55; }
+  .wheel-result { margin-top: 18px; background: var(--gold-tint); border-radius: 14px; padding: 16px 18px; font-weight: 700; display: none; }
+
+  /* ── 2. Карта утечек ───────────────────────────────────── */
+  .park-map { position: relative; background: linear-gradient(180deg, var(--teal-tint), var(--gold-tint)); border-radius: var(--radius); padding: 40px 14px 30px; overflow: hidden; }
+  .park-row { display: flex; justify-content: space-between; align-items: center; }
+  .park-icon { font-size: 26px; text-align: center; flex: 1; }
+  .park-icon-label { font-size: 9.5px; color: var(--ink-soft); text-align: center; margin-top: 4px; }
+  .hotspot { position: absolute; width: 30px; height: 30px; border-radius: 50%; background: var(--red); border: 3px solid #fff; box-shadow: 0 0 0 0 rgba(230,57,70,.6); animation: pulse 1.6s infinite; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 13px; padding: 0; }
+  .hotspot.found { background: var(--teal); animation: none; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(230,57,70,.5); } 70% { box-shadow: 0 0 0 14px rgba(230,57,70,0); } 100% { box-shadow: 0 0 0 0 rgba(230,57,70,0); } }
+  .leak-progress { font-weight: 700; color: var(--red); margin: 14px 0 10px; }
+  .leak-log-item { background: var(--ticket-raised); border-radius: 10px; padding: 10px 14px; margin-bottom: 8px; font-size: 14px; border-left: 4px solid var(--teal); animation: reveal .3s ease; }
+  @keyframes reveal { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ── 3. Драг-н-дроп воронка ────────────────────────────── */
+  .sort-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .sort-item { background: var(--ticket-raised); border: 2px solid var(--line); border-radius: 14px; padding: 12px 14px; display: flex; align-items: center; gap: 12px; user-select: none; font-size: 15px; font-weight: 600; }
+  .sort-item.dragging { opacity: .5; border-color: var(--teal); }
+  .sort-item.wrong { border-color: var(--red); }
+  .sort-handle { font-size: 20px; color: var(--ink-soft); cursor: grab; padding: 4px 8px; touch-action: none; flex-shrink: 0; }
+  .sort-check-btn { margin-top: 16px; background: var(--teal); color: #fff; border: none; border-radius: 999px; padding: 13px 24px; font-weight: 700; min-height: 44px; }
+  .sort-feedback { margin-top: 12px; font-weight: 700; min-height: 22px; }
+  .sort-feedback.ok { color: var(--teal); }
+  .sort-feedback.no { color: var(--red); }
+
+  /* ── 4. Свайп-карточки ─────────────────────────────────── */
+  .swipe-stack { position: relative; height: 210px; max-width: 340px; margin: 0 auto; }
+  .swipe-card { position: absolute; inset: 0; background: var(--ticket-raised); border-radius: var(--radius); box-shadow: 0 8px 24px rgba(42,30,26,0.14); display: flex; align-items: center; justify-content: center; text-align: center; padding: 24px; font-size: 16.5px; font-weight: 700; touch-action: none; cursor: grab; border: 2px solid var(--line); }
+  .swipe-btns { display: flex; gap: 12px; justify-content: center; margin-top: 18px; }
+  .swipe-btn { border-radius: 999px; padding: 12px 22px; font-weight: 700; border: 2px solid; min-height: 44px; background: var(--ticket-raised); }
+  .swipe-btn.no { border-color: var(--ink-soft); color: var(--ink-soft); }
+  .swipe-btn.yes { border-color: var(--teal); color: var(--teal); }
+  .swipe-progress { text-align: center; font-size: 13px; color: var(--ink-soft); margin-top: 12px; }
+  .swipe-verdict { display: none; text-align: center; font-weight: 700; margin-top: 14px; background: var(--gold-tint); border-radius: 12px; padding: 16px; }
+
+  /* ── 5 и 10: спидометры (общий стиль) ─────────────────── */
+  .gauge-wrap { text-align: center; }
+  .gauge-svg { width: 220px; height: 130px; }
+  .gauge-needle { transform-origin: 110px 110px; transition: transform .15s ease; }
+  .gauge-range { width: 100%; margin-top: 10px; accent-color: var(--red); height: 30px; }
+  .gauge-text { margin-top: 12px; font-weight: 700; min-height: 44px; }
+  .gauge-score { margin-top: 6px; font-size: 14px; color: var(--ink-soft); }
+
+  /* ── 6. Игра на память ─────────────────────────────────── */
+  .memory-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .memory-card { background: var(--ink); color: #fff; border-radius: 12px; min-height: 100px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 10px; font-size: 12.5px; font-weight: 700; cursor: pointer; border: none; }
+  .memory-card .memory-back { font-size: 26px; }
+  .memory-card.flipped { background: #fff; color: var(--ink); border: 2px solid var(--teal); }
+  .memory-card.matched { background: var(--teal-tint); color: var(--ink); border: 2px solid var(--teal); cursor: default; }
+  .memory-status { text-align: center; margin-top: 16px; font-weight: 700; color: var(--teal); display: none; }
+
+  /* ── 7. Таймлайн-скраббер ──────────────────────────────── */
+  .timeline-track { position: relative; height: 6px; background: var(--line); border-radius: 3px; margin: 34px 4px 18px; }
+  .timeline-fill { position: absolute; left: 0; top: 0; height: 100%; background: var(--red); border-radius: 3px; }
+  .timeline-marker { position: absolute; top: 50%; font-size: 22px; transform: translate(-50%,-50%); }
+  .timeline-range { width: 100%; accent-color: var(--red); }
+  .timeline-day { text-align: center; font-weight: 700; margin-bottom: 4px; }
+  .timeline-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+  .timeline-stat { background: var(--ticket); border-radius: 12px; padding: 12px; text-align: center; }
+  .timeline-stat b { display: block; font-size: 18px; }
+  .timeline-stat.loss b { color: var(--red); }
+  .timeline-stat.gain b { color: var(--teal); }
+  .timeline-note { font-size: 12px; color: var(--ink-soft); font-style: italic; margin-top: 12px; }
+
+  /* ── 8. Калькулятор + донат ────────────────────────────── */
+  .calc-field { margin-bottom: 16px; }
+  .calc-field label { display: block; font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+  .calc-field input { width: 100%; padding: 13px 14px; border-radius: 12px; border: 2px solid var(--line); font-size: 16px; min-height: 44px; font-family: inherit; background: var(--ticket); color: var(--ink); }
+  .calc-field input:focus { border-color: var(--teal); outline: none; }
+  .donut-wrap { display: flex; align-items: center; gap: 20px; margin-top: 18px; flex-wrap: wrap; justify-content: center; }
+  .donut-box { position: relative; width: 150px; height: 150px; flex-shrink: 0; }
+  .donut-center-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); text-align: center; }
+  .donut-legend { font-size: 13.5px; }
+  .donut-legend div { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .donut-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .calc-result-line { margin-top: 14px; font-size: 14px; color: var(--ink-soft); text-align: center; }
+  .calc-result-line b { color: var(--red); }
+
+  /* ── 9. Чек-лист (питает спидометр 10) ─────────────────── */
+  .checklist-progress { font-size: 14px; font-weight: 700; color: var(--teal); margin-bottom: 14px; }
+  .checklist label { display: flex; gap: 12px; align-items: flex-start; padding: 11px 0; border-bottom: 1px dashed var(--line); font-size: 15px; }
+  .checklist label:last-child { border-bottom: none; }
+  .checklist input { width: 22px; height: 22px; flex-shrink: 0; margin-top: 1px; accent-color: var(--teal); }
+
+  /* ── 10. Скретч-билет + CTA ─────────────────────────────── */
+  .scratch-wrap { position: relative; border-radius: var(--radius); overflow: hidden; aspect-ratio: 16/10; max-width: 420px; margin: 0 auto; box-shadow: 0 10px 30px rgba(42,30,26,.18); }
+  .scratch-reveal { position: absolute; inset: 0; background: linear-gradient(135deg, var(--red), #C22233); color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 22px; }
+  .scratch-reveal h3 { color: #fff; margin-bottom: 8px; }
+  .scratch-reveal p { color: rgba(255,255,255,.92); margin: 0; font-size: 14.5px; }
+  .scratch-canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: pointer; display: block; }
+  .scratch-fallback { display: block; margin: 14px auto 0; background: none; border: 2px dashed var(--ink-soft); border-radius: 999px; padding: 10px 18px; font-size: 13px; color: var(--ink-soft); }
+
+  .final-cta { background: linear-gradient(135deg, var(--red), #C22233); color: #fff; border-radius: var(--radius); padding: 32px var(--space); text-align: center; position: relative; margin-top: 26px; }
+  .final-cta::before, .final-cta::after { content: ""; position: absolute; top: 50%; width: 24px; height: 24px; background: var(--ticket); border-radius: 50%; transform: translateY(-50%); }
+  .final-cta::before { left: -14px; }
+  .final-cta::after { right: -14px; }
+  .final-cta h2 { color: #fff; }
+  .final-cta p { color: rgba(255,255,255,0.9); }
+  .final-cta form { display: grid; gap: 12px; margin-top: 20px; text-align: left; }
+  .final-cta input { padding: 15px 16px; border-radius: 12px; border: none; font-size: 16px; min-height: 48px; font-family: inherit; }
+  .final-cta button[type="submit"] { padding: 15px 16px; border-radius: 12px; border: none; background: var(--gold); color: var(--ink); font-size: 16px; font-weight: 800; min-height: 48px; }
+  .final-cta button[type="submit"]:hover { filter: brightness(1.05); }
+  .form-status { font-size: 14px; margin-top: 4px; min-height: 20px; color: #fff; }
+
+  footer { text-align: center; padding: 36px 0 44px; color: var(--ink-soft); font-size: 13px; }
+  footer .demo-footer-note { display: block; margin-top: 6px; font-size: 11.5px; opacity: .8; }
+</style>
+</head>
+<body>
+
+<div class="demo-flag">ДЕМО-СТРАНИЦА · данные и кейсы вымышлены, 10 разных интерактивных механик для показа формата, не публиковалась</div>
+<div id="reading-progress"></div>
+
+<header class="hero wrap">
+  <div class="fair-scene" aria-hidden="true">
+    <svg width="220" height="72" viewBox="0 0 220 72" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="36" cy="36" r="30" stroke="#F1A208" stroke-width="4"/>
+      <circle cx="36" cy="36" r="3" fill="#E63946"/>
+      <line x1="36" y1="6" x2="36" y2="66" stroke="#F1A208" stroke-width="2"/>
+      <line x1="6" y1="36" x2="66" y2="36" stroke="#F1A208" stroke-width="2"/>
+      <line x1="15" y1="15" x2="57" y2="57" stroke="#F1A208" stroke-width="2"/>
+      <line x1="57" y1="15" x2="15" y2="57" stroke="#F1A208" stroke-width="2"/>
+      <path d="M100 66 L110 20 L120 66 Z" fill="#E63946"/>
+      <path d="M130 66 L142 10 L154 66 Z" fill="#0F8B8D"/>
+      <path d="M164 66 L172 30 L180 66 Z" fill="#F1A208"/>
+    </svg>
+  </div>
+  <span class="eyebrow">Игровой разбор для сезонных парков</span>
+  <h1>Куда утекает выручка вашего парка развлечений</h1>
+  <p>10 разных мини-игр вместо скучной теории — покрутите колесо, найдите утечки на карте, соберите воронку и посчитайте, сколько теряете каждый день сезона.</p>
+
+  <div class="ticket-card">
+    <div class="ticket-stats">
+      <div class="ticket-stat"><b>10</b><span>разных механик</span></div>
+      <div class="ticket-stat"><b>5&nbsp;мин</b><span>пройти всё</span></div>
+      <div class="ticket-stat"><b>20&nbsp;мин</b><span>бесплатный аудит воронки</span></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- 1. Колесо фортуны -->
+  <section class="content-block">
+    <p class="lede">Разбор 01 · Колесо</p>
+    <h2>Крути колесо — узнай факт о своём сезоне</h2>
+    <p class="hint">Каждый сектор — короткое наблюдение о сезонных парках. Нажмите «Крутить» и посмотрите, что выпадет.</p>
+    <div class="wheel-wrap">
+      <div class="wheel-pointer" aria-hidden="true">▼</div>
+      <div class="wheel" id="wheel">
+        <div class="wheel-label" style="transform: rotate(22.5deg)"><span>Сезон = 90-120 дней</span></div>
+        <div class="wheel-label" style="transform: rotate(67.5deg)"><span>До 25% теряется на кассе</span></div>
+        <div class="wheel-label" style="transform: rotate(112.5deg)"><span>Ремаркетинг вернёт треть</span></div>
+        <div class="wheel-label" style="transform: rotate(157.5deg)"><span>Абонементы кормят межсезонье</span></div>
+        <div class="wheel-label" style="transform: rotate(202.5deg)"><span>Быстрая касса = рост конверсии</span></div>
+        <div class="wheel-label" style="transform: rotate(247.5deg)"><span>Будни — резерв для индор-парков</span></div>
+        <div class="wheel-label" style="transform: rotate(292.5deg)"><span>Отзывы решают, придут ли вообще</span></div>
+        <div class="wheel-label" style="transform: rotate(337.5deg)"><span>Погода — часть воронки, не оправдание</span></div>
+      </div>
+      <button class="wheel-btn" id="wheelBtn" type="button">Крутить колесо 🎡</button>
+      <div class="wheel-result" id="wheelResult"></div>
+    </div>
+  </section>
+
+  <!-- 2. Карта утечек -->
+  <section class="content-block">
+    <p class="lede">Разбор 02 · Карта</p>
+    <h2>Найдите 5 утечек на карте парка</h2>
+    <p class="hint">Нажимайте на красные точки на пути посетителя — от ворот до выхода.</p>
+    <div class="park-map" id="parkMap">
+      <div class="park-row">
+        <div><div class="park-icon">🚪</div><div class="park-icon-label">Ворота</div></div>
+        <div><div class="park-icon">🎟️</div><div class="park-icon-label">Касса</div></div>
+        <div><div class="park-icon">🎢</div><div class="park-icon-label">Аттракционы</div></div>
+        <div><div class="park-icon">🌭</div><div class="park-icon-label">Фудкорт</div></div>
+        <div><div class="park-icon">🚶</div><div class="park-icon-label">Выход</div></div>
+      </div>
+      <button class="hotspot" type="button" style="top:8px; left:14%;" data-leak="На воротах нет QR на онлайн-кассу — часть гостей идёт в живую очередь и часть из них разворачивается.">1</button>
+      <button class="hotspot" type="button" style="top:66%; left:32%;" data-leak="Касса принимает только карту и наличные — гости с Apple/Google Pay иногда просто уходят.">2</button>
+      <button class="hotspot" type="button" style="top:20%; left:52%;" data-leak="У части аттракционов нет понятного прайса рядом — гости не понимают, сколько ещё платить, и экономят.">3</button>
+      <button class="hotspot" type="button" style="top:70%; left:72%;" data-leak="Фудкорт принимает только наличные в будни — теряются импульсные покупки.">4</button>
+      <button class="hotspot" type="button" style="top:22%; left:90%;" data-leak="На выходе никто не предлагает абонемент или сертификат на следующий визit — гость просто уходит навсегда.">5</button>
+    </div>
+    <p class="leak-progress"><span id="leakFound">0</span> из 5 найдено</p>
+    <div id="leakLog"></div>
+  </section>
+
+  <!-- 3. Драг-н-дроп воронка -->
+  <section class="content-block">
+    <p class="lede">Разбор 03 · Перетаскивание</p>
+    <h2>Соберите воронку продажи билетов правильно</h2>
+    <p class="hint">Перетащите карточки за ⠿, чтобы выстроить верный порядок этапов — от первого касания до повторной покупки.</p>
+    <ul class="sort-list" id="sortList">
+      <li class="sort-item" data-step="1"><span class="sort-handle">⠿</span> Реклама или пост в соцсетях</li>
+      <li class="sort-item" data-step="2"><span class="sort-handle">⠿</span> Страница парка с ценами</li>
+      <li class="sort-item" data-step="3"><span class="sort-handle">⠿</span> Онлайн-покупка билета</li>
+      <li class="sort-item" data-step="4"><span class="sort-handle">⠿</span> Визит + допродажи в парке</li>
+      <li class="sort-item" data-step="5"><span class="sort-handle">⠿</span> Повторная покупка или абонемент</li>
+    </ul>
+    <button class="sort-check-btn" id="sortCheckBtn" type="button">Проверить порядок</button>
+    <p class="sort-feedback" id="sortFeedback"></p>
+  </section>
+
+  <!-- 4. Свайп-карточки -->
+  <section class="content-block">
+    <p class="lede">Разбор 04 · Свайп</p>
+    <h2>Это про вас?</h2>
+    <p class="hint">Смахните карточку вправо, если это про ваш парк, влево — если нет. Или используйте кнопки.</p>
+    <div class="swipe-stack" id="swipeStack"></div>
+    <div class="swipe-btns">
+      <button class="swipe-btn no" id="swipeNoBtn" type="button">👎 Не про нас</button>
+      <button class="swipe-btn yes" id="swipeYesBtn" type="button">👍 Это у нас</button>
+    </div>
+    <p class="swipe-progress" id="swipeProgress"></p>
+    <p class="swipe-verdict" id="swipeVerdict"></p>
+  </section>
+
+  <!-- 5. Спидометр "хаос-система" -->
+  <section class="content-block">
+    <p class="lede">Разбор 05 · Шкала</p>
+    <h2>От хаоса до системы — где сейчас продажи билетов?</h2>
+    <p class="hint">Подвиньте ползунок туда, где честно находитесь сейчас.</p>
+    <div class="gauge-wrap">
+      <svg class="gauge-svg" viewBox="0 0 220 130">
+        <path d="M20,110 A90,90 0 0,1 200,110" fill="none" stroke="#F0DEB8" stroke-width="16" stroke-linecap="round"/>
+        <line id="chaosNeedle" class="gauge-needle" x1="110" y1="110" x2="110" y2="30" stroke="#E63946" stroke-width="6" stroke-linecap="round" style="transform: rotate(0deg);"/>
+        <circle cx="110" cy="110" r="8" fill="#2A1E1A"/>
+      </svg>
+      <input class="gauge-range" id="chaosRange" type="range" min="0" max="100" value="50">
+      <p class="gauge-text" id="chaosText">Есть отдельные процессы, но они не связаны в систему.</p>
+    </div>
+  </section>
+
+  <!-- 6. Игра на память -->
+  <section class="content-block">
+    <p class="lede">Разбор 06 · Память</p>
+    <h2>Найдите пары: проблема → решение</h2>
+    <p class="hint">Открывайте по две карточки. Совпала пара — она остаётся открытой.</p>
+    <div class="memory-grid" id="memoryGrid"></div>
+    <p class="memory-status" id="memoryStatus">Все 4 пары найдены — вот ваши главные точки роста 👆</p>
+  </section>
+
+  <!-- 7. Таймлайн-скраббер -->
+  <section class="content-block">
+    <p class="lede">Разбор 07 · Таймлайн</p>
+    <h2>Сезон по дням: цена промедления</h2>
+    <p class="hint">Потяните ползунок — посмотрите, как растут выручка и упущенные деньги день за днём (на примере среднего парка: 350 гостей в день, чек 900 ₽, 22% теряется на воронке).</p>
+    <div class="card-surface">
+      <p class="timeline-day" id="timelineDay">День 1 из 100</p>
+      <div class="timeline-track">
+        <div class="timeline-fill" id="timelineFill" style="width:1%;"></div>
+        <div class="timeline-marker" id="timelineMarker" style="left:1%;">🎡</div>
+      </div>
+      <input class="timeline-range" id="timelineRange" type="range" min="1" max="100" value="1">
+      <div class="timeline-stats">
+        <div class="timeline-stat gain"><b id="timelineGain">0 ₽</b><span>заработано накопленным итогом</span></div>
+        <div class="timeline-stat loss"><b id="timelineLoss">0 ₽</b><span>упущено накопленным итогом</span></div>
+      </div>
+      <p class="timeline-note">Цифры — иллюстративные средние по рынку, не ваши данные. Ваш личный расчёт — в следующем блоке.</p>
+    </div>
+  </section>
+
+  <!-- 8. Калькулятор + донат-диаграмма -->
+  <section class="content-block">
+    <p class="lede">Разбор 08 · Калькулятор</p>
+    <h2>Сколько теряете вы — с вашими цифрами</h2>
+    <div class="card-surface">
+      <div class="calc-field">
+        <label for="calcVisitors">Посетителей в парке за день</label>
+        <input type="number" id="calcVisitors" inputmode="numeric" placeholder="Например, 400" min="0">
+      </div>
+      <div class="calc-field">
+        <label for="calcLost">Доля тех, кто интересовался, но не купил билет онлайн (%)</label>
+        <input type="number" id="calcLost" inputmode="numeric" placeholder="Например, 25" min="0" max="100">
+      </div>
+      <div class="calc-field">
+        <label for="calcCheck">Средний чек одного посетителя, ₽</label>
+        <input type="number" id="calcCheck" inputmode="numeric" placeholder="Например, 1200" min="0">
+      </div>
+      <div class="donut-wrap">
+        <div class="donut-box">
+          <svg viewBox="0 0 140 140" width="140" height="140">
+            <circle cx="70" cy="70" r="60" fill="none" style="stroke: var(--teal);" stroke-width="18"/>
+            <circle id="donutLostArc" cx="70" cy="70" r="60" fill="none" style="stroke: var(--red);" stroke-width="18" stroke-dasharray="0 377" stroke-linecap="round" transform="rotate(-90 70 70)"/>
+          </svg>
+          <div class="donut-center-label">
+            <span id="donutCenterPct" style="font-size:22px; font-weight:800; color:var(--red); display:block;">0%</span>
+            <span style="font-size:10px; color:var(--ink-soft);">теряется</span>
+          </div>
+        </div>
+        <div class="donut-legend">
+          <div><span class="donut-dot" style="background:var(--teal);"></span> Выручка получена</div>
+          <div><span class="donut-dot" style="background:var(--red);"></span> Выручка потеряна</div>
+        </div>
+      </div>
+      <p class="calc-result-line">Упущено за день: <b id="calcDayResult">0 ₽</b> · за сезон (100 дней): <b id="calcSeasonResult">0 ₽</b></p>
+    </div>
+  </section>
+
+  <!-- 9. Чек-лист (питает спидометр 10) -->
+  <section class="content-block">
+    <p class="lede">Разбор 09 · Чек-лист</p>
+    <h2>Отметьте, что уже есть</h2>
+    <div class="card-surface checklist" id="checklist1" data-storage-key="parkflow-demo-checklist-v2">
+      <p class="checklist-progress"><span class="done-count">0</span> из <span class="total-count">6</span> отмечено</p>
+      <label><input type="checkbox"> Билет можно купить онлайн за 2 клика с телефона</label>
+      <label><input type="checkbox"> На сайте есть онлайн-касса без звонка администратору</label>
+      <label><input type="checkbox"> Есть ремаркетинг на тех, кто зашёл, но не купил билет</label>
+      <label><input type="checkbox"> Собираете контакты у тех, кто не купил, чтобы вернуть их позже</label>
+      <label><input type="checkbox"> В межсезонье есть отдельная воронка — абонементы или сертификаты</label>
+      <label><input type="checkbox"> Знаете точную конверсию из захода на сайт в купленный билет</label>
+    </div>
+  </section>
+
+  <!-- 10. Спидометр-скор -->
+  <section class="content-block">
+    <p class="lede">Разбор 10 · Спидометр</p>
+    <h2>Ваш скор по итогам чек-листа</h2>
+    <div class="gauge-wrap">
+      <svg class="gauge-svg" viewBox="0 0 220 130">
+        <path d="M20,110 A90,90 0 0,1 65,32" fill="none" style="stroke: var(--red);" stroke-width="16" stroke-linecap="round"/>
+        <path d="M65,32 A90,90 0 0,1 155,32" fill="none" style="stroke: var(--gold);" stroke-width="16" stroke-linecap="round"/>
+        <path d="M155,32 A90,90 0 0,1 200,110" fill="none" style="stroke: var(--teal);" stroke-width="16" stroke-linecap="round"/>
+        <line id="scoreNeedle" class="gauge-needle" x1="110" y1="110" x2="110" y2="30" stroke="#2A1E1A" stroke-width="6" stroke-linecap="round" style="transform: rotate(-90deg);"/>
+        <circle cx="110" cy="110" r="8" fill="#2A1E1A"/>
+      </svg>
+      <p class="gauge-score" id="scoreText">Отметьте пункты чек-листа выше — стрелка сдвинется сама.</p>
+    </div>
+  </section>
+
+  <!-- 11. Скретч-билет + финальный CTA -->
+  <section class="content-block">
+    <p class="lede">Разбор 11 · Скретч-билет</p>
+    <h2>Сотрите билет — там бонус</h2>
+    <div class="scratch-wrap">
+      <div class="scratch-reveal">
+        <h3>🎟️ Билет открыт!</h3>
+        <p>Бесплатный 20-минутный разбор воронки продажи билетов + список ваших 3 главных точек утечки.</p>
+      </div>
+      <canvas class="scratch-canvas" id="scratchCanvas"></canvas>
+    </div>
+    <button class="scratch-fallback" id="scratchFallbackBtn" type="button">Не получается — открыть билет</button>
+
+    <div class="final-cta">
+      <h2>Разберём вашу воронку бесплатно</h2>
+      <p>20 минут созвона — покажем, где именно ваш парк теряет выручку, и что сделать в первую очередь до конца сезона.</p>
+      <form id="lead-form" data-webhook="/api/leadmagnet2-submit">
+        <input type="text" name="name" placeholder="Как к вам обращаться" required>
+        <input type="text" name="park" placeholder="Название парка" required>
+        <input type="tel" name="contact" placeholder="Телефон или Telegram" required>
+        <button type="submit">Записаться на разбор</button>
+        <p class="form-status"></p>
+      </form>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  ParkFlow — growth-агентство для парков развлечений (демо-бренд)
+  <span class="demo-footer-note">Страница — демонстрация 10 разных интерактивных механик, данные и кейсы вымышлены.</span>
+</footer>
+
+<script>
+(function () {
+  var METRICA_COUNTER_ID = 00000000;
+
+  var bar = document.getElementById('reading-progress');
+  window.addEventListener('scroll', function () {
+    var h = document.documentElement;
+    var scrolled = (h.scrollTop) / (h.scrollHeight - h.clientHeight) * 100;
+    bar.style.width = Math.min(100, Math.max(0, scrolled)) + '%';
+  }, { passive: true });
+
+  function reachGoal(name) {
+    if (typeof ym === 'function') {
+      try { ym(METRICA_COUNTER_ID, 'reachGoal', name); } catch (e) {}
+    }
+  }
+
+  /* ── 1. Колесо фортуны ────────────────────────────────── */
+  (function () {
+    var wheel = document.getElementById('wheel');
+    var btn = document.getElementById('wheelBtn');
+    var resultEl = document.getElementById('wheelResult');
+    var facts = [
+      'Сезонный парк живёт всего 90-120 дней в году — каждый погожий день на счету.',
+      'Типично до 25% выручки теряется именно на этапе покупки билета, а не привлечения гостя.',
+      'Ремаркетинг на тех, кто зашёл и не купил, обычно возвращает до трети отказников.',
+      'Абонементы и подарочные сертификаты — способ заработать даже в межсезонье.',
+      'Быстрая онлайн-касса без звонка администратору заметно поднимает конверсию.',
+      'Для индор-парков будни — главный неиспользованный резерв роста.',
+      'Отзывы и рейтинг в картах часто решают, придёт ли гость вообще.',
+      'Погода — это не оправдание, а часть воронки, которую можно и нужно учитывать.'
+    ];
+    var currentRotation = 0;
+    var spinning = false;
+    btn.addEventListener('click', function () {
+      if (spinning) return;
+      spinning = true;
+      btn.disabled = true;
+      resultEl.style.display = 'none';
+      var extra = 360 * 5 + Math.floor(Math.random() * 360);
+      currentRotation += extra;
+      wheel.style.transform = 'rotate(' + currentRotation + 'deg)';
+      setTimeout(function () {
+        var normalized = currentRotation % 360;
+        var targetAngle = (360 - normalized) % 360;
+        var index = Math.floor(targetAngle / 45) % 8;
+        resultEl.textContent = facts[index];
+        resultEl.style.display = 'block';
+        btn.disabled = false;
+        spinning = false;
+        reachGoal('wheel_spun');
+      }, 4100);
+    });
+  })();
+
+  /* ── 2. Карта утечек ──────────────────────────────────── */
+  (function () {
+    var map = document.getElementById('parkMap');
+    var foundEl = document.getElementById('leakFound');
+    var log = document.getElementById('leakLog');
+    var found = 0;
+    map.querySelectorAll('.hotspot').forEach(function (dot) {
+      dot.addEventListener('click', function () {
+        if (dot.classList.contains('found')) return;
+        dot.classList.add('found');
+        found++;
+        foundEl.textContent = found;
+        var item = document.createElement('div');
+        item.className = 'leak-log-item';
+        item.textContent = dot.getAttribute('data-leak');
+        log.appendChild(item);
+        if (found === 5) reachGoal('leaks_found_all');
+      });
+    });
+  })();
+
+  /* ── 3. Драг-н-дроп воронка ───────────────────────────── */
+  (function () {
+    var list = document.getElementById('sortList');
+    var checkBtn = document.getElementById('sortCheckBtn');
+    var feedback = document.getElementById('sortFeedback');
+    var items = Array.prototype.slice.call(list.children);
+    // shuffle (Fisher-Yates), ensure not already sorted
+    function shuffle(arr) {
+      for (var i = arr.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+      }
+      return arr;
+    }
+    var order;
+    do {
+      order = shuffle(items.slice());
+    } while (order.every(function (el, i) { return el.getAttribute('data-step') === String(i + 1); }));
+    order.forEach(function (el) { list.appendChild(el); });
+
+    var dragEl = null;
+    function getAfterElement(container, y) {
+      var els = Array.prototype.slice.call(container.querySelectorAll('.sort-item:not(.dragging)'));
+      var closest = { offset: -Infinity, element: null };
+      els.forEach(function (child) {
+        var box = child.getBoundingClientRect();
+        var offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) closest = { offset: offset, element: child };
+      });
+      return closest.element;
+    }
+    list.querySelectorAll('.sort-handle').forEach(function (handle) {
+      handle.addEventListener('pointerdown', function (e) {
+        dragEl = handle.closest('.sort-item');
+        dragEl.classList.add('dragging');
+        try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+      });
+    });
+    list.addEventListener('pointermove', function (e) {
+      if (!dragEl) return;
+      var after = getAfterElement(list, e.clientY);
+      if (after == null) list.appendChild(dragEl); else list.insertBefore(dragEl, after);
+    });
+    window.addEventListener('pointerup', function () {
+      if (dragEl) { dragEl.classList.remove('dragging'); dragEl = null; }
+    });
+
+    checkBtn.addEventListener('click', function () {
+      var current = Array.prototype.slice.call(list.querySelectorAll('.sort-item'));
+      var ok = current.every(function (el, i) { return el.getAttribute('data-step') === String(i + 1); });
+      current.forEach(function (el) { el.classList.remove('wrong'); });
+      if (ok) {
+        feedback.textContent = 'Точно! Это и есть правильная последовательность воронки.';
+        feedback.className = 'sort-feedback ok';
+        reachGoal('funnel_sorted');
+      } else {
+        current.forEach(function (el, i) { if (el.getAttribute('data-step') !== String(i + 1)) el.classList.add('wrong'); });
+        feedback.textContent = 'Пока не совсем — подсвеченные карточки стоят не на своём месте.';
+        feedback.className = 'sort-feedback no';
+      }
+    });
+  })();
+
+  /* ── 4. Свайп-карточки ────────────────────────────────── */
+  (function () {
+    var statements = [
+      'Билет иногда покупают только через звонок администратору',
+      'Соцсети активны, а понятного сайта с ценами нет',
+      'О тех, кто не купил билет, мы больше не вспоминаем',
+      'В межсезонье про маркетинг как будто забывают',
+      'Точную конверсию сайта в купленный билет никто не назовёт',
+      'Абонементов или подарочных сертификатов нет вообще'
+    ];
+    var stack = document.getElementById('swipeStack');
+    var progressEl = document.getElementById('swipeProgress');
+    var verdictEl = document.getElementById('swipeVerdict');
+    var btnsWrap = document.querySelector('.swipe-btns');
+    var yesBtn = document.getElementById('swipeYesBtn');
+    var noBtn = document.getElementById('swipeNoBtn');
+    var idx = 0, yesCount = 0;
+
+    function render() {
+      stack.innerHTML = '';
+      if (idx >= statements.length) {
+        progressEl.textContent = statements.length + ' из ' + statements.length;
+        verdictEl.style.display = 'block';
+        verdictEl.textContent = 'Совпало ' + yesCount + ' из ' + statements.length + (yesCount >= 4 ? ' — есть, над чем поработать в первую очередь.' : ' — база крепкая, но сверьте детали в чек-листе ниже.');
+        btnsWrap.style.display = 'none';
+        reachGoal('swipe_finished');
+        return;
+      }
+      progressEl.textContent = idx + ' из ' + statements.length;
+      var visible = statements.slice(idx, idx + 3);
+      visible.forEach(function (text, i) {
+        var card = document.createElement('div');
+        card.className = 'swipe-card';
+        card.style.zIndex = String(10 - i);
+        card.style.transform = 'scale(' + (1 - i * 0.05) + ') translateY(' + (i * 10) + 'px)';
+        card.textContent = text;
+        stack.appendChild(card);
+        if (i === 0) attachDrag(card);
+      });
+    }
+
+    function attachDrag(card) {
+      var startX = 0, dx = 0, dragging = false;
+      card.addEventListener('pointerdown', function (e) {
+        dragging = true; startX = e.clientX;
+        try { card.setPointerCapture(e.pointerId); } catch (err) {}
+      });
+      card.addEventListener('pointermove', function (e) {
+        if (!dragging) return;
+        dx = e.clientX - startX;
+        card.style.transform = 'translateX(' + dx + 'px) rotate(' + (dx / 14) + 'deg)';
+      });
+      card.addEventListener('pointerup', function () {
+        if (!dragging) return;
+        dragging = false;
+        if (Math.abs(dx) > 80) { swipeOut(card, dx > 0); } else { card.style.transform = ''; }
+        dx = 0;
+      });
+    }
+
+    function swipeOut(card, yes) {
+      card.style.transition = 'transform .35s ease, opacity .35s ease';
+      card.style.transform = 'translateX(' + (yes ? 600 : -600) + 'px) rotate(' + (yes ? 25 : -25) + 'deg)';
+      card.style.opacity = '0';
+      if (yes) yesCount++;
+      idx++;
+      reachGoal('swipe_answered');
+      setTimeout(render, 260);
+    }
+
+    yesBtn.addEventListener('click', function () { var top = stack.querySelector('.swipe-card'); if (top) swipeOut(top, true); });
+    noBtn.addEventListener('click', function () { var top = stack.querySelector('.swipe-card'); if (top) swipeOut(top, false); });
+
+    render();
+  })();
+
+  /* ── 5. Спидометр хаос-система ────────────────────────── */
+  (function () {
+    var range = document.getElementById('chaosRange');
+    var needle = document.getElementById('chaosNeedle');
+    var text = document.getElementById('chaosText');
+    function update() {
+      var v = parseInt(range.value, 10);
+      needle.style.transform = 'rotate(' + (v / 100 * 180 - 90) + 'deg)';
+      text.textContent = v < 34
+        ? 'Хаос: билеты продаются как получится, единой воронки нет.'
+        : v < 67
+        ? 'Есть отдельные процессы, но они не связаны в систему.'
+        : 'Почти система — осталось закрыть пару дыр, и воронка станет предсказуемой.';
+    }
+    range.addEventListener('input', update);
+    update();
+  })();
+
+  /* ── 6. Игра на память ────────────────────────────────── */
+  (function () {
+    var pairs = [
+      { id: 1, text: 'Проблема: билет нельзя купить без звонка' },
+      { id: 1, text: 'Решение: онлайн-касса за 2 клика' },
+      { id: 2, text: 'Проблема: отказники исчезают навсегда' },
+      { id: 2, text: 'Решение: ремаркетинг по контактам' },
+      { id: 3, text: 'Проблема: в межсезонье — тишина' },
+      { id: 3, text: 'Решение: абонементы и сертификаты заранее' },
+      { id: 4, text: 'Проблема: конверсия в билет — загадка' },
+      { id: 4, text: 'Решение: сквозная аналитика воронки' }
+    ];
+    for (var i = pairs.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = pairs[i]; pairs[i] = pairs[j]; pairs[j] = t;
+    }
+    var grid = document.getElementById('memoryGrid');
+    var statusEl = document.getElementById('memoryStatus');
+    var firstCard = null, firstIndex = null, lock = false, matched = 0;
+
+    pairs.forEach(function (pair, idx) {
+      var card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'memory-card';
+      card.innerHTML = '<span class="memory-back">🎫</span>';
+      card.addEventListener('click', function () {
+        if (lock || card.classList.contains('matched') || card === firstCard) return;
+        card.classList.add('flipped');
+        card.textContent = pair.text;
+        if (!firstCard) { firstCard = card; firstIndex = idx; return; }
+        lock = true;
+        var isMatch = pairs[firstIndex].id === pair.id;
+        if (isMatch) {
+          firstCard.classList.add('matched');
+          card.classList.add('matched');
+          matched++;
+          firstCard = null; lock = false;
+          if (matched === 4) { statusEl.style.display = 'block'; reachGoal('memory_completed'); }
+        } else {
+          var f = firstCard;
+          setTimeout(function () {
+            f.classList.remove('flipped'); f.innerHTML = '<span class="memory-back">🎫</span>';
+            card.classList.remove('flipped'); card.innerHTML = '<span class="memory-back">🎫</span>';
+            firstCard = null; lock = false;
+          }, 800);
+        }
+      });
+      grid.appendChild(card);
+    });
+  })();
+
+  /* ── 7. Таймлайн-скраббер ─────────────────────────────── */
+  (function () {
+    var range = document.getElementById('timelineRange');
+    var fill = document.getElementById('timelineFill');
+    var marker = document.getElementById('timelineMarker');
+    var dayLabel = document.getElementById('timelineDay');
+    var gainEl = document.getElementById('timelineGain');
+    var lossEl = document.getElementById('timelineLoss');
+    var potentialPerDay = 350 * 900;
+    var lossShare = 0.22;
+    function update() {
+      var day = parseInt(range.value, 10);
+      fill.style.width = day + '%';
+      marker.style.left = day + '%';
+      dayLabel.textContent = 'День ' + day + ' из 100';
+      var dailyLoss = potentialPerDay * lossShare;
+      var dailyGain = potentialPerDay - dailyLoss;
+      gainEl.textContent = Math.round(dailyGain * day).toLocaleString('ru-RU') + ' ₽';
+      lossEl.textContent = Math.round(dailyLoss * day).toLocaleString('ru-RU') + ' ₽';
+    }
+    range.addEventListener('input', update);
+    update();
+  })();
+
+  /* ── 8. Калькулятор + донат ───────────────────────────── */
+  (function () {
+    var visitorsInput = document.getElementById('calcVisitors');
+    var lostInput = document.getElementById('calcLost');
+    var checkInput = document.getElementById('calcCheck');
+    var dayResult = document.getElementById('calcDayResult');
+    var seasonResult = document.getElementById('calcSeasonResult');
+    var donutArc = document.getElementById('donutLostArc');
+    var donutPct = document.getElementById('donutCenterPct');
+    var circumference = 2 * Math.PI * 60;
+    var goalSent = false;
+    function update() {
+      var visitors = parseFloat(visitorsInput.value) || 0;
+      var lostPct = Math.min(100, Math.max(0, parseFloat(lostInput.value) || 0));
+      var check = parseFloat(checkInput.value) || 0;
+      var dayLoss = visitors * (lostPct / 100) * check;
+      var seasonLoss = dayLoss * 100;
+      dayResult.textContent = Math.round(dayLoss).toLocaleString('ru-RU') + ' ₽';
+      seasonResult.textContent = Math.round(seasonLoss).toLocaleString('ru-RU') + ' ₽';
+      var lostLen = circumference * (lostPct / 100);
+      donutArc.setAttribute('stroke-dasharray', lostLen.toFixed(1) + ' ' + (circumference - lostLen).toFixed(1));
+      donutPct.textContent = Math.round(lostPct) + '%';
+      if (dayLoss > 0 && !goalSent) { reachGoal('calc_used'); goalSent = true; }
+    }
+    [visitorsInput, lostInput, checkInput].forEach(function (el) { el.addEventListener('input', update); });
+    update();
+  })();
+
+  /* ── 9 + 10. Чек-лист и спидометр-скор ────────────────── */
+  (function () {
+    var list = document.getElementById('checklist1');
+    var key = list.getAttribute('data-storage-key');
+    var boxes = list.querySelectorAll('input[type="checkbox"]');
+    var doneCount = list.querySelector('.done-count');
+    var totalCount = list.querySelector('.total-count');
+    var needle = document.getElementById('scoreNeedle');
+    var scoreText = document.getElementById('scoreText');
+    totalCount.textContent = boxes.length;
+
+    function saved() {
+      try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { return []; }
+    }
+    function update() {
+      var done = 0; var state = [];
+      boxes.forEach(function (box, i) { if (box.checked) done++; state[i] = box.checked; });
+      doneCount.textContent = done;
+      try { localStorage.setItem(key, JSON.stringify(state)); } catch (e) {}
+      var ratio = done / boxes.length;
+      needle.style.transform = 'rotate(' + (ratio * 180 - 90) + 'deg)';
+      scoreText.textContent = done + ' из ' + boxes.length + ' закрыто. ' + (
+        ratio < 0.34 ? 'Пока много открытых точек утечки — есть, с чего начать.' :
+        ratio < 0.67 ? 'Уже неплохая база, но воронка ещё не системная.' :
+        'Сильный результат — осталось закрыть последние детали.'
+      );
+      if (done === boxes.length) reachGoal('checklist_completed');
+    }
+    var state = saved();
+    boxes.forEach(function (box, i) { if (state[i]) box.checked = true; });
+    update();
+    boxes.forEach(function (box) { box.addEventListener('change', update); });
+  })();
+
+  /* ── 11. Скретч-билет ─────────────────────────────────── */
+  (function () {
+    var canvas = document.getElementById('scratchCanvas');
+    var wrap = canvas.closest('.scratch-wrap');
+    var fallbackBtn = document.getElementById('scratchFallbackBtn');
+    var ctx = canvas.getContext('2d');
+    var cells = {}, cellSize = 26, totalCells = 0, erasedCells = 0, revealed = false;
+
+    function draw() {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = '#B9B4AD';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.font = '700 14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('потрите билет пальцем', canvas.width / 2, canvas.height / 2);
+      ctx.globalCompositeOperation = 'destination-out';
+      totalCells = Math.max(1, Math.ceil(canvas.width / cellSize) * Math.ceil(canvas.height / cellSize));
+      cells = {}; erasedCells = 0; revealed = false;
+      canvas.style.display = 'block';
+      canvas.style.opacity = '1';
+    }
+    function size() {
+      var r = wrap.getBoundingClientRect();
+      canvas.width = Math.max(1, Math.round(r.width));
+      canvas.height = Math.max(1, Math.round(r.height));
+      draw();
+    }
+    size();
+    window.addEventListener('resize', size);
+
+    function getPos(e) {
+      var r = canvas.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    }
+    function erase(x, y) {
+      ctx.beginPath();
+      ctx.arc(x, y, 22, 0, Math.PI * 2);
+      ctx.fill();
+      var key = Math.floor(x / cellSize) + '_' + Math.floor(y / cellSize);
+      if (!cells[key]) { cells[key] = true; erasedCells++; }
+      if (!revealed && erasedCells / totalCells > 0.45) { revealed = true; revealAll(); }
+    }
+    function revealAll() {
+      canvas.style.transition = 'opacity .5s ease';
+      canvas.style.opacity = '0';
+      setTimeout(function () { canvas.style.display = 'none'; }, 500);
+      reachGoal('scratch_revealed');
+    }
+    var scratching = false;
+    canvas.addEventListener('pointerdown', function (e) {
+      scratching = true;
+      try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+      var p = getPos(e); erase(p.x, p.y);
+    });
+    canvas.addEventListener('pointermove', function (e) { if (scratching) { var p = getPos(e); erase(p.x, p.y); } });
+    window.addEventListener('pointerup', function () { scratching = false; });
+    fallbackBtn.addEventListener('click', revealAll);
+  })();
+
+  /* ── Финальная форма ───────────────────────────────────── */
+  var form = document.getElementById('lead-form');
+  if (form) {
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var status = form.querySelector('.form-status');
+      var webhook = form.getAttribute('data-webhook');
+      var data = Object.fromEntries(new FormData(form).entries());
+      status.textContent = 'Отправляем...';
+      fetch(webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      }).then(function (res) {
+        if (!res.ok) throw new Error('bad status');
+        status.textContent = 'Спасибо! Мы скоро свяжемся.';
+        form.reset();
+        reachGoal('lead_submit');
+      }).catch(function () {
+        status.textContent = 'Не получилось отправить. Попробуйте ещё раз или напишите нам напрямую.';
+      });
+    });
+  }
+})();
+</script>
+
+</body>
+</html>
+`;
 }
 
 // Фиксированные темы вопросов 2-4 — сам вопрос показывает фронт, сюда идёт
