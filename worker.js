@@ -10,7 +10,7 @@ export default {
 
     if (url.pathname === "/webhook") return handleWebhook(request, env);
     if (url.pathname === "/setup-webhook") return setupWebhook(env);
-    
+    if (url.pathname === "/api/export-modules") return apiExportModules(request, env);
     if (url.pathname.startsWith(ADMIN_PATH)) return handleAdmin(request, env, url);
     if (url.pathname === "/api/auth") return apiAuth(request, env);
     if (url.pathname === "/api/user") return apiUser(request, env);
@@ -105,6 +105,123 @@ if (url.pathname === '/api/admin/coffee/send-now') {
   }
 }
 };
+
+// ─── API: ЭКСПОРТ МОДУЛЕЙ В CSV ───────────────────────────────
+async function apiExportModules(request, env) {
+  // Простая проверка: можно защитить паролем, но для удобства оставим открытым
+  // Если хочешь защитить — раскомментируй строки ниже
+  /*
+  const auth = request.headers.get("Authorization") || "";
+  if (!auth.includes("admin_session_" + ADMIN_PASSWORD)) {
+    return jsonResp({ error: "Unauthorized" }, 401);
+  }
+  */
+
+  try {
+    // Загружаем обе программы
+    const [programAi, programFunnels, tasksAi, tasksFunnels] = await Promise.all([
+      env.KV.get("program:ai", "json"),
+      env.KV.get("program:funnels", "json"),
+      env.KV.get("tasks:ai", "json"),
+      env.KV.get("tasks:funnels", "json")
+    ]);
+
+    // Собираем все модули с меткой программы
+    const modules = [];
+    
+    (programAi?.modules || []).forEach(m => {
+      modules.push({ ...m, program: "ИИ-контент", programKey: "ai" });
+    });
+    
+    (programFunnels?.modules || []).forEach(m => {
+      modules.push({ ...m, program: "Воронки", programKey: "funnels" });
+    });
+
+    // Маппинг заданий по программе
+    const tasksMap = {
+      ai: tasksAi || [],
+      funnels: tasksFunnels || []
+    };
+
+    // Строим строки CSV
+    const rows = [];
+    
+    // Заголовки CSV
+    const headers = [
+      "Программа",
+      "ID модуля",
+      "Название модуля",
+      "Описание",
+      "Дата",
+      "Доступен",
+      "Теги",
+      "Ссылка на видео",
+      "Файлы (название | URL)",
+      "Таймкоды (время | описание)",
+      "Задания (ID | Название | Описание)"
+    ];
+    rows.push(headers.join(";"));
+
+    for (const mod of modules) {
+      // Форматируем файлы
+      const filesStr = (mod.files || [])
+        .map(f => `${f.name} | ${f.url}`)
+        .join("; ");
+
+      // Форматируем таймкоды
+      const timecodesStr = (mod.timecodes || [])
+        .map(t => `${t.time} | ${t.label}`)
+        .join("; ");
+
+      // Находим задания для этого модуля
+      const modTasks = (tasksMap[mod.programKey] || [])
+        .filter(t => t.moduleId === mod.id);
+
+      const tasksStr = modTasks
+        .map(t => `${t.id} | ${t.title} | ${t.description || ""}`)
+        .join("; ");
+
+      // Теги
+      const tagsStr = (mod.tags || []).join(", ");
+
+      // Собираем строку
+      const row = [
+        mod.program,
+        mod.id,
+        mod.title || "",
+        (mod.description || "").replace(/;/g, ","), // экранируем ; на ,
+        mod.date || "",
+        mod.available ? "Да" : "Нет",
+        tagsStr,
+        mod.embedUrl || "",
+        filesStr,
+        timecodesStr,
+        tasksStr
+      ];
+
+      rows.push(row.map(cell => `"${cell}"`).join(";")); // оборачиваем в кавычки
+    }
+
+    // Если нет модулей — отдаём пустой CSV с заголовком
+    if (rows.length === 1) {
+      rows.push('"Нет данных";"";"";"";"";"";"";"";"";"";""');
+    }
+
+    const csvContent = rows.join("\n");
+    const filename = `cmo_modules_export_${new Date().toISOString().slice(0,10)}.csv`;
+
+    return new Response(csvContent, {
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${filename}"`
+      }
+    });
+
+  } catch (err) {
+    console.error("Export error:", err);
+    return jsonResp({ error: "Ошибка при выгрузке данных" }, 500);
+  }
+}
 
 async function coffeeSendNewbieReminders(env) {
   const THREE_HOURS = 3 * 60 * 60 * 1000;
