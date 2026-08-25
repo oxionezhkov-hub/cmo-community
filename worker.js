@@ -4983,6 +4983,21 @@ async function apiCommunity(request, env, url) {
     return jsonResp({ ok: true, person: p });
   }
 
+  if (action === 'edit-entry') {
+    const p = await getPerson(body.id);
+    if (!p) return jsonResp({ ok: false, error: 'Не найдено' }, 404);
+    const listName = { rating: 'ratings', request: 'requests', note: 'notes', payment: 'payments' }[body.kind];
+    if (!listName || !p[listName]) return jsonResp({ ok: false, error: 'Некорректный тип' });
+    const entry = p[listName].find(e => e.entryId === body.entryId);
+    if (!entry) return jsonResp({ ok: false, error: 'Запись не найдена' }, 404);
+    if (body.date) entry.date = body.date;
+    if (body.kind === 'rating') entry.value = Number(body.value);
+    else if (body.kind === 'payment') entry.amount = Number(body.amount) || 0;
+    else entry.text = body.text || '';
+    await savePerson(p);
+    return jsonResp({ ok: true, person: p });
+  }
+
   return jsonResp({ error: 'Unknown action' }, 404);
 }
 
@@ -12259,7 +12274,11 @@ thead th{
   text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
   color:var(--ink-faint); font-weight:700; padding:0 14px 8px; white-space:nowrap;
 }
-thead th.actionsCol{width:78px;}
+thead th.actionsCol{width:1%; white-space:nowrap;}
+thead th.nameCol{width:1%;}
+thead th.dateCol{width:1%;}
+thead th.ratingCol{width:1%;}
+thead th.reqCol, thead th.noteCol{width:50%;}
 tbody tr.pRow{
   background:var(--panel); cursor:pointer; transition:.15s; box-shadow:var(--shadow-sm);
 }
@@ -12267,6 +12286,7 @@ tbody tr.pRow:hover{box-shadow:var(--shadow-md); transform:translateY(-1px);}
 tbody tr.pRow td{padding:13px 14px; font-size:13.5px; border-top:1px solid var(--line-soft); border-bottom:1px solid var(--line-soft); vertical-align:middle;}
 tbody tr.pRow td:first-child{border-left:1px solid var(--line-soft); border-radius:13px 0 0 13px;}
 tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radius:0 13px 13px 0;}
+td.nameCol, td.dateCol, td.ratingCol{white-space:nowrap;}
 
 .iconBtn{
   width:30px; height:30px; border-radius:9px; border:1px solid var(--line); background:var(--bg-soft);
@@ -12282,11 +12302,9 @@ tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radi
 
 .ratingNum{font-weight:700; font-size:13px;}
 
-.reqCell{max-width:230px;}
-.reqText{white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;}
+.reqText{white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; max-width:1px; min-width:100%;}
 .reqDate{font-size:11px; color:var(--ink-faint); margin-top:2px;}
-.noteCell{max-width:200px;}
-.noteText{white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; color:var(--ink-soft);}
+.noteText{white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; color:var(--ink-soft); max-width:1px; min-width:100%;}
 
 .hidden-col{display:none;}
 .emptyState{text-align:center; padding:60px 20px; color:var(--ink-faint);}
@@ -12351,6 +12369,7 @@ tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radi
   border:1px solid var(--line-soft); padding:16px; width:270px; z-index:60; display:none;
 }
 .calPop.flip{left:auto; right:0;}
+.calPop.flip-up{top:auto; bottom:calc(100% + 8px);}
 .calPop.show{display:block;}
 .calHead{display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;}
 .calHead .lbl{font-weight:700; font-size:14px;}
@@ -12368,20 +12387,29 @@ tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radi
 .calDay.selected{background:var(--accent); color:#fff;}
 .calToday{margin-top:10px; text-align:center; font-size:12px; color:var(--accent-ink); font-weight:700; cursor:pointer;}
 
-/* custom select (rating) */
-.selectWrap{position:relative; flex:none; width:90px;}
-.selectWrap select{
-  appearance:none; -webkit-appearance:none; padding:10px 30px 10px 14px; font-weight:700; cursor:pointer;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b6560' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-  background-repeat:no-repeat; background-position:right 12px center;
+/* custom rating picker */
+.ratingPick{position:relative; flex:none; width:84px;}
+.ratingPick .dateDisplay{font-weight:700; justify-content:center; gap:6px;}
+.ratingPop{
+  position:absolute; top:calc(100% + 8px); left:0; background:#fff; border-radius:16px; box-shadow:var(--shadow-lg);
+  border:1px solid var(--line-soft); padding:8px; width:84px; z-index:60; display:none; max-height:280px; overflow-y:auto;
 }
+.ratingPop.flip{left:auto; right:0;}
+.ratingPop.flip-up{top:auto; bottom:calc(100% + 8px);}
+.ratingPop.show{display:block;}
+.ratingOpt{
+  padding:9px 10px; border-radius:9px; font-size:13.5px; font-weight:700; text-align:center; cursor:pointer; transition:.12s;
+}
+.ratingOpt:hover{background:var(--accent-soft);}
+.ratingOpt.selected{background:var(--accent); color:#fff;}
 
 .inlineRow{display:flex; gap:10px; align-items:center;}
-.inlineRow input[type=text], .inlineRow input.textInput{
+.inlineRow input.textInput, .inlineRow textarea.textInput{
   flex:1; padding:10px 13px; border-radius:10px; border:1.5px solid var(--line); font-size:14px;
   outline:none; background:var(--bg-soft); font-family:inherit; transition:.15s;
 }
-.inlineRow input[type=text]:focus, .inlineRow input.textInput:focus{border-color:var(--accent); background:#fff;}
+.inlineRow textarea.textInput{resize:vertical; min-height:40px; line-height:1.4;}
+.inlineRow input.textInput:focus, .inlineRow textarea.textInput:focus{border-color:var(--accent); background:#fff;}
 .inlineRow + .inlineRow{margin-top:10px;}
 
 /* history */
@@ -12400,9 +12428,11 @@ tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radi
 .histTitle{font-weight:700; font-size:13.5px;}
 .histDate{font-size:11px; color:var(--ink-faint); white-space:nowrap;}
 .histText{font-size:13px; color:var(--ink-soft); margin-top:3px; word-break:break-word; white-space:pre-wrap;}
+.histActions{display:flex; gap:12px; margin-top:4px;}
 .histDel{opacity:0; transition:.15s; cursor:pointer; color:var(--ink-faint); background:none; border:none; font-size:12px;}
 .histItem:hover .histDel{opacity:1;}
-.histDel:hover{color:var(--red);}
+.histDel:hover{color:var(--accent-ink);}
+.histActions .histDel:last-child:hover{color:var(--red);}
 
 .closeX{
   width:36px; height:36px; border-radius:11px; border:1px solid var(--line); background:#fff; cursor:pointer;
@@ -12475,13 +12505,13 @@ tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radi
       <thead>
         <tr>
           <th class="actionsCol"></th>
-          <th></th>
+          <th class="nameCol"></th>
           <th class="hidden-col expandCol">TG username</th>
           <th class="hidden-col expandCol">Email</th>
-          <th>Дата оплаты</th>
-          <th>Оценка</th>
-          <th>Текущий запрос</th>
-          <th>Примечание</th>
+          <th class="dateCol">Дата оплаты</th>
+          <th class="ratingCol">Оценка</th>
+          <th class="reqCol">Текущий запрос</th>
+          <th class="noteCol">Примечание</th>
         </tr>
       </thead>
       <tbody id="tbody"></tbody>
@@ -12494,7 +12524,6 @@ tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radi
   <div class="panelHead">
     <div>
       <h2 id="pName">—</h2>
-      <div class="meta" id="pMeta">—</div>
     </div>
     <button class="closeX" onclick="closePanel()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -12524,7 +12553,7 @@ tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radi
         <div class="inlineRow">
           <input type="number" id="payAmount" class="textInput" value="5000" style="max-width:130px;" placeholder="Сумма">
           <div class="datePick" id="payDatePick"></div>
-          <button class="btn accent small" onclick="submitPayment()">Добавить</button>
+          <button class="btn accent small" id="paySubmitBtn" onclick="submitPayment()">Добавить</button>
         </div>
       </div>
 
@@ -12532,9 +12561,9 @@ tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radi
         <h3>Оценка комьюнити</h3>
         <div id="currentRatingView" style="margin-bottom:12px;"></div>
         <div class="inlineRow">
-          <div class="selectWrap"><select id="ratingSelect"></select></div>
+          <div class="ratingPick" id="ratingPick"></div>
           <div class="datePick" id="ratingDatePick"></div>
-          <button class="btn accent small" onclick="submitRating()">Сохранить</button>
+          <button class="btn accent small" id="ratingSubmitBtn" onclick="submitRating()">Сохранить</button>
         </div>
       </div>
 
@@ -12542,11 +12571,11 @@ tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radi
         <h3>Текущий запрос</h3>
         <div id="currentRequestView" class="faint" style="margin-bottom:12px;">Нет активного запроса</div>
         <div class="inlineRow">
-          <input type="text" id="reqText" class="textInput" placeholder="Новый запрос...">
+          <textarea id="reqText" class="textInput" rows="2" placeholder="Новый запрос..."></textarea>
         </div>
         <div class="inlineRow">
           <div class="datePick" id="reqDatePick"></div>
-          <button class="btn accent small" onclick="submitRequest()">Сохранить</button>
+          <button class="btn accent small" id="reqSubmitBtn" onclick="submitRequest()">Сохранить</button>
         </div>
       </div>
 
@@ -12554,11 +12583,11 @@ tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radi
         <h3>Примечание</h3>
         <div id="currentNoteView" class="faint" style="margin-bottom:12px;">Нет примечаний</div>
         <div class="inlineRow">
-          <input type="text" id="noteText" class="textInput" placeholder="Новое примечание...">
+          <textarea id="noteText" class="textInput" rows="2" placeholder="Новое примечание..."></textarea>
         </div>
         <div class="inlineRow">
           <div class="datePick" id="noteDatePick"></div>
-          <button class="btn accent small" onclick="submitNote()">Сохранить</button>
+          <button class="btn accent small" id="noteSubmitBtn" onclick="submitNote()">Сохранить</button>
         </div>
       </div>
 
@@ -12584,6 +12613,11 @@ let PEOPLE = [];
 let CURRENT = null;
 let EXPANDED = localStorage.getItem('communityExpanded') === '1';
 let saveFieldTimer = null;
+let editingEntries = {payment:null, rating:null, request:null, note:null};
+
+document.addEventListener('keydown', (e) => {
+  if(e.key === 'Escape' && document.getElementById('panel').classList.contains('show')) closePanel();
+});
 
 function authHeaders(){ return {'Content-Type':'application/json','Authorization':'admin_session_'+ADMIN_TOKEN}; }
 
@@ -12715,13 +12749,13 @@ function renderTable(){
           '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M21.05 3.6L2.9 10.7c-1.24.5-1.23 1.2-.23 1.5l4.65 1.45 1.8 5.5c.22.6.37.85.76.85.3 0 .43-.14.6-.3l1.62-1.57 3.37 2.5c.62.34 1.06.16 1.22-.57l2.2-10.4c.25-.9-.34-1.3-1.34-.86z"/></svg>' +
         '</a>' : '<span class="iconBtn" style="opacity:.3; cursor:default;"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M21.05 3.6L2.9 10.7c-1.24.5-1.23 1.2-.23 1.5l4.65 1.45 1.8 5.5c.22.6.37.85.76.85.3 0 .43-.14.6-.3l1.62-1.57 3.37 2.5c.62.34 1.06.16 1.22-.57l2.2-10.4c.25-.9-.34-1.3-1.34-.86z"/></svg></span>') +
       '</div></td>' +
-      '<td><div class="nameCell">'+(p.name||'Без имени')+'</div></td>' +
+      '<td class="nameCol"><div class="nameCell">'+(p.name||'Без имени')+'</div></td>' +
       '<td class="hidden-col expandCol faint">'+(p.tgUsername||tg||'—')+'</td>' +
       '<td class="hidden-col expandCol faint">'+(p.email||'—')+'</td>' +
-      '<td class="mono">'+(payment? fmtDate(payment.date) : '—')+'</td>' +
-      '<td>'+(rating!=null ? '<span class="ratingNum" style="color:'+ratingColor(rating.value)+'">'+rating.value+'/10</span>' : '<span class="faint">—</span>')+'</td>' +
-      '<td class="reqCell">'+(request ? '<span class="reqText">'+escapeHtml(request.text)+'</span><span class="reqDate">'+fmtDate(request.date)+'</span>' : '<span class="faint">—</span>')+'</td>' +
-      '<td class="noteCell">'+(note ? '<span class="noteText">'+escapeHtml(note.text)+'</span>' : '<span class="faint">—</span>')+'</td>' +
+      '<td class="dateCol mono">'+(payment? fmtDate(payment.date) : '—')+'</td>' +
+      '<td class="ratingCol">'+(rating!=null ? '<span class="ratingNum" style="color:'+ratingColor(rating.value)+'">'+rating.value+'/10</span>' : '<span class="faint">—</span>')+'</td>' +
+      '<td class="reqCol">'+(request ? '<span class="reqText">'+escapeHtml(request.text)+'</span><span class="reqDate">'+fmtDate(request.date)+'</span>' : '<span class="faint">—</span>')+'</td>' +
+      '<td class="noteCol">'+(note ? '<span class="noteText">'+escapeHtml(note.text)+'</span>' : '<span class="faint">—</span>')+'</td>' +
     '</tr>';
   }).join('');
 }
@@ -12770,11 +12804,18 @@ function showPanel(){
   document.getElementById('panel').classList.add('show');
   document.getElementById('histToggleBtn').classList.remove('open');
   document.getElementById('historyWrap').classList.remove('open');
+  clearEditing();
 }
 function closePanel(){
   document.getElementById('overlay').classList.remove('show');
   document.getElementById('panel').classList.remove('show');
   CURRENT = null;
+  clearEditing();
+}
+function clearEditing(){
+  editingEntries = {payment:null, rating:null, request:null, note:null};
+  const labels = {paySubmitBtn:'Добавить', ratingSubmitBtn:'Сохранить', reqSubmitBtn:'Сохранить', noteSubmitBtn:'Сохранить'};
+  Object.keys(labels).forEach(id => { const el = document.getElementById(id); if(el) el.textContent = labels[id]; });
 }
 function toggleHistoryMobile(){
   document.getElementById('histToggleBtn').classList.toggle('open');
@@ -12782,9 +12823,9 @@ function toggleHistoryMobile(){
 }
 
 function fillPanel(){
+  clearEditing();
   const p = CURRENT;
   document.getElementById('pName').textContent = p.name || 'Новый участник';
-  document.getElementById('pMeta').textContent = p.id ? ('Добавлен ' + fmtDateFull(new Date(p.createdAt||Date.now()).toISOString().slice(0,10))) : 'Заполни данные и добавь оценку/запрос';
   document.getElementById('fName').value = p.name||'';
   document.getElementById('fTelegram').value = p.telegram||'';
   document.getElementById('fEmail').value = p.email||'';
@@ -12810,20 +12851,46 @@ function fillPanel(){
   document.getElementById('reqText').value = '';
   document.getElementById('noteText').value = '';
 
-  buildRatingSelect(rating ? rating.value : 7);
+  buildRatingPicker(rating ? rating.value : 7);
   renderHistory();
   setupDatePickers();
 }
 
-function buildRatingSelect(selected){
-  const sel = document.getElementById('ratingSelect');
-  sel.innerHTML = '';
+const ratingPickerState = { selected: 7 };
+function buildRatingPicker(selected){
+  ratingPickerState.selected = selected;
+  const container = document.getElementById('ratingPick');
+  container.innerHTML =
+    '<div class="dateDisplay" id="ratingPick_disp"><span id="ratingPick_txt">'+selected+'</span>' +
+      '<svg width="12" height="8" viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 1l5 5 5-5"/></svg>' +
+    '</div>' +
+    '<div class="ratingPop" id="ratingPick_pop"></div>';
+  document.getElementById('ratingPick_disp').onclick = (e) => { e.stopPropagation(); toggleRatingPop(); };
+  renderRatingPop();
+}
+function renderRatingPop(){
+  const pop = document.getElementById('ratingPick_pop');
+  let html = '';
   for(let i=10;i>=0;i--){
-    const opt = document.createElement('option');
-    opt.value = i; opt.textContent = i;
-    if(i===selected) opt.selected = true;
-    sel.appendChild(opt);
+    html += '<div class="ratingOpt'+(i===ratingPickerState.selected?' selected':'')+'" onclick="event.stopPropagation();pickRating('+i+')">'+i+'</div>';
   }
+  pop.innerHTML = html;
+  pop.onclick = (e)=>e.stopPropagation();
+}
+function toggleRatingPop(){
+  const pop = document.getElementById('ratingPick_pop');
+  const willShow = !pop.classList.contains('show');
+  document.querySelectorAll('.calPop,.ratingPop').forEach(el => el.classList.remove('show'));
+  if(!willShow) return;
+  pop.classList.remove('flip','flip-up');
+  pop.classList.add('show');
+  positionFloating(pop);
+}
+function pickRating(value){
+  ratingPickerState.selected = value;
+  document.getElementById('ratingPick_txt').textContent = value;
+  document.getElementById('ratingPick_pop').classList.remove('show');
+  renderRatingPop();
 }
 
 function renderHistory(){
@@ -12847,10 +12914,37 @@ function renderHistory(){
       '<div class="histIcon '+it.type+'">'+icons[it.type]+'</div>' +
       '<div class="histBody">' +
         '<div class="histTop"><span class="histTitle">'+escapeHtml(it.text)+'</span><span class="histDate">'+fmtDate(it.date)+'</span></div>' +
-        '<button class="histDel" onclick="deleteEntry(\\''+it.type+'\\',\\''+it.entryId+'\\')">удалить запись</button>' +
+        '<div class="histActions">' +
+          '<button class="histDel" onclick="editEntry(\\''+it.type+'\\',\\''+it.entryId+'\\')">изменить</button>' +
+          '<button class="histDel" onclick="deleteEntry(\\''+it.type+'\\',\\''+it.entryId+'\\')">удалить</button>' +
+        '</div>' +
       '</div>' +
     '</div>'
   ).join('');
+}
+
+function editEntry(kind, entryId){
+  const p = CURRENT;
+  const listName = {rating:'ratings', request:'requests', note:'notes', payment:'payments'}[kind];
+  const entry = (p[listName]||[]).find(e=>e.entryId===entryId);
+  if(!entry) return;
+  editingEntries[kind] = entryId;
+  const btnMap = {payment:'paySubmitBtn', rating:'ratingSubmitBtn', request:'reqSubmitBtn', note:'noteSubmitBtn'};
+  if(kind==='payment'){
+    document.getElementById('payAmount').value = entry.amount;
+    setPickedDate('payDatePick', entry.date);
+  } else if(kind==='rating'){
+    buildRatingPicker(entry.value);
+    setPickedDate('ratingDatePick', entry.date);
+  } else if(kind==='request'){
+    document.getElementById('reqText').value = entry.text;
+    setPickedDate('reqDatePick', entry.date);
+  } else if(kind==='note'){
+    document.getElementById('noteText').value = entry.text;
+    setPickedDate('noteDatePick', entry.date);
+  }
+  document.getElementById(btnMap[kind]).textContent = 'Сохранить изменения';
+  document.getElementById(btnMap[kind]).scrollIntoView({behavior:'smooth', block:'center'});
 }
 
 async function scheduleFieldSave(){
@@ -12903,20 +12997,28 @@ async function submitPayment(){
   if(!amount || amount<=0){ showToast('Укажи сумму'); return; }
   await ensurePersonCreated();
   const date = getPickedDate('payDatePick');
-  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'add-payment', id:CURRENT.id, amount, date})});
+  const editId = editingEntries.payment;
+  const body = editId
+    ? {action:'edit-entry', id:CURRENT.id, kind:'payment', entryId:editId, amount, date}
+    : {action:'add-payment', id:CURRENT.id, amount, date};
+  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify(body)});
   const d = await r.json();
   applyPersonUpdate(d.person);
-  showToast('Оплата добавлена');
+  showToast(editId ? 'Оплата обновлена' : 'Оплата добавлена');
 }
 
 async function submitRating(){
-  const value = Number(document.getElementById('ratingSelect').value);
+  const value = ratingPickerState.selected;
   await ensurePersonCreated();
   const date = getPickedDate('ratingDatePick');
-  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'add-rating', id:CURRENT.id, value, date})});
+  const editId = editingEntries.rating;
+  const body = editId
+    ? {action:'edit-entry', id:CURRENT.id, kind:'rating', entryId:editId, value, date}
+    : {action:'add-rating', id:CURRENT.id, value, date};
+  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify(body)});
   const d = await r.json();
   applyPersonUpdate(d.person);
-  showToast('Оценка сохранена');
+  showToast(editId ? 'Оценка обновлена' : 'Оценка сохранена');
 }
 
 async function submitRequest(){
@@ -12924,10 +13026,14 @@ async function submitRequest(){
   if(!text){ showToast('Введи текст запроса'); return; }
   await ensurePersonCreated();
   const date = getPickedDate('reqDatePick');
-  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'add-request', id:CURRENT.id, text, date})});
+  const editId = editingEntries.request;
+  const body = editId
+    ? {action:'edit-entry', id:CURRENT.id, kind:'request', entryId:editId, text, date}
+    : {action:'add-request', id:CURRENT.id, text, date};
+  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify(body)});
   const d = await r.json();
   applyPersonUpdate(d.person);
-  showToast('Запрос сохранён');
+  showToast(editId ? 'Запрос обновлён' : 'Запрос сохранён');
 }
 
 async function submitNote(){
@@ -12935,10 +13041,14 @@ async function submitNote(){
   if(!text){ showToast('Введи текст примечания'); return; }
   await ensurePersonCreated();
   const date = getPickedDate('noteDatePick');
-  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'add-note', id:CURRENT.id, text, date})});
+  const editId = editingEntries.note;
+  const body = editId
+    ? {action:'edit-entry', id:CURRENT.id, kind:'note', entryId:editId, text, date}
+    : {action:'add-note', id:CURRENT.id, text, date};
+  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify(body)});
   const d = await r.json();
   applyPersonUpdate(d.person);
-  showToast('Примечание сохранено');
+  showToast(editId ? 'Примечание обновлено' : 'Примечание сохранено');
 }
 
 function applyPersonUpdate(person){
@@ -12976,18 +13086,25 @@ function buildDatePicker(containerId){
   renderCal(containerId);
 }
 
+function positionFloating(pop){
+  pop.classList.remove('flip','flip-up');
+  let rect = pop.getBoundingClientRect();
+  if(rect.right > window.innerWidth - 8) pop.classList.add('flip');
+  if(rect.bottom > window.innerHeight - 8) pop.classList.add('flip-up');
+  rect = pop.getBoundingClientRect();
+  if(rect.top < 8) pop.classList.remove('flip-up');
+}
+
 function toggleCal(containerId){
   const pop = document.getElementById(containerId+'_pop');
   const willShow = !pop.classList.contains('show');
-  document.querySelectorAll('.calPop').forEach(el => el.classList.remove('show'));
+  document.querySelectorAll('.calPop,.ratingPop').forEach(el => el.classList.remove('show'));
   if(!willShow) return;
-  pop.classList.remove('flip');
   pop.classList.add('show');
-  const rect = pop.getBoundingClientRect();
-  if(rect.right > window.innerWidth - 8) pop.classList.add('flip');
+  positionFloating(pop);
 }
 
-document.addEventListener('click', () => document.querySelectorAll('.calPop').forEach(el => el.classList.remove('show')));
+document.addEventListener('click', () => document.querySelectorAll('.calPop,.ratingPop').forEach(el => el.classList.remove('show')));
 
 function renderCal(containerId){
   const state = pickerState[containerId];
@@ -13036,6 +13153,18 @@ function pickDate(containerId, iso){
   const shortMode = (containerId === 'reqDatePick' || containerId === 'noteDatePick');
   document.getElementById(containerId+'_txt').textContent = shortMode ? fmtDate(iso) : fmtDateFull(iso);
   document.getElementById(containerId+'_pop').classList.remove('show');
+}
+
+function setPickedDate(containerId, iso){
+  const state = pickerState[containerId];
+  if(!state) return;
+  const d = new Date(iso+'T00:00:00');
+  state.selected = iso;
+  state.viewY = d.getFullYear();
+  state.viewM = d.getMonth();
+  const shortMode = (containerId === 'reqDatePick' || containerId === 'noteDatePick');
+  document.getElementById(containerId+'_txt').textContent = shortMode ? fmtDate(iso) : fmtDateFull(iso);
+  renderCal(containerId);
 }
 </script>
 </body>
