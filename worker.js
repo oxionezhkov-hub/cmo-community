@@ -27,6 +27,8 @@ export default {
     if (url.pathname === '/api/admin/payments') return apiAdminPayments(request, env, url);
     if (url.pathname === '/api/payments/webhook') return apiPaymentsWebhook(request, env);
     if (url.pathname === '/api/admin/avatar') return apiCRMAvatar(request, env, url);
+    if (url.pathname === '/api/community') return apiCommunity(request, env, url);
+    if (url.pathname === '/community') return serveCommunity();
     if (url.pathname.startsWith("/api/admin/")) return apiAdminAction(request, env, url);
     if (url.pathname === "/" || url.pathname === "/app") return serveApp(env);
     if (url.pathname === "/quiz1" || url.pathname === "/worker/quiz1") return serveQuiz1();
@@ -4880,6 +4882,112 @@ async function getCRMParticipants(env) {
   }));
 
   return list;
+}
+
+// ══════════════════════════════════════════════
+// COMMUNITY CRM — отдельная доска комьюнити-менеджера
+// (независимо от crm: — свой префикс cmperson:)
+// ══════════════════════════════════════════════
+
+function cmId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+async function apiCommunity(request, env, url) {
+  const auth = request.headers.get("Authorization") || "";
+  if (!auth.includes("admin_session_" + ADMIN_PASSWORD)) return jsonResp({ error: "Unauthorized" }, 401);
+
+  if (request.method === 'GET') {
+    const keys = await env.KV.list({ prefix: 'cmperson:' });
+    const people = (await Promise.all(keys.keys.map(k => env.KV.get(k.name, 'json')))).filter(Boolean);
+    people.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    return jsonResp({ ok: true, people });
+  }
+
+  if (request.method !== 'POST') return jsonResp({ error: 'Not found' }, 404);
+
+  const body = await request.json();
+  const action = body.action;
+
+  async function getPerson(id) {
+    return await env.KV.get(`cmperson:${id}`, 'json');
+  }
+  async function savePerson(p) {
+    p.updatedAt = Date.now();
+    await env.KV.put(`cmperson:${p.id}`, JSON.stringify(p));
+    return p;
+  }
+
+  if (action === 'create') {
+    const id = cmId();
+    const person = {
+      id,
+      name: body.name || '',
+      telegram: body.telegram || '',
+      tgUsername: body.tgUsername || '',
+      email: body.email || '',
+      ratings: [],
+      requests: [],
+      notes: [],
+      payments: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    await env.KV.put(`cmperson:${id}`, JSON.stringify(person));
+    return jsonResp({ ok: true, person });
+  }
+
+  if (action === 'update-fields') {
+    const p = await getPerson(body.id);
+    if (!p) return jsonResp({ ok: false, error: 'Не найдено' }, 404);
+    ['name', 'telegram', 'tgUsername', 'email'].forEach(f => {
+      if (body[f] !== undefined) p[f] = body[f];
+    });
+    await savePerson(p);
+    return jsonResp({ ok: true, person: p });
+  }
+
+  if (action === 'delete') {
+    await env.KV.delete(`cmperson:${body.id}`);
+    return jsonResp({ ok: true });
+  }
+
+  if (['add-rating', 'add-request', 'add-note', 'add-payment'].includes(action)) {
+    const p = await getPerson(body.id);
+    if (!p) return jsonResp({ ok: false, error: 'Не найдено' }, 404);
+    const entry = { entryId: cmId(), date: body.date || new Date().toISOString().slice(0, 10), createdAt: Date.now() };
+    if (action === 'add-rating') {
+      entry.value = Number(body.value);
+      p.ratings.push(entry);
+    } else if (action === 'add-request') {
+      entry.text = body.text || '';
+      p.requests.push(entry);
+    } else if (action === 'add-note') {
+      entry.text = body.text || '';
+      p.notes.push(entry);
+    } else if (action === 'add-payment') {
+      entry.amount = Number(body.amount) || 0;
+      p.payments.push(entry);
+    }
+    await savePerson(p);
+    return jsonResp({ ok: true, person: p });
+  }
+
+  if (action === 'delete-entry') {
+    const p = await getPerson(body.id);
+    if (!p) return jsonResp({ ok: false, error: 'Не найдено' }, 404);
+    const listName = { rating: 'ratings', request: 'requests', note: 'notes', payment: 'payments' }[body.kind];
+    if (!listName || !p[listName]) return jsonResp({ ok: false, error: 'Некорректный тип' });
+    p[listName] = p[listName].filter(e => e.entryId !== body.entryId);
+    await savePerson(p);
+    return jsonResp({ ok: true, person: p });
+  }
+
+  return jsonResp({ error: 'Unknown action' }, 404);
+}
+
+function serveCommunity() {
+  return new Response(getCommunityHTML(), { headers: { "Content-Type": "text/html; charset=utf-8" } });
 }
 
 async function apiAdminCRM(request, env, url) {
@@ -12007,6 +12115,909 @@ async function kbInitData() {
     msg.textContent = 'Ошибка';
     msg.className = 'msg err';
   }
+}
+</script>
+</body>
+</html>`;
+}
+
+// ─── COMMUNITY CRM HTML/CSS/JS ─────────────────────────────────────
+function getCommunityHTML() {
+  return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Комьюнити CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f2ee;
+  --bg-soft:#fbfaf8;
+  --panel:#ffffff;
+  --ink:#181614;
+  --ink-soft:#6b6560;
+  --ink-faint:#a29c96;
+  --line:#e8e3dc;
+  --line-soft:#f0ece5;
+  --accent:#ff5a36;
+  --accent-soft:#fff0ea;
+  --accent-ink:#c23f20;
+  --green:#1f9d64;
+  --green-soft:#e7f7ee;
+  --amber:#c98a1a;
+  --amber-soft:#fdf3e0;
+  --red:#e0453a;
+  --red-soft:#fdeceb;
+  --shadow-sm:0 1px 2px rgba(24,22,20,.05);
+  --shadow-md:0 10px 30px -12px rgba(24,22,20,.18);
+  --shadow-lg:0 30px 80px -20px rgba(24,22,20,.35);
+  --radius:16px;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0;
+  font-family:'Manrope',-apple-system,BlinkMacSystemFont,sans-serif;
+  background:var(--bg);
+  color:var(--ink);
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+@media (max-width:860px){ body{ overflow:auto; } }
+h1,h2,h3{font-family:'Unbounded',sans-serif; margin:0; letter-spacing:-0.01em;}
+button{font-family:inherit;}
+::selection{background:var(--accent-soft); color:var(--accent-ink);}
+
+/* ───── Login ───── */
+#loginScreen{
+  position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+  background:radial-gradient(circle at 20% 20%, #fff 0%, var(--bg) 60%);
+  z-index:500;
+}
+.loginCard{
+  background:var(--panel); border-radius:24px; padding:44px 40px; width:340px;
+  box-shadow:var(--shadow-lg); border:1px solid var(--line-soft); text-align:center;
+}
+.loginCard .badge{
+  width:52px; height:52px; border-radius:14px; margin:0 auto 18px;
+  background:linear-gradient(135deg,var(--accent),#ff8a5b);
+  display:flex; align-items:center; justify-content:center; font-size:22px; color:#fff;
+  box-shadow:0 10px 24px -8px rgba(255,90,54,.55);
+}
+.loginCard h1{font-size:20px; margin-bottom:6px;}
+.loginCard p{color:var(--ink-soft); font-size:13.5px; margin:0 0 22px;}
+.loginCard input{
+  width:100%; padding:13px 16px; border-radius:12px; border:1.5px solid var(--line);
+  font-size:15px; outline:none; margin-bottom:12px; background:var(--bg-soft); transition:.15s;
+}
+.loginCard input:focus{border-color:var(--accent); background:#fff;}
+.loginCard button{
+  width:100%; padding:13px; border-radius:12px; border:none; background:var(--ink); color:#fff;
+  font-weight:700; font-size:14.5px; cursor:pointer; transition:.15s;
+}
+.loginCard button:hover{background:#000;}
+.loginErr{color:var(--red); font-size:12.5px; margin-top:10px; min-height:14px;}
+
+/* ───── App shell ───── */
+#app{display:none; height:100vh; flex-direction:column;}
+@media (max-width:860px){ #app{height:auto; min-height:100vh;} }
+
+.topbar{
+  display:flex; align-items:center; gap:16px; padding:18px 28px; flex-shrink:0;
+  border-bottom:1px solid var(--line);
+}
+.topbar h1{font-size:19px; display:flex; align-items:center; gap:10px;}
+.topbar h1 .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);display:inline-block;}
+.topbar .sub{font-size:12.5px; color:var(--ink-faint); font-weight:500;}
+.spacer{flex:1;}
+.searchWrap{position:relative;}
+.searchWrap input{
+  width:230px; padding:9px 14px 9px 34px; border-radius:11px; border:1.5px solid var(--line);
+  font-size:13.5px; outline:none; background:var(--bg-soft); transition:.15s;
+}
+.searchWrap input:focus{border-color:var(--accent); background:#fff; width:270px;}
+.searchWrap svg{position:absolute; left:11px; top:50%; transform:translateY(-50%); opacity:.4;}
+.btn{
+  display:inline-flex; align-items:center; gap:7px; padding:9px 16px; border-radius:11px;
+  border:1.5px solid var(--line); background:#fff; color:var(--ink); font-size:13.5px; font-weight:600;
+  cursor:pointer; transition:.15s; white-space:nowrap;
+}
+.btn:hover{border-color:var(--ink); transform:translateY(-1px);}
+.btn.primary{background:var(--ink); color:#fff; border-color:var(--ink);}
+.btn.primary:hover{background:#000;}
+.btn.accent{background:var(--accent); color:#fff; border-color:var(--accent); box-shadow:0 8px 20px -8px rgba(255,90,54,.6);}
+.btn.accent:hover{background:var(--accent-ink); border-color:var(--accent-ink);}
+.btn.ghost{border-color:transparent; background:transparent;}
+.btn.ghost:hover{background:var(--line-soft); border-color:transparent; transform:none;}
+.btn.small{padding:6px 11px; font-size:12px; border-radius:9px;}
+.btn.toggled{background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink);}
+
+.statsRow{display:flex; gap:22px; padding:0 28px 16px; flex-shrink:0;}
+.statChip{
+  background:var(--panel); border:1px solid var(--line-soft); border-radius:13px;
+  padding:10px 16px; box-shadow:var(--shadow-sm); display:flex; flex-direction:column; gap:2px; min-width:110px;
+}
+.statChip .n{font-family:'Unbounded',sans-serif; font-size:17px; font-weight:700;}
+.statChip .l{font-size:11px; color:var(--ink-faint); font-weight:600; text-transform:uppercase; letter-spacing:.04em;}
+
+/* ───── Table ───── */
+.tableWrap{flex:1; overflow:auto; padding:0 28px 22px; min-height:0;}
+table{width:100%; border-collapse:separate; border-spacing:0 8px;}
+thead th{
+  position:sticky; top:0; background:var(--bg); z-index:5;
+  text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em;
+  color:var(--ink-faint); font-weight:700; padding:0 14px 8px; white-space:nowrap;
+}
+thead th.actionsCol{width:78px;}
+tbody tr.pRow{
+  background:var(--panel); cursor:pointer; transition:.15s; box-shadow:var(--shadow-sm);
+}
+tbody tr.pRow:hover{box-shadow:var(--shadow-md); transform:translateY(-1px);}
+tbody tr.pRow td{padding:13px 14px; font-size:13.5px; border-top:1px solid var(--line-soft); border-bottom:1px solid var(--line-soft); vertical-align:middle;}
+tbody tr.pRow td:first-child{border-left:1px solid var(--line-soft); border-radius:13px 0 0 13px;}
+tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radius:0 13px 13px 0;}
+
+.iconBtn{
+  width:30px; height:30px; border-radius:9px; border:1px solid var(--line); background:var(--bg-soft);
+  display:inline-flex; align-items:center; justify-content:center; cursor:pointer; transition:.15s; color:var(--ink-soft);
+}
+.iconBtn:hover{background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink); transform:scale(1.06);}
+.iconBtn.copied{background:var(--green-soft); border-color:var(--green); color:var(--green);}
+.iconGroup{display:flex; gap:6px;}
+
+.nameCell{display:flex; align-items:center; gap:10px; font-weight:700;}
+.avatar{
+  width:32px; height:32px; border-radius:10px; background:linear-gradient(135deg,#ffe3d6,#ffd0bb);
+  color:var(--accent-ink); display:flex; align-items:center; justify-content:center; font-weight:800;
+  font-size:12.5px; flex-shrink:0;
+}
+.faint{color:var(--ink-faint); font-weight:500;}
+.mono{font-variant-numeric:tabular-nums;}
+
+.ratingBadge{
+  display:inline-flex; align-items:center; gap:7px; font-weight:700; font-size:13px;
+}
+.ratingBar{width:52px; height:6px; border-radius:4px; background:var(--line-soft); overflow:hidden;}
+.ratingBar i{display:block; height:100%; border-radius:4px;}
+
+.reqCell{max-width:230px;}
+.reqText{white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;}
+.reqDate{font-size:11px; color:var(--ink-faint); margin-top:2px;}
+.noteCell{max-width:200px;}
+.noteText{white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; color:var(--ink-soft);}
+
+.hidden-col{display:none;}
+.emptyState{text-align:center; padding:60px 20px; color:var(--ink-faint);}
+
+@media (max-width:860px){
+  .tableWrap{overflow:auto;}
+  table{min-width:900px;}
+}
+
+/* ───── Person Panel (80% overlay) ───── */
+#overlay{position:fixed; inset:0; background:rgba(20,17,14,.45); backdrop-filter:blur(3px); display:none; z-index:100; opacity:0; transition:opacity .22s;}
+#overlay.show{display:block; opacity:1;}
+#panel{
+  position:fixed; top:0; right:0; height:100%; width:80%; max-width:1100px; background:var(--bg-soft);
+  z-index:101; transform:translateX(100%); transition:transform .28s cubic-bezier(.2,.8,.2,1);
+  display:flex; flex-direction:column; box-shadow:-30px 0 80px -20px rgba(0,0,0,.35);
+}
+#panel.show{transform:translateX(0);}
+@media (max-width:860px){ #panel{width:100%; max-width:none;} }
+
+.panelHead{
+  display:flex; align-items:center; gap:16px; padding:22px 30px; border-bottom:1px solid var(--line); flex-shrink:0; background:var(--panel);
+}
+.panelHead .avatar{width:44px; height:44px; border-radius:13px; font-size:16px;}
+.panelHead h2{font-size:19px;}
+.panelHead .meta{font-size:12.5px; color:var(--ink-faint); margin-top:2px;}
+.panelBody{flex:1; display:flex; overflow:hidden;}
+@media (max-width:860px){ .panelBody{flex-direction:column; overflow:auto;} }
+.panelLeft{flex:1.3; overflow-y:auto; padding:26px 30px 60px;}
+.panelRight{flex:1; overflow-y:auto; padding:26px 30px 60px; border-left:1px solid var(--line); background:var(--panel);}
+@media (max-width:860px){ .panelRight{border-left:none; border-top:1px solid var(--line);} }
+
+.section{background:var(--panel); border:1px solid var(--line-soft); border-radius:var(--radius); padding:20px 22px; margin-bottom:16px; box-shadow:var(--shadow-sm);}
+.section h3{font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint); margin-bottom:14px; display:flex; align-items:center; justify-content:space-between;}
+.fieldGrid{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+.field label{font-size:11.5px; font-weight:700; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.04em; display:block; margin-bottom:6px;}
+.field input, .field textarea{
+  width:100%; padding:10px 13px; border-radius:10px; border:1.5px solid var(--line); font-size:14px;
+  outline:none; background:var(--bg-soft); font-family:inherit; transition:.15s;
+}
+.field input:focus, .field textarea:focus{border-color:var(--accent); background:#fff;}
+.field{margin-bottom:0;}
+.field.full{grid-column:1/-1;}
+
+.totalPaid{
+  display:flex; align-items:baseline; justify-content:space-between; padding:16px 20px; border-radius:14px;
+  background:linear-gradient(135deg,#1a1815,#2b2621); color:#fff; margin-bottom:16px;
+}
+.totalPaid .num{font-family:'Unbounded',sans-serif; font-size:24px; font-weight:700;}
+.totalPaid .lbl{font-size:12px; color:#c9c2ba; text-transform:uppercase; letter-spacing:.05em;}
+
+/* custom date picker */
+.datePick{position:relative;}
+.dateDisplay{
+  padding:10px 13px; border-radius:10px; border:1.5px solid var(--line); background:var(--bg-soft); font-size:14px;
+  cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:8px; transition:.15s; user-select:none;
+}
+.dateDisplay:hover{border-color:var(--accent);}
+.dateDisplay svg{opacity:.5; flex-shrink:0;}
+.calPop{
+  position:absolute; top:calc(100% + 8px); left:0; background:#fff; border-radius:16px; box-shadow:var(--shadow-lg);
+  border:1px solid var(--line-soft); padding:16px; width:270px; z-index:60; display:none;
+}
+.calPop.show{display:block;}
+.calHead{display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;}
+.calHead .lbl{font-weight:700; font-size:14px;}
+.calNav{width:26px; height:26px; border-radius:8px; border:none; background:var(--bg-soft); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:.15s;}
+.calNav:hover{background:var(--accent-soft); color:var(--accent-ink);}
+.calGrid{display:grid; grid-template-columns:repeat(7,1fr); gap:3px;}
+.calDow{font-size:10px; color:var(--ink-faint); text-align:center; font-weight:700; padding-bottom:4px;}
+.calDay{
+  aspect-ratio:1; display:flex; align-items:center; justify-content:center; border-radius:8px; font-size:12.5px;
+  cursor:pointer; transition:.12s; font-weight:600;
+}
+.calDay:hover{background:var(--accent-soft);}
+.calDay.muted{color:var(--ink-faint); font-weight:400;}
+.calDay.today{border:1.5px solid var(--accent);}
+.calDay.selected{background:var(--accent); color:#fff;}
+.calToday{margin-top:10px; text-align:center; font-size:12px; color:var(--accent-ink); font-weight:700; cursor:pointer;}
+
+/* custom rating slider */
+.ratingRow{display:flex; align-items:center; gap:14px;}
+.slider{position:relative; flex:1; height:34px; display:flex; align-items:center;}
+.sliderTrack{position:relative; width:100%; height:8px; border-radius:6px; background:var(--line-soft); overflow:visible;}
+.sliderFill{position:absolute; left:0; top:0; height:100%; border-radius:6px; background:linear-gradient(90deg,#ffb199,var(--accent)); transition:width .1s;}
+.sliderThumb{
+  position:absolute; top:50%; width:26px; height:26px; border-radius:50%; background:#fff; border:3px solid var(--accent);
+  transform:translate(-50%,-50%); cursor:grab; box-shadow:0 4px 12px rgba(255,90,54,.4); transition:left .1s;
+}
+.sliderThumb:active{cursor:grabbing; transform:translate(-50%,-50%) scale(1.12);}
+.sliderTicks{display:flex; justify-content:space-between; margin-top:6px;}
+.sliderTicks span{font-size:9.5px; color:var(--ink-faint); width:10px; text-align:center;}
+.sliderVal{
+  width:44px; height:44px; border-radius:13px; background:var(--ink); color:#fff; font-family:'Unbounded',sans-serif;
+  font-weight:700; font-size:17px; display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+
+.addRow{display:flex; gap:10px; align-items:flex-end; margin-top:14px;}
+.addRow .field{flex:1;}
+.addRow .datePick{width:140px; flex:none;}
+
+/* history */
+.histEmpty{text-align:center; color:var(--ink-faint); padding:30px 10px; font-size:13px;}
+.histItem{display:flex; gap:12px; padding:12px 0; border-bottom:1px solid var(--line-soft);}
+.histItem:last-child{border-bottom:none;}
+.histIcon{
+  width:32px; height:32px; border-radius:9px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:14px;
+}
+.histIcon.rating{background:var(--accent-soft); color:var(--accent-ink);}
+.histIcon.request{background:#e7edfd; color:#3457c9;}
+.histIcon.note{background:var(--line-soft); color:var(--ink-soft);}
+.histIcon.payment{background:var(--green-soft); color:var(--green);}
+.histBody{flex:1; min-width:0;}
+.histTop{display:flex; align-items:center; justify-content:space-between; gap:8px;}
+.histTitle{font-weight:700; font-size:13px;}
+.histDate{font-size:11px; color:var(--ink-faint); white-space:nowrap;}
+.histText{font-size:13px; color:var(--ink-soft); margin-top:3px; word-break:break-word; white-space:pre-wrap;}
+.histDel{opacity:0; transition:.15s; cursor:pointer; color:var(--ink-faint); background:none; border:none; font-size:12px;}
+.histItem:hover .histDel{opacity:1;}
+.histDel:hover{color:var(--red);}
+
+.closeX{
+  width:36px; height:36px; border-radius:11px; border:1px solid var(--line); background:#fff; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; transition:.15s; margin-left:auto;
+}
+.closeX:hover{background:var(--red-soft); border-color:var(--red); color:var(--red);}
+
+.toast{
+  position:fixed; bottom:26px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--ink); color:#fff;
+  padding:11px 20px; border-radius:11px; font-size:13px; font-weight:600; z-index:400; opacity:0; pointer-events:none; transition:.2s; box-shadow:var(--shadow-lg);
+}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+.delRow{display:flex; justify-content:flex-end; margin-top:6px;}
+.delPersonBtn{background:none; border:none; color:var(--ink-faint); font-size:12px; cursor:pointer;}
+.delPersonBtn:hover{color:var(--red);}
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <div class="loginCard">
+    <div class="badge">◆</div>
+    <h1>Комьюнити CRM</h1>
+    <p>Доступ только для команды</p>
+    <input type="password" id="loginPass" placeholder="Пароль" onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="btn primary" style="width:100%; justify-content:center;" onclick="doLogin()">Войти</button>
+    <div class="loginErr" id="loginErr"></div>
+  </div>
+</div>
+
+<div id="app">
+  <div class="topbar">
+    <h1><span class="dot"></span>Комьюнити</h1>
+    <span class="sub" id="countSub"></span>
+    <div class="spacer"></div>
+    <div class="searchWrap">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input id="searchInput" placeholder="Поиск по имени, telegram, email..." oninput="renderTable()">
+    </div>
+    <button class="btn" id="expandBtn" onclick="toggleExpand()">Развернуть telegram/email</button>
+    <button class="btn accent" onclick="openNewPerson()">+ Участник</button>
+  </div>
+
+  <div class="statsRow" id="statsRow"></div>
+
+  <div class="tableWrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="actionsCol"></th>
+          <th>Имя</th>
+          <th class="hidden-col expandCol">TG username</th>
+          <th class="hidden-col expandCol">Email</th>
+          <th>Дата оплаты</th>
+          <th>Оценка</th>
+          <th>Текущий запрос</th>
+          <th>Примечание</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="overlay" onclick="closePanel()"></div>
+<div id="panel">
+  <div class="panelHead">
+    <div class="avatar" id="pAvatar">?</div>
+    <div>
+      <h2 id="pName">—</h2>
+      <div class="meta" id="pMeta">—</div>
+    </div>
+    <button class="closeX" onclick="closePanel()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="panelBody">
+    <div class="panelLeft">
+
+      <div class="section">
+        <h3>Данные участника</h3>
+        <div class="fieldGrid">
+          <div class="field"><label>Имя</label><input id="fName" oninput="scheduleFieldSave()"></div>
+          <div class="field"><label>Ссылка на telegram</label><input id="fTelegram" oninput="scheduleFieldSave()" placeholder="https://t.me/username"></div>
+          <div class="field"><label>Telegram username</label><input id="fTgUsername" oninput="scheduleFieldSave()" placeholder="@username"></div>
+          <div class="field"><label>Email</label><input id="fEmail" oninput="scheduleFieldSave()" placeholder="mail@example.com"></div>
+        </div>
+        <div class="delRow"><button class="delPersonBtn" onclick="deletePerson()">Удалить участника</button></div>
+      </div>
+
+      <div class="totalPaid">
+        <div>
+          <div class="lbl">Всего оплачено</div>
+          <div class="num" id="totalPaidNum">0 ₽</div>
+        </div>
+        <button class="btn small" style="background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.25); color:#fff;" onclick="toggleAddForm('payment')">+ оплата</button>
+      </div>
+      <div class="section" id="formPayment" style="display:none;">
+        <h3>Новая оплата</h3>
+        <div class="addRow">
+          <div class="field"><label>Сумма, ₽</label><input id="payAmount" type="number" placeholder="5000"></div>
+          <div class="datePick" id="payDatePick"></div>
+        </div>
+        <div style="margin-top:12px;"><button class="btn accent small" onclick="submitPayment()">Добавить</button></div>
+      </div>
+
+      <div class="section">
+        <h3>Оценка комьюнити <button class="btn small ghost" onclick="toggleAddForm('rating')">+ оценка</button></h3>
+        <div id="currentRatingView"></div>
+        <div id="formRating" style="display:none; margin-top:14px;">
+          <div class="ratingRow">
+            <div class="slider" id="ratingSlider">
+              <div class="sliderTrack"><div class="sliderFill" id="sliderFill"></div><div class="sliderThumb" id="sliderThumb"></div></div>
+            </div>
+            <div class="sliderVal" id="sliderVal">7</div>
+          </div>
+          <div class="sliderTicks"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span></div>
+          <div class="addRow" style="margin-top:14px;">
+            <div class="datePick" id="ratingDatePick"></div>
+            <button class="btn accent small" onclick="submitRating()">Сохранить оценку</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Текущий запрос <button class="btn small ghost" onclick="toggleAddForm('request')">+ запрос</button></h3>
+        <div id="currentRequestView" class="faint">Нет активного запроса</div>
+        <div id="formRequest" style="display:none; margin-top:14px;">
+          <div class="field full"><textarea id="reqText" rows="2" placeholder="Новый запрос..."></textarea></div>
+          <div class="addRow">
+            <div class="datePick" id="reqDatePick"></div>
+            <button class="btn accent small" onclick="submitRequest()">Сохранить запрос</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Примечание <button class="btn small ghost" onclick="toggleAddForm('note')">+ примечание</button></h3>
+        <div id="currentNoteView" class="faint">Нет примечаний</div>
+        <div id="formNote" style="display:none; margin-top:14px;">
+          <div class="field full"><textarea id="noteText" rows="2" placeholder="Новое примечание..."></textarea></div>
+          <div class="addRow">
+            <div class="datePick" id="noteDatePick"></div>
+            <button class="btn accent small" onclick="submitNote()">Сохранить</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <div class="panelRight">
+      <h3 style="font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint); margin-bottom:14px;">История</h3>
+      <div id="historyList"></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let ADMIN_TOKEN = localStorage.getItem('communityToken') || '';
+let PEOPLE = [];
+let CURRENT = null;
+let EXPANDED = localStorage.getItem('communityExpanded') === '1';
+let saveFieldTimer = null;
+
+function authHeaders(){ return {'Content-Type':'application/json','Authorization':'admin_session_'+ADMIN_TOKEN}; }
+
+async function doLogin(){
+  const pass = document.getElementById('loginPass').value;
+  const errEl = document.getElementById('loginErr');
+  errEl.textContent = '';
+  try{
+    const r = await fetch('/api/admin/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({password: pass})});
+    const d = await r.json();
+    if(!d.ok){ errEl.textContent = d.error || 'Неверный пароль'; return; }
+    ADMIN_TOKEN = d.token.replace('admin_session_','');
+    localStorage.setItem('communityToken', ADMIN_TOKEN);
+    boot();
+  }catch(e){ errEl.textContent = 'Ошибка соединения'; }
+}
+
+async function boot(){
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  if(EXPANDED){ document.getElementById('expandBtn').classList.add('toggled'); document.querySelectorAll('.expandCol').forEach(c=>c.classList.remove('hidden-col')); }
+  await loadPeople();
+}
+
+async function loadPeople(){
+  const r = await fetch('/api/community', {headers: authHeaders()});
+  if(r.status === 401){ logout(); return; }
+  const d = await r.json();
+  PEOPLE = d.people || [];
+  renderTable();
+}
+
+function logout(){
+  localStorage.removeItem('communityToken');
+  location.reload();
+}
+
+if(ADMIN_TOKEN) boot();
+
+function toggleExpand(){
+  EXPANDED = !EXPANDED;
+  localStorage.setItem('communityExpanded', EXPANDED ? '1':'0');
+  document.getElementById('expandBtn').classList.toggle('toggled', EXPANDED);
+  document.querySelectorAll('.expandCol').forEach(c=>c.classList.toggle('hidden-col', !EXPANDED));
+}
+
+function initials(name){
+  if(!name) return '?';
+  const parts = name.trim().split(/\\s+/);
+  return ((parts[0]?.[0]||'') + (parts[1]?.[0]||'')).toUpperCase() || name[0].toUpperCase();
+}
+
+function fmtMoney(n){ return (n||0).toLocaleString('ru-RU') + ' ₽'; }
+function fmtDate(iso){
+  if(!iso) return '—';
+  const d = new Date(iso+'T00:00:00');
+  if(isNaN(d)) return iso;
+  return d.toLocaleDateString('ru-RU', {day:'2-digit', month:'short'});
+}
+function fmtDateFull(iso){
+  if(!iso) return '—';
+  const d = new Date(iso+'T00:00:00');
+  if(isNaN(d)) return iso;
+  return d.toLocaleDateString('ru-RU', {day:'2-digit', month:'long', year:'numeric'});
+}
+
+function lastOf(arr){ if(!arr || !arr.length) return null; return arr.slice().sort((a,b)=> (a.date>b.date?1:a.date<b.date?-1:a.createdAt-b.createdAt))[arr.length-1]; }
+function sumPayments(arr){ return (arr||[]).reduce((s,p)=>s+(p.amount||0),0); }
+
+function ratingColor(v){
+  if(v>=8) return 'var(--green)';
+  if(v>=5) return 'var(--amber)';
+  return 'var(--red)';
+}
+
+function renderTable(){
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  const tbody = document.getElementById('tbody');
+  let list = PEOPLE;
+  if(q){
+    list = PEOPLE.filter(p => [p.name,p.telegram,p.tgUsername,p.email].join(' ').toLowerCase().includes(q));
+  }
+  document.getElementById('countSub').textContent = PEOPLE.length + ' участник' + (PEOPLE.length%10===1 && PEOPLE.length%100!==11 ? '' : PEOPLE.length%10>=2&&PEOPLE.length%10<=4&&(PEOPLE.length%100<10||PEOPLE.length%100>=20)?'а':'ов');
+
+  const totalPaid = PEOPLE.reduce((s,p)=>s+sumPayments(p.payments),0);
+  const avgRating = (()=>{ const vals = PEOPLE.map(p=>lastOf(p.ratings)?.value).filter(v=>v!=null); return vals.length? (vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1) : '—'; })();
+  const withRequest = PEOPLE.filter(p => p.requests && p.requests.length).length;
+  document.getElementById('statsRow').innerHTML =
+    '<div class="statChip"><div class="n">'+fmtMoney(totalPaid)+'</div><div class="l">Всего оплат</div></div>' +
+    '<div class="statChip"><div class="n">'+avgRating+'</div><div class="l">Средняя оценка</div></div>' +
+    '<div class="statChip"><div class="n">'+withRequest+'</div><div class="l">Активных запросов</div></div>';
+
+  if(!list.length){
+    tbody.innerHTML = '<tr><td colspan="8"><div class="emptyState">Никого не найдено</div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = list.map(p => {
+    const rating = lastOf(p.ratings);
+    const request = lastOf(p.requests);
+    const note = lastOf(p.notes);
+    const payment = lastOf(p.payments);
+    const tg = (p.telegram||'').trim();
+    const tgHref = tg ? (tg.startsWith('http')? tg : 'https://t.me/'+tg.replace('@','')) : '';
+    return '<tr class="pRow" onclick="openPerson(\\''+p.id+'\\')">' +
+      '<td onclick="event.stopPropagation()"><div class="iconGroup">' +
+        '<button class="iconBtn" title="Скопировать email" onclick="copyEmail(this,\\''+(p.email||'').replace(/'/g,"\\\\'")+'\\')">'+
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>'+
+        '</button>' +
+        (tgHref ? '<a class="iconBtn" title="Открыть telegram" href="'+tgHref+'" target="_blank" rel="noopener">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M21.05 3.6L2.9 10.7c-1.24.5-1.23 1.2-.23 1.5l4.65 1.45 1.8 5.5c.22.6.37.85.76.85.3 0 .43-.14.6-.3l1.62-1.57 3.37 2.5c.62.34 1.06.16 1.22-.57l2.2-10.4c.25-.9-.34-1.3-1.34-.86z"/></svg>' +
+        '</a>' : '<span class="iconBtn" style="opacity:.3; cursor:default;"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M21.05 3.6L2.9 10.7c-1.24.5-1.23 1.2-.23 1.5l4.65 1.45 1.8 5.5c.22.6.37.85.76.85.3 0 .43-.14.6-.3l1.62-1.57 3.37 2.5c.62.34 1.06.16 1.22-.57l2.2-10.4c.25-.9-.34-1.3-1.34-.86z"/></svg></span>') +
+      '</div></td>' +
+      '<td><div class="nameCell"><div class="avatar">'+initials(p.name)+'</div>'+(p.name||'Без имени')+'</div></td>' +
+      '<td class="hidden-col expandCol faint">'+(p.tgUsername||tg||'—')+'</td>' +
+      '<td class="hidden-col expandCol faint">'+(p.email||'—')+'</td>' +
+      '<td class="mono">'+(payment? fmtDate(payment.date) : '—')+'</td>' +
+      '<td>'+(rating!=null ? '<div class="ratingBadge"><span style="color:'+ratingColor(rating.value)+'">'+rating.value+'/10</span><div class="ratingBar"><i style="width:'+(rating.value*10)+'%; background:'+ratingColor(rating.value)+'"></i></div></div>' : '<span class="faint">—</span>')+'</td>' +
+      '<td class="reqCell">'+(request ? '<span class="reqText">'+escapeHtml(request.text)+'</span><span class="reqDate">'+fmtDate(request.date)+'</span>' : '<span class="faint">—</span>')+'</td>' +
+      '<td class="noteCell">'+(note ? '<span class="noteText">'+escapeHtml(note.text)+'</span>' : '<span class="faint">—</span>')+'</td>' +
+    '</tr>';
+  }).join('');
+}
+
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function copyEmail(btn, email){
+  if(!email){ showToast('У участника нет email'); return; }
+  try{ await navigator.clipboard.writeText(email); }catch(e){}
+  btn.classList.add('copied');
+  showToast('Email скопирован');
+  setTimeout(()=>btn.classList.remove('copied'), 1200);
+}
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=>t.classList.remove('show'), 2000);
+}
+
+/* ───── Panel ───── */
+function openNewPerson(){
+  CURRENT = { id:null, name:'', telegram:'', tgUsername:'', email:'', ratings:[], requests:[], notes:[], payments:[] };
+  fillPanel();
+  showPanel();
+  document.getElementById('fName').focus();
+}
+
+function openPerson(id){
+  CURRENT = PEOPLE.find(p=>p.id===id);
+  if(!CURRENT) return;
+  fillPanel();
+  showPanel();
+}
+
+function showPanel(){
+  document.getElementById('overlay').classList.add('show');
+  document.getElementById('panel').classList.add('show');
+  ['payment','rating','request','note'].forEach(k => document.getElementById('form'+cap(k)).style.display='none');
+}
+function closePanel(){
+  document.getElementById('overlay').classList.remove('show');
+  document.getElementById('panel').classList.remove('show');
+  CURRENT = null;
+}
+function cap(s){ return s[0].toUpperCase()+s.slice(1); }
+
+function fillPanel(){
+  const p = CURRENT;
+  document.getElementById('pAvatar').textContent = initials(p.name);
+  document.getElementById('pName').textContent = p.name || 'Новый участник';
+  document.getElementById('pMeta').textContent = p.id ? ('Добавлен ' + fmtDateFull(new Date(p.createdAt||Date.now()).toISOString().slice(0,10))) : 'Заполни данные и добавь оценку/запрос';
+  document.getElementById('fName').value = p.name||'';
+  document.getElementById('fTelegram').value = p.telegram||'';
+  document.getElementById('fTgUsername').value = p.tgUsername||'';
+  document.getElementById('fEmail').value = p.email||'';
+
+  document.getElementById('totalPaidNum').textContent = fmtMoney(sumPayments(p.payments));
+
+  const rating = lastOf(p.ratings);
+  document.getElementById('currentRatingView').innerHTML = rating
+    ? '<div class="ratingBadge" style="font-size:20px;"><span style="color:'+ratingColor(rating.value)+'">'+rating.value+'/10</span><div class="ratingBar" style="width:110px; height:8px;"><i style="width:'+(rating.value*10)+'%; background:'+ratingColor(rating.value)+'"></i></div><span class="faint" style="font-size:12px; font-weight:500;">от '+fmtDateFull(rating.date)+'</span></div>'
+    : '<span class="faint">Оценки пока нет</span>';
+
+  const request = lastOf(p.requests);
+  document.getElementById('currentRequestView').innerHTML = request
+    ? '<div style="font-weight:600;">'+escapeHtml(request.text)+'</div><div class="faint" style="font-size:12px; margin-top:4px;">от '+fmtDateFull(request.date)+'</div>'
+    : 'Нет активного запроса';
+  if(!request) document.getElementById('currentRequestView').className='faint'; else document.getElementById('currentRequestView').className='';
+
+  const note = lastOf(p.notes);
+  document.getElementById('currentNoteView').innerHTML = note
+    ? '<div style="font-weight:600;">'+escapeHtml(note.text)+'</div><div class="faint" style="font-size:12px; margin-top:4px;">от '+fmtDateFull(note.date)+'</div>'
+    : 'Нет примечаний';
+  if(!note) document.getElementById('currentNoteView').className='faint'; else document.getElementById('currentNoteView').className='';
+
+  renderHistory();
+  setupDatePickers();
+  setupSlider();
+}
+
+function renderHistory(){
+  const p = CURRENT;
+  const items = [];
+  (p.ratings||[]).forEach(e=>items.push({type:'rating', icon:'★', title:'Оценка: '+e.value+'/10', text:'', ...e}));
+  (p.requests||[]).forEach(e=>items.push({type:'request', icon:'✎', title:'Запрос', text:e.text, ...e}));
+  (p.notes||[]).forEach(e=>items.push({type:'note', icon:'✎', title:'Примечание', text:e.text, ...e}));
+  (p.payments||[]).forEach(e=>items.push({type:'payment', icon:'₽', title:'Оплата '+fmtMoney(e.amount), text:'', ...e}));
+  items.sort((a,b)=> (b.date>a.date?1:b.date<a.date?-1:b.createdAt-a.createdAt));
+  const el = document.getElementById('historyList');
+  if(!items.length){ el.innerHTML = '<div class="histEmpty">История пока пуста</div>'; return; }
+  el.innerHTML = items.map(it =>
+    '<div class="histItem">' +
+      '<div class="histIcon '+it.type+'">'+it.icon+'</div>' +
+      '<div class="histBody">' +
+        '<div class="histTop"><span class="histTitle">'+it.title+'</span><span class="histDate">'+fmtDate(it.date)+'</span></div>' +
+        (it.text ? '<div class="histText">'+escapeHtml(it.text)+'</div>' : '') +
+        '<button class="histDel" onclick="deleteEntry(\\''+it.type+'\\',\\''+it.entryId+'\\')">удалить запись</button>' +
+      '</div>' +
+    '</div>'
+  ).join('');
+}
+
+function toggleAddForm(kind){
+  const el = document.getElementById('form'+cap(kind));
+  el.style.display = el.style.display==='none' ? 'block' : 'none';
+}
+
+async function scheduleFieldSave(){
+  clearTimeout(saveFieldTimer);
+  saveFieldTimer = setTimeout(saveFields, 500);
+}
+
+async function ensurePersonCreated(){
+  if(CURRENT.id) return CURRENT.id;
+  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({
+    action:'create', name: document.getElementById('fName').value.trim()
+  })});
+  const d = await r.json();
+  CURRENT.id = d.person.id;
+  CURRENT.createdAt = d.person.createdAt;
+  PEOPLE.push(CURRENT);
+  return CURRENT.id;
+}
+
+async function saveFields(){
+  const name = document.getElementById('fName').value.trim();
+  const telegram = document.getElementById('fTelegram').value.trim();
+  const tgUsername = document.getElementById('fTgUsername').value.trim();
+  const email = document.getElementById('fEmail').value.trim();
+  if(!CURRENT.id && !name && !telegram && !email) return;
+  await ensurePersonCreated();
+  Object.assign(CURRENT, {name, telegram, tgUsername, email});
+  document.getElementById('pName').textContent = name || 'Без имени';
+  document.getElementById('pAvatar').textContent = initials(name);
+  await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'update-fields', id:CURRENT.id, name, telegram, tgUsername, email})});
+  renderTable();
+}
+
+async function deletePerson(){
+  if(!CURRENT.id){ closePanel(); return; }
+  if(!confirm('Удалить участника «'+(CURRENT.name||'без имени')+'» из комьюнити CRM? Это действие необратимо.')) return;
+  await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'delete', id:CURRENT.id})});
+  PEOPLE = PEOPLE.filter(p=>p.id!==CURRENT.id);
+  closePanel();
+  renderTable();
+}
+
+async function deleteEntry(kind, entryId){
+  if(!CURRENT || !CURRENT.id) return;
+  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'delete-entry', id:CURRENT.id, kind, entryId})});
+  const d = await r.json();
+  if(d.ok){ Object.assign(CURRENT, d.person); const idx=PEOPLE.findIndex(p=>p.id===CURRENT.id); if(idx>=0) PEOPLE[idx]=CURRENT; fillPanel(); renderTable(); }
+}
+
+async function submitPayment(){
+  const amount = Number(document.getElementById('payAmount').value);
+  if(!amount || amount<=0){ showToast('Укажи сумму'); return; }
+  await ensurePersonCreated();
+  const date = getPickedDate('payDatePick');
+  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'add-payment', id:CURRENT.id, amount, date})});
+  const d = await r.json();
+  applyPersonUpdate(d.person);
+  document.getElementById('payAmount').value='';
+  document.getElementById('formPayment').style.display='none';
+  showToast('Оплата добавлена');
+}
+
+async function submitRating(){
+  const value = Number(document.getElementById('sliderVal').textContent);
+  await ensurePersonCreated();
+  const date = getPickedDate('ratingDatePick');
+  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'add-rating', id:CURRENT.id, value, date})});
+  const d = await r.json();
+  applyPersonUpdate(d.person);
+  document.getElementById('formRating').style.display='none';
+  showToast('Оценка сохранена');
+}
+
+async function submitRequest(){
+  const text = document.getElementById('reqText').value.trim();
+  if(!text){ showToast('Введи текст запроса'); return; }
+  await ensurePersonCreated();
+  const date = getPickedDate('reqDatePick');
+  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'add-request', id:CURRENT.id, text, date})});
+  const d = await r.json();
+  applyPersonUpdate(d.person);
+  document.getElementById('reqText').value='';
+  document.getElementById('formRequest').style.display='none';
+  showToast('Запрос сохранён');
+}
+
+async function submitNote(){
+  const text = document.getElementById('noteText').value.trim();
+  if(!text){ showToast('Введи текст примечания'); return; }
+  await ensurePersonCreated();
+  const date = getPickedDate('noteDatePick');
+  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'add-note', id:CURRENT.id, text, date})});
+  const d = await r.json();
+  applyPersonUpdate(d.person);
+  document.getElementById('noteText').value='';
+  document.getElementById('formNote').style.display='none';
+  showToast('Примечание сохранено');
+}
+
+function applyPersonUpdate(person){
+  Object.assign(CURRENT, person);
+  const idx = PEOPLE.findIndex(p=>p.id===CURRENT.id);
+  if(idx>=0) PEOPLE[idx]=CURRENT; else PEOPLE.push(CURRENT);
+  fillPanel();
+  renderTable();
+}
+
+/* ───── Custom slider ───── */
+function setupSlider(){
+  const track = document.querySelector('#ratingSlider .sliderTrack');
+  const fill = document.getElementById('sliderFill');
+  const thumb = document.getElementById('sliderThumb');
+  const val = document.getElementById('sliderVal');
+  let current = 7;
+  function set(v){
+    current = Math.max(1, Math.min(10, v));
+    const pct = ((current-1)/9)*100;
+    fill.style.width = pct+'%';
+    thumb.style.left = pct+'%';
+    val.textContent = current;
+    val.style.background = ratingColor(current).replace('var(--','').replace(')','') ? '' : '';
+  }
+  set(7);
+  function posToVal(clientX){
+    const rect = track.getBoundingClientRect();
+    let pct = (clientX - rect.left) / rect.width;
+    pct = Math.max(0, Math.min(1, pct));
+    return Math.round(pct*9)+1;
+  }
+  function drag(e){
+    const x = e.touches ? e.touches[0].clientX : e.clientX;
+    set(posToVal(x));
+  }
+  thumb.addEventListener('mousedown', e => { e.preventDefault(); const move = ev=>drag(ev); const up=()=>{document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);}; document.addEventListener('mousemove',move); document.addEventListener('mouseup',up); });
+  thumb.addEventListener('touchstart', e => { const move = ev=>drag(ev); const up=()=>{document.removeEventListener('touchmove',move);document.removeEventListener('touchend',up);}; document.addEventListener('touchmove',move); document.addEventListener('touchend',up); }, {passive:true});
+  track.addEventListener('click', e => set(posToVal(e.clientX)));
+}
+
+/* ───── Custom date picker ───── */
+const RU_MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+const RU_DOW = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+const pickerState = {};
+
+function todayISO(){ const d = new Date(); return d.toISOString().slice(0,10); }
+function getPickedDate(containerId){ return (pickerState[containerId] && pickerState[containerId].selected) || todayISO(); }
+
+function setupDatePickers(){
+  ['payDatePick','ratingDatePick','reqDatePick','noteDatePick'].forEach(id => buildDatePicker(id));
+}
+
+function buildDatePicker(containerId){
+  const container = document.getElementById(containerId);
+  const today = new Date();
+  const state = pickerState[containerId] = { selected: todayISO(), viewY: today.getFullYear(), viewM: today.getMonth() };
+  container.innerHTML =
+    '<div class="dateDisplay" id="'+containerId+'_disp">' +
+      '<span id="'+containerId+'_txt">'+fmtDateFull(state.selected)+'</span>' +
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>' +
+    '</div>' +
+    '<div class="calPop" id="'+containerId+'_pop"></div>';
+  document.getElementById(containerId+'_disp').onclick = (e) => { e.stopPropagation(); toggleCal(containerId); };
+  renderCal(containerId);
+}
+
+function toggleCal(containerId){
+  document.querySelectorAll('.calPop').forEach(el => { if(el.id !== containerId+'_pop') el.classList.remove('show'); });
+  document.getElementById(containerId+'_pop').classList.toggle('show');
+}
+
+document.addEventListener('click', () => document.querySelectorAll('.calPop').forEach(el => el.classList.remove('show')));
+
+function renderCal(containerId){
+  const state = pickerState[containerId];
+  const pop = document.getElementById(containerId+'_pop');
+  const y = state.viewY, m = state.viewM;
+  const first = new Date(y, m, 1);
+  let startDow = first.getDay(); startDow = startDow===0?6:startDow-1;
+  const daysInMonth = new Date(y, m+1, 0).getDate();
+  const daysInPrev = new Date(y, m, 0).getDate();
+  const todayStr = todayISO();
+  let cells = '';
+  for(let i=startDow-1;i>=0;i--) cells += '<div class="calDay muted">'+(daysInPrev-i)+'</div>';
+  for(let d=1; d<=daysInMonth; d++){
+    const iso = y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    let cls = 'calDay';
+    if(iso===todayStr) cls += ' today';
+    if(iso===state.selected) cls += ' selected';
+    cells += '<div class="'+cls+'" onclick="pickDate(\\''+containerId+'\\',\\''+iso+'\\')">'+d+'</div>';
+  }
+  const totalCells = startDow + daysInMonth;
+  const rem = (7 - (totalCells % 7)) % 7;
+  for(let d=1; d<=rem; d++) cells += '<div class="calDay muted">'+d+'</div>';
+
+  pop.innerHTML =
+    '<div class="calHead">' +
+      '<button class="calNav" onclick="event.stopPropagation();navCal(\\''+containerId+'\\',-1)">‹</button>' +
+      '<span class="lbl">'+RU_MONTHS[m]+' '+y+'</span>' +
+      '<button class="calNav" onclick="event.stopPropagation();navCal(\\''+containerId+'\\',1)">›</button>' +
+    '</div>' +
+    '<div class="calGrid">' + RU_DOW.map(d=>'<div class="calDow">'+d+'</div>').join('') + cells + '</div>' +
+    '<div class="calToday" onclick="event.stopPropagation();pickDate(\\''+containerId+'\\',\\''+todayStr+'\\')">Сегодня</div>';
+  pop.onclick = (e)=>e.stopPropagation();
+}
+
+function navCal(containerId, dir){
+  const state = pickerState[containerId];
+  state.viewM += dir;
+  if(state.viewM<0){ state.viewM=11; state.viewY--; }
+  if(state.viewM>11){ state.viewM=0; state.viewY++; }
+  renderCal(containerId);
+}
+
+function pickDate(containerId, iso){
+  const state = pickerState[containerId];
+  state.selected = iso;
+  document.getElementById(containerId+'_txt').textContent = fmtDateFull(iso);
+  document.getElementById(containerId+'_pop').classList.remove('show');
 }
 </script>
 </body>
