@@ -12206,24 +12206,28 @@ button{font-family:inherit;}
 @media (max-width:860px){ #app{height:auto; min-height:100vh;} }
 
 .topbar{
-  display:flex; align-items:center; gap:16px; padding:18px 28px; flex-shrink:0;
+  display:flex; align-items:center; gap:10px; padding:16px 24px; flex-shrink:0;
   border-bottom:1px solid var(--line);
 }
-.topbar h1{font-size:19px; display:flex; align-items:center; gap:10px;}
-.topbar h1 .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);display:inline-block;}
-.topbar .sub{font-size:12.5px; color:var(--ink-faint); font-weight:500;}
-.spacer{flex:1;}
-.searchWrap{position:relative;}
+@media (max-width:860px){ .topbar{flex-wrap:wrap; padding:14px 16px;} }
+.searchWrap{position:relative; flex:1;}
 .searchWrap input{
-  width:230px; padding:9px 14px 9px 34px; border-radius:11px; border:1.5px solid var(--line);
+  width:100%; padding:10px 34px 10px 36px; border-radius:11px; border:1.5px solid var(--line);
   font-size:13.5px; outline:none; background:var(--bg-soft); transition:.15s;
 }
-.searchWrap input:focus{border-color:var(--accent); background:#fff; width:270px;}
-.searchWrap svg{position:absolute; left:11px; top:50%; transform:translateY(-50%); opacity:.4;}
+.searchWrap input:focus{border-color:var(--accent); background:#fff;}
+.searchWrap .searchIcon{position:absolute; left:12px; top:50%; transform:translateY(-50%); opacity:.4; pointer-events:none;}
+.searchWrap .clearBtn{
+  position:absolute; right:8px; top:50%; transform:translateY(-50%); width:22px; height:22px; border-radius:50%;
+  border:none; background:var(--line-soft); color:var(--ink-soft); display:none; align-items:center; justify-content:center; cursor:pointer;
+}
+.searchWrap .clearBtn:hover{background:var(--accent-soft); color:var(--accent-ink);}
+.searchWrap.hasText .clearBtn{display:flex;}
+
 .btn{
   display:inline-flex; align-items:center; gap:7px; padding:9px 16px; border-radius:11px;
   border:1.5px solid var(--line); background:#fff; color:var(--ink); font-size:13.5px; font-weight:600;
-  cursor:pointer; transition:.15s; white-space:nowrap;
+  cursor:pointer; transition:.15s; white-space:nowrap; flex-shrink:0;
 }
 .btn:hover{border-color:var(--ink); transform:translateY(-1px);}
 .btn.primary{background:var(--ink); color:#fff; border-color:var(--ink);}
@@ -12234,17 +12238,21 @@ button{font-family:inherit;}
 .btn.ghost:hover{background:var(--line-soft); border-color:transparent; transform:none;}
 .btn.small{padding:6px 11px; font-size:12px; border-radius:9px;}
 .btn.toggled{background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink);}
+.btn.iconOnly{width:38px; height:38px; padding:0; justify-content:center;}
 
-.statsRow{display:flex; gap:22px; padding:0 28px 16px; flex-shrink:0;}
-.statChip{
-  background:var(--panel); border:1px solid var(--line-soft); border-radius:13px;
-  padding:10px 16px; box-shadow:var(--shadow-sm); display:flex; flex-direction:column; gap:2px; min-width:110px;
+.popoverWrap{position:relative; flex-shrink:0;}
+.popover{
+  position:absolute; top:calc(100% + 8px); right:0; background:#fff; border-radius:16px; box-shadow:var(--shadow-lg);
+  border:1px solid var(--line-soft); padding:16px; width:220px; z-index:60; display:none;
 }
-.statChip .n{font-family:'Unbounded',sans-serif; font-size:17px; font-weight:700;}
-.statChip .l{font-size:11px; color:var(--ink-faint); font-weight:600; text-transform:uppercase; letter-spacing:.04em;}
+.popover.show{display:block;}
+.statLine{display:flex; align-items:baseline; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--line-soft);}
+.statLine:last-child{border-bottom:none;}
+.statLine .n{font-family:'Unbounded',sans-serif; font-size:15px; font-weight:700;}
+.statLine .l{font-size:11.5px; color:var(--ink-faint); font-weight:600;}
 
 /* ───── Table ───── */
-.tableWrap{flex:1; overflow:auto; padding:0 28px 22px; min-height:0;}
+.tableWrap{flex:1; overflow:auto; padding:0 24px 22px; min-height:0;}
 table{width:100%; border-collapse:separate; border-spacing:0 8px;}
 thead th{
   position:sticky; top:0; background:var(--bg); z-index:5;
@@ -12268,20 +12276,11 @@ tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radi
 .iconBtn.copied{background:var(--green-soft); border-color:var(--green); color:var(--green);}
 .iconGroup{display:flex; gap:6px;}
 
-.nameCell{display:flex; align-items:center; gap:10px; font-weight:700;}
-.avatar{
-  width:32px; height:32px; border-radius:10px; background:linear-gradient(135deg,#ffe3d6,#ffd0bb);
-  color:var(--accent-ink); display:flex; align-items:center; justify-content:center; font-weight:800;
-  font-size:12.5px; flex-shrink:0;
-}
+.nameCell{font-weight:700;}
 .faint{color:var(--ink-faint); font-weight:500;}
 .mono{font-variant-numeric:tabular-nums;}
 
-.ratingBadge{
-  display:inline-flex; align-items:center; gap:7px; font-weight:700; font-size:13px;
-}
-.ratingBar{width:52px; height:6px; border-radius:4px; background:var(--line-soft); overflow:hidden;}
-.ratingBar i{display:block; height:100%; border-radius:4px;}
+.ratingNum{font-weight:700; font-size:13px;}
 
 .reqCell{max-width:230px;}
 .reqText{white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;}
@@ -12309,41 +12308,41 @@ tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radi
 @media (max-width:860px){ #panel{width:100%; max-width:none;} }
 
 .panelHead{
-  display:flex; align-items:center; gap:16px; padding:22px 30px; border-bottom:1px solid var(--line); flex-shrink:0; background:var(--panel);
+  display:flex; align-items:center; gap:16px; padding:20px 24px; border-bottom:1px solid var(--line); flex-shrink:0; background:var(--panel);
 }
-.panelHead .avatar{width:44px; height:44px; border-radius:13px; font-size:16px;}
 .panelHead h2{font-size:19px;}
 .panelHead .meta{font-size:12.5px; color:var(--ink-faint); margin-top:2px;}
 .panelBody{flex:1; display:flex; overflow:hidden;}
 @media (max-width:860px){ .panelBody{flex-direction:column; overflow:auto;} }
-.panelLeft{flex:1.3; overflow-y:auto; padding:26px 30px 60px;}
-.panelRight{flex:1; overflow-y:auto; padding:26px 30px 60px; border-left:1px solid var(--line); background:var(--panel);}
-@media (max-width:860px){ .panelRight{border-left:none; border-top:1px solid var(--line);} }
+.panelLeft{flex:1.3; overflow-y:auto; padding:22px 24px 60px;}
+@media (max-width:860px){ .panelLeft{padding:18px 16px 30px;} }
+.panelRight{flex:1; overflow-y:auto; padding:22px 24px 60px; border-left:1px solid var(--line); background:var(--panel);}
+@media (max-width:860px){ .panelRight{border-left:none; border-top:1px solid var(--line); padding:0;} }
 
-.section{background:var(--panel); border:1px solid var(--line-soft); border-radius:var(--radius); padding:20px 22px; margin-bottom:16px; box-shadow:var(--shadow-sm);}
-.section h3{font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint); margin-bottom:14px; display:flex; align-items:center; justify-content:space-between;}
+.section{background:var(--panel); border:1px solid var(--line-soft); border-radius:var(--radius); padding:18px 20px; margin-bottom:14px; box-shadow:var(--shadow-sm);}
+.section h3{font-size:12.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint); margin-bottom:12px; display:flex; align-items:center; justify-content:space-between;}
 .fieldGrid{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
 .field label{font-size:11.5px; font-weight:700; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.04em; display:block; margin-bottom:6px;}
-.field input, .field textarea{
+.field input, .field textarea, .field select{
   width:100%; padding:10px 13px; border-radius:10px; border:1.5px solid var(--line); font-size:14px;
   outline:none; background:var(--bg-soft); font-family:inherit; transition:.15s;
 }
-.field input:focus, .field textarea:focus{border-color:var(--accent); background:#fff;}
+.field input:focus, .field textarea:focus, .field select:focus{border-color:var(--accent); background:#fff;}
 .field{margin-bottom:0;}
 .field.full{grid-column:1/-1;}
 
 .totalPaid{
-  display:flex; align-items:baseline; justify-content:space-between; padding:16px 20px; border-radius:14px;
-  background:linear-gradient(135deg,#1a1815,#2b2621); color:#fff; margin-bottom:16px;
+  display:flex; align-items:baseline; justify-content:space-between; padding:15px 18px; border-radius:14px;
+  background:linear-gradient(135deg,#1a1815,#2b2621); color:#fff; margin-bottom:14px;
 }
-.totalPaid .num{font-family:'Unbounded',sans-serif; font-size:24px; font-weight:700;}
-.totalPaid .lbl{font-size:12px; color:#c9c2ba; text-transform:uppercase; letter-spacing:.05em;}
+.totalPaid .num{font-family:'Unbounded',sans-serif; font-size:22px; font-weight:700;}
+.totalPaid .lbl{font-size:11.5px; color:#c9c2ba; text-transform:uppercase; letter-spacing:.05em;}
 
 /* custom date picker */
-.datePick{position:relative;}
+.datePick{position:relative; flex:none;}
 .dateDisplay{
-  padding:10px 13px; border-radius:10px; border:1.5px solid var(--line); background:var(--bg-soft); font-size:14px;
-  cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:8px; transition:.15s; user-select:none;
+  padding:10px 12px; border-radius:10px; border:1.5px solid var(--line); background:var(--bg-soft); font-size:13.5px;
+  cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:8px; transition:.15s; user-select:none; white-space:nowrap;
 }
 .dateDisplay:hover{border-color:var(--accent);}
 .dateDisplay svg{opacity:.5; flex-shrink:0;}
@@ -12351,6 +12350,7 @@ tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radi
   position:absolute; top:calc(100% + 8px); left:0; background:#fff; border-radius:16px; box-shadow:var(--shadow-lg);
   border:1px solid var(--line-soft); padding:16px; width:270px; z-index:60; display:none;
 }
+.calPop.flip{left:auto; right:0;}
 .calPop.show{display:block;}
 .calHead{display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;}
 .calHead .lbl{font-weight:700; font-size:14px;}
@@ -12368,33 +12368,28 @@ tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radi
 .calDay.selected{background:var(--accent); color:#fff;}
 .calToday{margin-top:10px; text-align:center; font-size:12px; color:var(--accent-ink); font-weight:700; cursor:pointer;}
 
-/* custom rating slider */
-.ratingRow{display:flex; align-items:center; gap:14px;}
-.slider{position:relative; flex:1; height:34px; display:flex; align-items:center;}
-.sliderTrack{position:relative; width:100%; height:8px; border-radius:6px; background:var(--line-soft); overflow:visible;}
-.sliderFill{position:absolute; left:0; top:0; height:100%; border-radius:6px; background:linear-gradient(90deg,#ffb199,var(--accent)); transition:width .1s;}
-.sliderThumb{
-  position:absolute; top:50%; width:26px; height:26px; border-radius:50%; background:#fff; border:3px solid var(--accent);
-  transform:translate(-50%,-50%); cursor:grab; box-shadow:0 4px 12px rgba(255,90,54,.4); transition:left .1s;
-}
-.sliderThumb:active{cursor:grabbing; transform:translate(-50%,-50%) scale(1.12);}
-.sliderTicks{display:flex; justify-content:space-between; margin-top:6px;}
-.sliderTicks span{font-size:9.5px; color:var(--ink-faint); width:10px; text-align:center;}
-.sliderVal{
-  width:44px; height:44px; border-radius:13px; background:var(--ink); color:#fff; font-family:'Unbounded',sans-serif;
-  font-weight:700; font-size:17px; display:flex; align-items:center; justify-content:center; flex-shrink:0;
+/* custom select (rating) */
+.selectWrap{position:relative; flex:none; width:90px;}
+.selectWrap select{
+  appearance:none; -webkit-appearance:none; padding:10px 30px 10px 14px; font-weight:700; cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b6560' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 12px center;
 }
 
-.addRow{display:flex; gap:10px; align-items:flex-end; margin-top:14px;}
-.addRow .field{flex:1;}
-.addRow .datePick{width:140px; flex:none;}
+.inlineRow{display:flex; gap:10px; align-items:center;}
+.inlineRow input[type=text], .inlineRow input.textInput{
+  flex:1; padding:10px 13px; border-radius:10px; border:1.5px solid var(--line); font-size:14px;
+  outline:none; background:var(--bg-soft); font-family:inherit; transition:.15s;
+}
+.inlineRow input[type=text]:focus, .inlineRow input.textInput:focus{border-color:var(--accent); background:#fff;}
+.inlineRow + .inlineRow{margin-top:10px;}
 
 /* history */
 .histEmpty{text-align:center; color:var(--ink-faint); padding:30px 10px; font-size:13px;}
 .histItem{display:flex; gap:12px; padding:12px 0; border-bottom:1px solid var(--line-soft);}
 .histItem:last-child{border-bottom:none;}
 .histIcon{
-  width:32px; height:32px; border-radius:9px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:14px;
+  width:32px; height:32px; border-radius:9px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
 }
 .histIcon.rating{background:var(--accent-soft); color:var(--accent-ink);}
 .histIcon.request{background:#e7edfd; color:#3457c9;}
@@ -12402,7 +12397,7 @@ tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radi
 .histIcon.payment{background:var(--green-soft); color:var(--green);}
 .histBody{flex:1; min-width:0;}
 .histTop{display:flex; align-items:center; justify-content:space-between; gap:8px;}
-.histTitle{font-weight:700; font-size:13px;}
+.histTitle{font-weight:700; font-size:13.5px;}
 .histDate{font-size:11px; color:var(--ink-faint); white-space:nowrap;}
 .histText{font-size:13px; color:var(--ink-soft); margin-top:3px; word-break:break-word; white-space:pre-wrap;}
 .histDel{opacity:0; transition:.15s; cursor:pointer; color:var(--ink-faint); background:none; border:none; font-size:12px;}
@@ -12424,6 +12419,18 @@ tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radi
 .delRow{display:flex; justify-content:flex-end; margin-top:6px;}
 .delPersonBtn{background:none; border:none; color:var(--ink-faint); font-size:12px; cursor:pointer;}
 .delPersonBtn:hover{color:var(--red);}
+
+.histToggle{display:none;}
+@media (max-width:860px){
+  .histToggle{
+    display:flex; width:100%; align-items:center; justify-content:space-between; padding:16px; background:var(--panel);
+    border:none; border-bottom:1px solid var(--line); font-family:'Unbounded',sans-serif; font-size:13px; font-weight:700; cursor:pointer;
+  }
+  .histToggle svg{transition:.2s;}
+  .histToggle.open svg{transform:rotate(180deg);}
+  #historyWrap{display:none; padding:18px 16px 30px;}
+  #historyWrap.open{display:block;}
+}
 </style>
 </head>
 <body>
@@ -12441,25 +12448,34 @@ tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radi
 
 <div id="app">
   <div class="topbar">
-    <h1><span class="dot"></span>Комьюнити</h1>
-    <span class="sub" id="countSub"></span>
-    <div class="spacer"></div>
-    <div class="searchWrap">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-      <input id="searchInput" placeholder="Поиск по имени, telegram, email..." oninput="renderTable()">
+    <div class="searchWrap" id="searchWrap">
+      <svg class="searchIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input id="searchInput" placeholder="Поиск по имени, telegram, email..." oninput="onSearchInput()">
+      <button class="clearBtn" onclick="clearSearch()">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
     </div>
-    <button class="btn" id="expandBtn" onclick="toggleExpand()">Развернуть telegram/email</button>
+
+    <div class="popoverWrap">
+      <button class="btn iconOnly" id="statsBtn" title="Статистика" onclick="toggleStats()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 20V10M12 20V4M20 20v-7"/></svg>
+      </button>
+      <div class="popover" id="statsPopover"></div>
+    </div>
+
+    <button class="btn iconOnly" id="expandBtn" title="Развернуть telegram/email" onclick="toggleExpand()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+    </button>
+
     <button class="btn accent" onclick="openNewPerson()">+ Участник</button>
   </div>
-
-  <div class="statsRow" id="statsRow"></div>
 
   <div class="tableWrap">
     <table>
       <thead>
         <tr>
           <th class="actionsCol"></th>
-          <th>Имя</th>
+          <th></th>
           <th class="hidden-col expandCol">TG username</th>
           <th class="hidden-col expandCol">Email</th>
           <th>Дата оплаты</th>
@@ -12476,7 +12492,6 @@ tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radi
 <div id="overlay" onclick="closePanel()"></div>
 <div id="panel">
   <div class="panelHead">
-    <div class="avatar" id="pAvatar">?</div>
     <div>
       <h2 id="pName">—</h2>
       <div class="meta" id="pMeta">—</div>
@@ -12493,8 +12508,7 @@ tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radi
         <div class="fieldGrid">
           <div class="field"><label>Имя</label><input id="fName" oninput="scheduleFieldSave()"></div>
           <div class="field"><label>Ссылка на telegram</label><input id="fTelegram" oninput="scheduleFieldSave()" placeholder="https://t.me/username"></div>
-          <div class="field"><label>Telegram username</label><input id="fTgUsername" oninput="scheduleFieldSave()" placeholder="@username"></div>
-          <div class="field"><label>Email</label><input id="fEmail" oninput="scheduleFieldSave()" placeholder="mail@example.com"></div>
+          <div class="field full"><label>Email</label><input id="fEmail" oninput="scheduleFieldSave()" placeholder="mail@example.com"></div>
         </div>
         <div class="delRow"><button class="delPersonBtn" onclick="deletePerson()">Удалить участника</button></div>
       </div>
@@ -12504,63 +12518,60 @@ tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radi
           <div class="lbl">Всего оплачено</div>
           <div class="num" id="totalPaidNum">0 ₽</div>
         </div>
-        <button class="btn small" style="background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.25); color:#fff;" onclick="toggleAddForm('payment')">+ оплата</button>
       </div>
-      <div class="section" id="formPayment" style="display:none;">
-        <h3>Новая оплата</h3>
-        <div class="addRow">
-          <div class="field"><label>Сумма, ₽</label><input id="payAmount" type="number" placeholder="5000"></div>
+      <div class="section">
+        <h3>Оплата</h3>
+        <div class="inlineRow">
+          <input type="number" id="payAmount" class="textInput" value="5000" style="max-width:130px;" placeholder="Сумма">
           <div class="datePick" id="payDatePick"></div>
-        </div>
-        <div style="margin-top:12px;"><button class="btn accent small" onclick="submitPayment()">Добавить</button></div>
-      </div>
-
-      <div class="section">
-        <h3>Оценка комьюнити <button class="btn small ghost" onclick="toggleAddForm('rating')">+ оценка</button></h3>
-        <div id="currentRatingView"></div>
-        <div id="formRating" style="display:none; margin-top:14px;">
-          <div class="ratingRow">
-            <div class="slider" id="ratingSlider">
-              <div class="sliderTrack"><div class="sliderFill" id="sliderFill"></div><div class="sliderThumb" id="sliderThumb"></div></div>
-            </div>
-            <div class="sliderVal" id="sliderVal">7</div>
-          </div>
-          <div class="sliderTicks"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span></div>
-          <div class="addRow" style="margin-top:14px;">
-            <div class="datePick" id="ratingDatePick"></div>
-            <button class="btn accent small" onclick="submitRating()">Сохранить оценку</button>
-          </div>
+          <button class="btn accent small" onclick="submitPayment()">Добавить</button>
         </div>
       </div>
 
       <div class="section">
-        <h3>Текущий запрос <button class="btn small ghost" onclick="toggleAddForm('request')">+ запрос</button></h3>
-        <div id="currentRequestView" class="faint">Нет активного запроса</div>
-        <div id="formRequest" style="display:none; margin-top:14px;">
-          <div class="field full"><textarea id="reqText" rows="2" placeholder="Новый запрос..."></textarea></div>
-          <div class="addRow">
-            <div class="datePick" id="reqDatePick"></div>
-            <button class="btn accent small" onclick="submitRequest()">Сохранить запрос</button>
-          </div>
+        <h3>Оценка комьюнити</h3>
+        <div id="currentRatingView" style="margin-bottom:12px;"></div>
+        <div class="inlineRow">
+          <div class="selectWrap"><select id="ratingSelect"></select></div>
+          <div class="datePick" id="ratingDatePick"></div>
+          <button class="btn accent small" onclick="submitRating()">Сохранить</button>
         </div>
       </div>
 
       <div class="section">
-        <h3>Примечание <button class="btn small ghost" onclick="toggleAddForm('note')">+ примечание</button></h3>
-        <div id="currentNoteView" class="faint">Нет примечаний</div>
-        <div id="formNote" style="display:none; margin-top:14px;">
-          <div class="field full"><textarea id="noteText" rows="2" placeholder="Новое примечание..."></textarea></div>
-          <div class="addRow">
-            <div class="datePick" id="noteDatePick"></div>
-            <button class="btn accent small" onclick="submitNote()">Сохранить</button>
-          </div>
+        <h3>Текущий запрос</h3>
+        <div id="currentRequestView" class="faint" style="margin-bottom:12px;">Нет активного запроса</div>
+        <div class="inlineRow">
+          <input type="text" id="reqText" class="textInput" placeholder="Новый запрос...">
+        </div>
+        <div class="inlineRow">
+          <div class="datePick" id="reqDatePick"></div>
+          <button class="btn accent small" onclick="submitRequest()">Сохранить</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>Примечание</h3>
+        <div id="currentNoteView" class="faint" style="margin-bottom:12px;">Нет примечаний</div>
+        <div class="inlineRow">
+          <input type="text" id="noteText" class="textInput" placeholder="Новое примечание...">
+        </div>
+        <div class="inlineRow">
+          <div class="datePick" id="noteDatePick"></div>
+          <button class="btn accent small" onclick="submitNote()">Сохранить</button>
         </div>
       </div>
 
     </div>
     <div class="panelRight">
-      <h3 style="font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint); margin-bottom:14px;">История</h3>
-      <div id="historyList"></div>
+      <button class="histToggle" id="histToggleBtn" onclick="toggleHistoryMobile()">
+        <span>История</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div id="historyWrap">
+        <h3 style="font-size:12.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint); margin-bottom:14px;" class="historyTitleDesktop">История</h3>
+        <div id="historyList"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -12612,6 +12623,17 @@ function logout(){
 
 if(ADMIN_TOKEN) boot();
 
+function onSearchInput(){
+  const wrap = document.getElementById('searchWrap');
+  wrap.classList.toggle('hasText', document.getElementById('searchInput').value.length>0);
+  renderTable();
+}
+function clearSearch(){
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchWrap').classList.remove('hasText');
+  renderTable();
+}
+
 function toggleExpand(){
   EXPANDED = !EXPANDED;
   localStorage.setItem('communityExpanded', EXPANDED ? '1':'0');
@@ -12619,11 +12641,15 @@ function toggleExpand(){
   document.querySelectorAll('.expandCol').forEach(c=>c.classList.toggle('hidden-col', !EXPANDED));
 }
 
-function initials(name){
-  if(!name) return '?';
-  const parts = name.trim().split(/\\s+/);
-  return ((parts[0]?.[0]||'') + (parts[1]?.[0]||'')).toUpperCase() || name[0].toUpperCase();
+function toggleStats(){
+  const pop = document.getElementById('statsPopover');
+  const willShow = !pop.classList.contains('show');
+  document.querySelectorAll('.popover').forEach(p=>p.classList.remove('show'));
+  if(willShow){ renderStats(); pop.classList.add('show'); }
 }
+document.addEventListener('click', (e) => {
+  if(!e.target.closest('.popoverWrap')) document.querySelectorAll('.popover').forEach(p=>p.classList.remove('show'));
+});
 
 function fmtMoney(n){ return (n||0).toLocaleString('ru-RU') + ' ₽'; }
 function fmtDate(iso){
@@ -12648,6 +12674,18 @@ function ratingColor(v){
   return 'var(--red)';
 }
 
+function renderStats(){
+  const totalPaid = PEOPLE.reduce((s,p)=>s+sumPayments(p.payments),0);
+  const vals = PEOPLE.map(p=>lastOf(p.ratings)?.value).filter(v=>v!=null);
+  const avgRating = vals.length? (vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1) : '—';
+  const withRequest = PEOPLE.filter(p => p.requests && p.requests.length).length;
+  document.getElementById('statsPopover').innerHTML =
+    '<div class="statLine"><span class="l">Участников</span><span class="n">'+PEOPLE.length+'</span></div>' +
+    '<div class="statLine"><span class="l">Всего оплат</span><span class="n">'+fmtMoney(totalPaid)+'</span></div>' +
+    '<div class="statLine"><span class="l">Средняя оценка</span><span class="n">'+avgRating+'</span></div>' +
+    '<div class="statLine"><span class="l">Активных запросов</span><span class="n">'+withRequest+'</span></div>';
+}
+
 function renderTable(){
   const q = document.getElementById('searchInput').value.trim().toLowerCase();
   const tbody = document.getElementById('tbody');
@@ -12655,15 +12693,6 @@ function renderTable(){
   if(q){
     list = PEOPLE.filter(p => [p.name,p.telegram,p.tgUsername,p.email].join(' ').toLowerCase().includes(q));
   }
-  document.getElementById('countSub').textContent = PEOPLE.length + ' участник' + (PEOPLE.length%10===1 && PEOPLE.length%100!==11 ? '' : PEOPLE.length%10>=2&&PEOPLE.length%10<=4&&(PEOPLE.length%100<10||PEOPLE.length%100>=20)?'а':'ов');
-
-  const totalPaid = PEOPLE.reduce((s,p)=>s+sumPayments(p.payments),0);
-  const avgRating = (()=>{ const vals = PEOPLE.map(p=>lastOf(p.ratings)?.value).filter(v=>v!=null); return vals.length? (vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1) : '—'; })();
-  const withRequest = PEOPLE.filter(p => p.requests && p.requests.length).length;
-  document.getElementById('statsRow').innerHTML =
-    '<div class="statChip"><div class="n">'+fmtMoney(totalPaid)+'</div><div class="l">Всего оплат</div></div>' +
-    '<div class="statChip"><div class="n">'+avgRating+'</div><div class="l">Средняя оценка</div></div>' +
-    '<div class="statChip"><div class="n">'+withRequest+'</div><div class="l">Активных запросов</div></div>';
 
   if(!list.length){
     tbody.innerHTML = '<tr><td colspan="8"><div class="emptyState">Никого не найдено</div></td></tr>';
@@ -12677,24 +12706,30 @@ function renderTable(){
     const payment = lastOf(p.payments);
     const tg = (p.telegram||'').trim();
     const tgHref = tg ? (tg.startsWith('http')? tg : 'https://t.me/'+tg.replace('@','')) : '';
-    return '<tr class="pRow" onclick="openPerson(\\''+p.id+'\\')">' +
+    return '<tr class="pRow" onclick="handleRowClick(event,\\''+p.id+'\\')">' +
       '<td onclick="event.stopPropagation()"><div class="iconGroup">' +
         '<button class="iconBtn" title="Скопировать email" onclick="copyEmail(this,\\''+(p.email||'').replace(/'/g,"\\\\'")+'\\')">'+
-          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>'+
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>'+
         '</button>' +
         (tgHref ? '<a class="iconBtn" title="Открыть telegram" href="'+tgHref+'" target="_blank" rel="noopener">' +
           '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M21.05 3.6L2.9 10.7c-1.24.5-1.23 1.2-.23 1.5l4.65 1.45 1.8 5.5c.22.6.37.85.76.85.3 0 .43-.14.6-.3l1.62-1.57 3.37 2.5c.62.34 1.06.16 1.22-.57l2.2-10.4c.25-.9-.34-1.3-1.34-.86z"/></svg>' +
         '</a>' : '<span class="iconBtn" style="opacity:.3; cursor:default;"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M21.05 3.6L2.9 10.7c-1.24.5-1.23 1.2-.23 1.5l4.65 1.45 1.8 5.5c.22.6.37.85.76.85.3 0 .43-.14.6-.3l1.62-1.57 3.37 2.5c.62.34 1.06.16 1.22-.57l2.2-10.4c.25-.9-.34-1.3-1.34-.86z"/></svg></span>') +
       '</div></td>' +
-      '<td><div class="nameCell"><div class="avatar">'+initials(p.name)+'</div>'+(p.name||'Без имени')+'</div></td>' +
+      '<td><div class="nameCell">'+(p.name||'Без имени')+'</div></td>' +
       '<td class="hidden-col expandCol faint">'+(p.tgUsername||tg||'—')+'</td>' +
       '<td class="hidden-col expandCol faint">'+(p.email||'—')+'</td>' +
       '<td class="mono">'+(payment? fmtDate(payment.date) : '—')+'</td>' +
-      '<td>'+(rating!=null ? '<div class="ratingBadge"><span style="color:'+ratingColor(rating.value)+'">'+rating.value+'/10</span><div class="ratingBar"><i style="width:'+(rating.value*10)+'%; background:'+ratingColor(rating.value)+'"></i></div></div>' : '<span class="faint">—</span>')+'</td>' +
+      '<td>'+(rating!=null ? '<span class="ratingNum" style="color:'+ratingColor(rating.value)+'">'+rating.value+'/10</span>' : '<span class="faint">—</span>')+'</td>' +
       '<td class="reqCell">'+(request ? '<span class="reqText">'+escapeHtml(request.text)+'</span><span class="reqDate">'+fmtDate(request.date)+'</span>' : '<span class="faint">—</span>')+'</td>' +
       '<td class="noteCell">'+(note ? '<span class="noteText">'+escapeHtml(note.text)+'</span>' : '<span class="faint">—</span>')+'</td>' +
     '</tr>';
   }).join('');
+}
+
+function handleRowClick(e, id){
+  const sel = window.getSelection();
+  if(sel && sel.toString().length>0) return;
+  openPerson(id);
 }
 
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -12733,74 +12768,89 @@ function openPerson(id){
 function showPanel(){
   document.getElementById('overlay').classList.add('show');
   document.getElementById('panel').classList.add('show');
-  ['payment','rating','request','note'].forEach(k => document.getElementById('form'+cap(k)).style.display='none');
+  document.getElementById('histToggleBtn').classList.remove('open');
+  document.getElementById('historyWrap').classList.remove('open');
 }
 function closePanel(){
   document.getElementById('overlay').classList.remove('show');
   document.getElementById('panel').classList.remove('show');
   CURRENT = null;
 }
-function cap(s){ return s[0].toUpperCase()+s.slice(1); }
+function toggleHistoryMobile(){
+  document.getElementById('histToggleBtn').classList.toggle('open');
+  document.getElementById('historyWrap').classList.toggle('open');
+}
 
 function fillPanel(){
   const p = CURRENT;
-  document.getElementById('pAvatar').textContent = initials(p.name);
   document.getElementById('pName').textContent = p.name || 'Новый участник';
   document.getElementById('pMeta').textContent = p.id ? ('Добавлен ' + fmtDateFull(new Date(p.createdAt||Date.now()).toISOString().slice(0,10))) : 'Заполни данные и добавь оценку/запрос';
   document.getElementById('fName').value = p.name||'';
   document.getElementById('fTelegram').value = p.telegram||'';
-  document.getElementById('fTgUsername').value = p.tgUsername||'';
   document.getElementById('fEmail').value = p.email||'';
+  document.getElementById('payAmount').value = 5000;
 
   document.getElementById('totalPaidNum').textContent = fmtMoney(sumPayments(p.payments));
 
   const rating = lastOf(p.ratings);
   document.getElementById('currentRatingView').innerHTML = rating
-    ? '<div class="ratingBadge" style="font-size:20px;"><span style="color:'+ratingColor(rating.value)+'">'+rating.value+'/10</span><div class="ratingBar" style="width:110px; height:8px;"><i style="width:'+(rating.value*10)+'%; background:'+ratingColor(rating.value)+'"></i></div><span class="faint" style="font-size:12px; font-weight:500;">от '+fmtDateFull(rating.date)+'</span></div>'
+    ? '<span class="ratingNum" style="font-size:19px; color:'+ratingColor(rating.value)+'">'+rating.value+'/10</span> <span class="faint" style="font-size:12px;">от '+fmtDate(rating.date)+'</span>'
     : '<span class="faint">Оценки пока нет</span>';
 
   const request = lastOf(p.requests);
   document.getElementById('currentRequestView').innerHTML = request
-    ? '<div style="font-weight:600;">'+escapeHtml(request.text)+'</div><div class="faint" style="font-size:12px; margin-top:4px;">от '+fmtDateFull(request.date)+'</div>'
+    ? '<div style="font-weight:600; color:var(--ink);">'+escapeHtml(request.text)+'</div><div class="faint" style="font-size:12px; margin-top:4px;">от '+fmtDate(request.date)+'</div>'
     : 'Нет активного запроса';
-  if(!request) document.getElementById('currentRequestView').className='faint'; else document.getElementById('currentRequestView').className='';
 
   const note = lastOf(p.notes);
   document.getElementById('currentNoteView').innerHTML = note
-    ? '<div style="font-weight:600;">'+escapeHtml(note.text)+'</div><div class="faint" style="font-size:12px; margin-top:4px;">от '+fmtDateFull(note.date)+'</div>'
+    ? '<div style="font-weight:600; color:var(--ink);">'+escapeHtml(note.text)+'</div><div class="faint" style="font-size:12px; margin-top:4px;">от '+fmtDate(note.date)+'</div>'
     : 'Нет примечаний';
-  if(!note) document.getElementById('currentNoteView').className='faint'; else document.getElementById('currentNoteView').className='';
 
+  document.getElementById('reqText').value = '';
+  document.getElementById('noteText').value = '';
+
+  buildRatingSelect(rating ? rating.value : 7);
   renderHistory();
   setupDatePickers();
-  setupSlider();
+}
+
+function buildRatingSelect(selected){
+  const sel = document.getElementById('ratingSelect');
+  sel.innerHTML = '';
+  for(let i=10;i>=0;i--){
+    const opt = document.createElement('option');
+    opt.value = i; opt.textContent = i;
+    if(i===selected) opt.selected = true;
+    sel.appendChild(opt);
+  }
 }
 
 function renderHistory(){
   const p = CURRENT;
   const items = [];
-  (p.ratings||[]).forEach(e=>items.push({type:'rating', icon:'★', title:'Оценка: '+e.value+'/10', text:'', ...e}));
-  (p.requests||[]).forEach(e=>items.push({type:'request', icon:'✎', title:'Запрос', text:e.text, ...e}));
-  (p.notes||[]).forEach(e=>items.push({type:'note', icon:'✎', title:'Примечание', text:e.text, ...e}));
-  (p.payments||[]).forEach(e=>items.push({type:'payment', icon:'₽', title:'Оплата '+fmtMoney(e.amount), text:'', ...e}));
+  (p.ratings||[]).forEach(e=>items.push({type:'rating', text: e.value+'/10', ...e}));
+  (p.requests||[]).forEach(e=>items.push({type:'request', text:e.text, ...e}));
+  (p.notes||[]).forEach(e=>items.push({type:'note', text:e.text, ...e}));
+  (p.payments||[]).forEach(e=>items.push({type:'payment', text: fmtMoney(e.amount), ...e}));
   items.sort((a,b)=> (b.date>a.date?1:b.date<a.date?-1:b.createdAt-a.createdAt));
   const el = document.getElementById('historyList');
   if(!items.length){ el.innerHTML = '<div class="histEmpty">История пока пуста</div>'; return; }
+  const icons = {
+    rating: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>',
+    request: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 11.5a8.38 8.38 0 01-9 8.4A8.5 8.5 0 013 11.5 8.38 8.38 0 0112 3a8.5 8.5 0 019 8.5z"/></svg>',
+    note: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>',
+    payment: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>'
+  };
   el.innerHTML = items.map(it =>
     '<div class="histItem">' +
-      '<div class="histIcon '+it.type+'">'+it.icon+'</div>' +
+      '<div class="histIcon '+it.type+'">'+icons[it.type]+'</div>' +
       '<div class="histBody">' +
-        '<div class="histTop"><span class="histTitle">'+it.title+'</span><span class="histDate">'+fmtDate(it.date)+'</span></div>' +
-        (it.text ? '<div class="histText">'+escapeHtml(it.text)+'</div>' : '') +
+        '<div class="histTop"><span class="histTitle">'+escapeHtml(it.text)+'</span><span class="histDate">'+fmtDate(it.date)+'</span></div>' +
         '<button class="histDel" onclick="deleteEntry(\\''+it.type+'\\',\\''+it.entryId+'\\')">удалить запись</button>' +
       '</div>' +
     '</div>'
   ).join('');
-}
-
-function toggleAddForm(kind){
-  const el = document.getElementById('form'+cap(kind));
-  el.style.display = el.style.display==='none' ? 'block' : 'none';
 }
 
 async function scheduleFieldSave(){
@@ -12823,14 +12873,12 @@ async function ensurePersonCreated(){
 async function saveFields(){
   const name = document.getElementById('fName').value.trim();
   const telegram = document.getElementById('fTelegram').value.trim();
-  const tgUsername = document.getElementById('fTgUsername').value.trim();
   const email = document.getElementById('fEmail').value.trim();
   if(!CURRENT.id && !name && !telegram && !email) return;
   await ensurePersonCreated();
-  Object.assign(CURRENT, {name, telegram, tgUsername, email});
+  Object.assign(CURRENT, {name, telegram, email});
   document.getElementById('pName').textContent = name || 'Без имени';
-  document.getElementById('pAvatar').textContent = initials(name);
-  await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'update-fields', id:CURRENT.id, name, telegram, tgUsername, email})});
+  await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'update-fields', id:CURRENT.id, name, telegram, email})});
   renderTable();
 }
 
@@ -12858,19 +12906,16 @@ async function submitPayment(){
   const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'add-payment', id:CURRENT.id, amount, date})});
   const d = await r.json();
   applyPersonUpdate(d.person);
-  document.getElementById('payAmount').value='';
-  document.getElementById('formPayment').style.display='none';
   showToast('Оплата добавлена');
 }
 
 async function submitRating(){
-  const value = Number(document.getElementById('sliderVal').textContent);
+  const value = Number(document.getElementById('ratingSelect').value);
   await ensurePersonCreated();
   const date = getPickedDate('ratingDatePick');
   const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'add-rating', id:CURRENT.id, value, date})});
   const d = await r.json();
   applyPersonUpdate(d.person);
-  document.getElementById('formRating').style.display='none';
   showToast('Оценка сохранена');
 }
 
@@ -12882,8 +12927,6 @@ async function submitRequest(){
   const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'add-request', id:CURRENT.id, text, date})});
   const d = await r.json();
   applyPersonUpdate(d.person);
-  document.getElementById('reqText').value='';
-  document.getElementById('formRequest').style.display='none';
   showToast('Запрос сохранён');
 }
 
@@ -12895,8 +12938,6 @@ async function submitNote(){
   const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'add-note', id:CURRENT.id, text, date})});
   const d = await r.json();
   applyPersonUpdate(d.person);
-  document.getElementById('noteText').value='';
-  document.getElementById('formNote').style.display='none';
   showToast('Примечание сохранено');
 }
 
@@ -12906,37 +12947,6 @@ function applyPersonUpdate(person){
   if(idx>=0) PEOPLE[idx]=CURRENT; else PEOPLE.push(CURRENT);
   fillPanel();
   renderTable();
-}
-
-/* ───── Custom slider ───── */
-function setupSlider(){
-  const track = document.querySelector('#ratingSlider .sliderTrack');
-  const fill = document.getElementById('sliderFill');
-  const thumb = document.getElementById('sliderThumb');
-  const val = document.getElementById('sliderVal');
-  let current = 7;
-  function set(v){
-    current = Math.max(1, Math.min(10, v));
-    const pct = ((current-1)/9)*100;
-    fill.style.width = pct+'%';
-    thumb.style.left = pct+'%';
-    val.textContent = current;
-    val.style.background = ratingColor(current).replace('var(--','').replace(')','') ? '' : '';
-  }
-  set(7);
-  function posToVal(clientX){
-    const rect = track.getBoundingClientRect();
-    let pct = (clientX - rect.left) / rect.width;
-    pct = Math.max(0, Math.min(1, pct));
-    return Math.round(pct*9)+1;
-  }
-  function drag(e){
-    const x = e.touches ? e.touches[0].clientX : e.clientX;
-    set(posToVal(x));
-  }
-  thumb.addEventListener('mousedown', e => { e.preventDefault(); const move = ev=>drag(ev); const up=()=>{document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);}; document.addEventListener('mousemove',move); document.addEventListener('mouseup',up); });
-  thumb.addEventListener('touchstart', e => { const move = ev=>drag(ev); const up=()=>{document.removeEventListener('touchmove',move);document.removeEventListener('touchend',up);}; document.addEventListener('touchmove',move); document.addEventListener('touchend',up); }, {passive:true});
-  track.addEventListener('click', e => set(posToVal(e.clientX)));
 }
 
 /* ───── Custom date picker ───── */
@@ -12955,9 +12965,10 @@ function buildDatePicker(containerId){
   const container = document.getElementById(containerId);
   const today = new Date();
   const state = pickerState[containerId] = { selected: todayISO(), viewY: today.getFullYear(), viewM: today.getMonth() };
+  const shortMode = (containerId === 'reqDatePick' || containerId === 'noteDatePick');
   container.innerHTML =
     '<div class="dateDisplay" id="'+containerId+'_disp">' +
-      '<span id="'+containerId+'_txt">'+fmtDateFull(state.selected)+'</span>' +
+      '<span id="'+containerId+'_txt">'+(shortMode ? fmtDate(state.selected) : fmtDateFull(state.selected))+'</span>' +
       '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>' +
     '</div>' +
     '<div class="calPop" id="'+containerId+'_pop"></div>';
@@ -12966,8 +12977,14 @@ function buildDatePicker(containerId){
 }
 
 function toggleCal(containerId){
-  document.querySelectorAll('.calPop').forEach(el => { if(el.id !== containerId+'_pop') el.classList.remove('show'); });
-  document.getElementById(containerId+'_pop').classList.toggle('show');
+  const pop = document.getElementById(containerId+'_pop');
+  const willShow = !pop.classList.contains('show');
+  document.querySelectorAll('.calPop').forEach(el => el.classList.remove('show'));
+  if(!willShow) return;
+  pop.classList.remove('flip');
+  pop.classList.add('show');
+  const rect = pop.getBoundingClientRect();
+  if(rect.right > window.innerWidth - 8) pop.classList.add('flip');
 }
 
 document.addEventListener('click', () => document.querySelectorAll('.calPop').forEach(el => el.classList.remove('show')));
@@ -13016,7 +13033,8 @@ function navCal(containerId, dir){
 function pickDate(containerId, iso){
   const state = pickerState[containerId];
   state.selected = iso;
-  document.getElementById(containerId+'_txt').textContent = fmtDateFull(iso);
+  const shortMode = (containerId === 'reqDatePick' || containerId === 'noteDatePick');
+  document.getElementById(containerId+'_txt').textContent = shortMode ? fmtDate(iso) : fmtDateFull(iso);
   document.getElementById(containerId+'_pop').classList.remove('show');
 }
 </script>
