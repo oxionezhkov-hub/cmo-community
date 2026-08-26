@@ -7695,100 +7695,27 @@ let allTagsPool = null;
 let activeModuleTagFilters = new Set();
 let moduleOrderCache = null;
 
+function renderYadroRedirect(container) {
+  container.innerHTML = \`
+    <div class="empty-state" style="padding-top:32px">
+      <div class="empty-state-icon">🚀</div>
+      <div style="font-size:18px;font-weight:700;margin-bottom:10px">База знаний переехала</div>
+      <div style="font-size:14px;color:var(--text2);line-height:1.5;max-width:340px;margin:0 auto 20px">
+        Мы перенесли базу знаний и записи на удобный сайт с ИИ-поиском.
+      </div>
+      <a href="https://cmo.pro/yadro" target="_blank" rel="noopener"
+        style="display:inline-block;padding:12px 24px;border-radius:12px;background:var(--accent, #6c5ce7);color:#fff;font-weight:600;text-decoration:none;margin-bottom:16px">
+        Открыть cmo.pro/yadro
+      </a>
+      <div style="font-size:13px;color:var(--text3);line-height:1.5;max-width:340px;margin:0 auto">
+        Если нет логина и пароля — напишите
+        <a href="https://t.me/oleg_ezhkov" target="_blank" rel="noopener">Олегу</a>.
+      </div>
+    </div>\`;
+}
+
 async function renderKnowledge(container) {
-  const aiMods = (programData.ai?.modules || []).map(m => Object.assign({}, m, { _programId: 'ai' }));
-  const funnelMods = (programData.funnels?.modules || []).map(m => Object.assign({}, m, { _programId: 'funnels' }));
-  const modsByKey = new Map();
-  aiMods.concat(funnelMods).forEach(m => modsByKey.set(m._programId + ':' + m.id, m));
-
-  if (!modsByKey.size) {
-    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📂</div><div class="empty-state-text">Загрузка материалов...</div></div>';
-    return;
-  }
-
-  if (moduleOrderCache === null) {
-    try {
-      const res = await fetch('/api/module-order').then(r => r.json());
-      moduleOrderCache = res.order || [];
-    } catch(e) {
-      moduleOrderCache = [];
-    }
-  }
-
-  // Порядок задаётся хронологией из админки; модули, которых там ещё нет, показываем сверху
-  const allMods = [];
-  const seenKeys = new Set();
-  moduleOrderCache.forEach(key => {
-    const mod = modsByKey.get(key);
-    if (mod) { allMods.push(mod); seenKeys.add(key); }
-  });
-  const unordered = [];
-  modsByKey.forEach((mod, key) => { if (!seenKeys.has(key)) unordered.push(mod); });
-  allMods.unshift(...unordered);
-
-  if (allTagsPool === null) {
-    try {
-      const res = await fetch('/api/tags').then(r => r.json());
-      allTagsPool = res.tags || [];
-    } catch(e) {
-      allTagsPool = [];
-    }
-  }
-
-  let html = '';
-
-  if (allTagsPool.length) {
-    html += '<div class="tag-filter-row">';
-    html += \`<span class="tag-chip\${activeModuleTagFilters.size === 0 ? ' active' : ''}" data-tag-all="1">Все</span>\`;
-    allTagsPool.forEach(t => {
-      html += \`<span class="tag-chip\${activeModuleTagFilters.has(t) ? ' active' : ''}" data-tag="\${escapeHtml(t)}">\${escapeHtml(t)}</span>\`;
-    });
-    html += '</div>';
-  }
-
-  const filtered = activeModuleTagFilters.size
-    ? allMods.filter(m => (m.tags || []).some(t => activeModuleTagFilters.has(t)))
-    : allMods;
-
-  html += '<div class="module-list">';
-
-  if (!filtered.length) {
-    html += '<div class="empty-state"><div class="empty-state-icon">🔍</div><div class="empty-state-text">Нет модулей с выбранными тегами</div></div>';
-  }
-
-  filtered.forEach(mod => {
-    const completed = progressData[mod._programId]?.completed || [];
-    const isDone = completed.includes(mod.id);
-    const isLocked = !mod.available;
-    let cls = 'module-card';
-    if (isLocked) cls += ' locked';
-    else if (isDone) cls += ' done available';
-    else cls += ' available';
-
-    const tag = isLocked ? '<span class="module-tag locked-tag">🔒 Скоро</span>' : '';
-
-    const desc = mod.description ? \`<div class="module-desc">\${mod.description}</div>\` : '';
-    const modTagsHtml = (mod.tags && mod.tags.length)
-      ? \`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:6px">\${mod.tags.map(t => \`<span class="module-tag" style="text-transform:none">\${escapeHtml(t)}</span>\`).join('')}</div>\`
-      : '';
-    const statusClick = isLocked ? '' : "event.stopPropagation();toggleModuleDoneFromList('" + mod._programId + "','" + mod.id + "')";
-
-    html += \`
-      <div class="\${cls}" onclick="\${isLocked ? '' : "openModule('" + mod.id + "','" + mod._programId + "')"}">
-        <div class="module-top">
-          <div>
-            <div class="module-title">\${mod.title}</div>
-            \${desc}
-            \${modTagsHtml}
-            \${tag}
-          </div>
-          <div class="module-status \${isDone ? 'done' : ''}" onclick="\${statusClick}">\${isDone ? '✓' : ''}</div>
-        </div>
-      </div>\`;
-  });
-  html += '</div>';
-
-  container.innerHTML = html;
+  renderYadroRedirect(container);
 }
 
 async function toggleModuleDoneFromList(programId, moduleId) {
@@ -7831,143 +7758,8 @@ function formatModuleDate(dateStr) {
 }
 
 // ── KNOWLEDGE BASE RENDER ────────────────────────────────────
-let kbData = null;
-
 async function renderKBPage(container) {
-  container.innerHTML = '<div class="empty-state"><div class="spinner"></div></div>';
-  try {
-    const res = await fetch('/api/kb').then(r => r.json());
-    kbData = res.categories || [];
-  } catch(e) {
-    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">Ошибка загрузки</div></div>';
-    return;
-  }
-  renderKBCategories(container);
-}
-
-function renderKBCategories(container) {
-  if (!kbData || kbData.length === 0) {
-    container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📚</div><div class="empty-state-text">База знаний пуста</div></div>';
-    return;
-  }
-  let html = '<div style="padding:16px 0 8px"><div style="font-size:20px;font-weight:700;margin-bottom:4px">База знаний</div><div style="font-size:13px;color:var(--text2)">Записи встреч, материалы и выводы</div></div>';
-  html += '<div class="module-list">';
-  for (const cat of kbData) {
-    const total = cat.entries.length;
-    const withVideo = cat.entries.filter(e => e.videoUrl).length;
-    html += \`
-      <div class="module-card available" onclick="renderKBCategory('\${escKBAttr(cat.id)}')" data-id="\${escKB(cat.id)}">
-        <div class="module-top">
-          <div>
-            <div style="font-size:22px;margin-bottom:6px">\${escKB(cat.icon)}</div>
-            <div class="module-title">\${escKB(cat.title)}</div>
-            <div class="module-desc">\${total} \${plural(total,'запись','записи','записей')}\${withVideo ? ' · ' + withVideo + ' с видео' : ''}</div>
-          </div>
-          <div class="module-status">›</div>
-        </div>
-      </div>\`;
-  }
-  html += '</div>';
-  container.innerHTML = html;
-}
-
-function renderKBCategory(catId) {
-  const container = document.getElementById('mainContent');
-  const cat = kbData.find(c => c.id === catId);
-  if (!cat) return;
-
-  const backBtn = \`<button class="stab" onclick="renderKBCategories(document.getElementById('mainContent'))" style="margin-bottom:16px;display:flex;align-items:center;gap:6px">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
-    Назад
-  </button>\`;
-
-  let html = backBtn;
-  html += \`<div style="margin-bottom:16px"><div style="font-size:20px;font-weight:700">\${escKB(cat.icon)} \${escKB(cat.title)}</div></div>\`;
-  html += '<div class="module-list">';
-
-  if (cat.entries.length === 0) {
-    html += '<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">Материалы скоро появятся</div></div>';
-  }
-
-  for (const entry of cat.entries) {
-    const hasContent = entry.videoUrl || entry.materials.length > 0 || entry.summary;
-    html += \`
-      <div class="module-card \${hasContent ? 'available' : ''}" onclick="\${hasContent ? "renderKBEntry('" + escKBAttr(catId) + "','" + escKBAttr(entry.id) + "')" : ''}">
-        <div class="module-top">
-          <div style="flex:1">
-            <div class="module-num">\${escKB(entry.date)}</div>
-            <div class="module-title" style="font-size:14px">\${escKB(entry.title)}</div>
-            \${entry.subtitle ? \`<div class="module-desc">\${escKB(entry.subtitle)}</div>\` : ''}
-            <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
-              \${entry.videoUrl ? '<span class="module-tag">▶ Запись</span>' : ''}
-              \${entry.materials.length > 0 ? \`<span class="module-tag">📎 \${entry.materials.length} \${plural(entry.materials.length,'материал','материала','материалов')}</span>\` : ''}
-              \${!hasContent ? '<span class="module-tag locked-tag">⏳ Скоро</span>' : ''}
-            </div>
-          </div>
-          \${hasContent ? '<div class="module-status">›</div>' : ''}
-        </div>
-      </div>\`;
-  }
-  html += '</div>';
-  container.innerHTML = html;
-}
-
-function renderKBEntry(catId, entryId) {
-  const container = document.getElementById('mainContent');
-  const cat = kbData.find(c => c.id === catId);
-  if (!cat) return;
-  const entry = cat.entries.find(e => e.id === entryId);
-  if (!entry) return;
-
-  const backBtn = \`<button class="stab" onclick="renderKBCategory('\${escKBAttr(catId)}')" style="margin-bottom:16px;display:flex;align-items:center;gap:6px">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
-    \${escKB(cat.title)}
-  </button>\`;
-
-  let html = backBtn;
-  html += \`<div style="margin-bottom:4px;font-size:12px;color:var(--text3)">\${escKB(entry.date)}</div>\`;
-  html += \`<div style="font-size:19px;font-weight:700;line-height:1.3;margin-bottom:4px">\${escKB(entry.title)}</div>\`;
-  if (entry.subtitle) html += \`<div style="font-size:13px;color:var(--text2);margin-bottom:16px">\${escKB(entry.subtitle)}</div>\`;
-
-  if (entry.videoUrl) {
-    const ytMatch = entry.videoUrl.match(/(?:youtube\\.com\\/watch\\?v=|youtu\\.be\\/)([^&\\s?]+)/);
-    if (ytMatch) {
-      html += \`<div class="embed-wrap" style="margin-bottom:16px"><iframe src="https://www.youtube.com/embed/\${ytMatch[1]}" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe></div>\`;
-    } else {
-      html += \`<a href="\${escKBAttr(entry.videoUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation();tgOpenLink('\${escKBAttr(entry.videoUrl)}')" style="text-decoration:none">
-        <div class="module-card available" style="background:linear-gradient(135deg,#1a0a0a,#2a0a0a);border-color:rgba(255,60,60,0.3);margin-bottom:12px">
-          <div style="display:flex;align-items:center;gap:14px">
-            <div style="width:48px;height:48px;background:rgba(255,0,0,0.8);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M5 3l14 9-14 9V3z"/></svg>
-            </div>
-            <div><div style="font-size:14px;font-weight:600;color:#fff">Смотреть запись</div></div>
-          </div>
-        </div>
-      </a>\`;
-    }
-  }
-
-  if (entry.materials.length > 0) {
-    html += '<div class="files-section"><div class="files-title">Материалы</div>';
-    for (const m of entry.materials) {
-      html += \`<a href="\${escKBAttr(m.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation();tgOpenLink('\${escKBAttr(m.url)}')" style="text-decoration:none">
-        <div class="file-item">
-          <span class="file-icon">📎</span>
-          <span class="file-name">\${escKB(m.title)}</span>
-          <span class="file-arrow">›</span>
-        </div>
-      </a>\`;
-    }
-    html += '</div>';
-  }
-
-  if (entry.summary) {
-    html += '<div class="section-header" style="margin-top:20px"><div class="section-title">Выводы и тезисы</div></div>';
-    html += '<div style="font-size:13px;line-height:1.7;color:var(--text2);white-space:pre-wrap;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:8px">' + escKB(entry.summary) + '</div>';
-  }
-
-  html += '<div style="height:24px"></div>';
-  container.innerHTML = html;
+  renderYadroRedirect(container);
 }
 
 function tgOpenLink(url) {
