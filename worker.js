@@ -5044,7 +5044,7 @@ const FEEDBACK_FIELDS = ['role','roleOther','team','ai','marketing','automation'
 function feedbackAnsweredCount(a) {
   if (!a) return 0;
   let n = 0;
-  ['role','roleOther','team','problemSolved','urgentProblem','request','missingTools','missingInCore'].forEach(f => {
+  ['role','roleOther','team','problemSolved','urgentProblem','request','missingTools','missingInCore','npsReason'].forEach(f => {
     if (a[f] !== undefined && a[f] !== null && String(a[f]).trim() !== '') n++;
   });
   ['ai','marketing','automation','nps'].forEach(f => {
@@ -5175,8 +5175,9 @@ input[type=text]:focus, textarea:focus{border-color:var(--accent); background:#f
 textarea{min-height:84px; line-height:1.5;}
 
 .sliderWrap{margin-bottom:6px;}
-.sliderTop{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;}
-.sliderVal{font-family:'Unbounded',sans-serif; font-weight:700; font-size:15px; color:var(--accent-ink); background:var(--accent-soft); border-radius:8px; padding:2px 10px; min-width:28px; text-align:center;}
+.sliderTrack{position:relative; padding-top:32px;}
+.sliderBubble{position:absolute; top:0; left:calc((100% - 22px)*var(--pct,0.5) + 11px); transform:translateX(-50%); font-family:'Unbounded',sans-serif; font-weight:700; font-size:13px; color:#fff; background:var(--accent); border-radius:8px; padding:3px 10px; white-space:nowrap; pointer-events:none; transition:left .05s linear;}
+.sliderBubble::after{content:''; position:absolute; left:50%; bottom:-4px; transform:translateX(-50%); width:0; height:0; border:5px solid transparent; border-top-color:var(--accent);}
 input[type=range]{
   -webkit-appearance:none; width:100%; height:6px; border-radius:4px; background:var(--line); outline:none; cursor:pointer;
 }
@@ -5200,9 +5201,17 @@ input[type=range]::-moz-range-thumb{width:22px; height:22px; border-radius:50%; 
 .btn.accent:hover{background:var(--accent-ink); border-color:var(--accent-ink);}
 
 .thankYou{text-align:center; padding:40px 20px;}
-.catBox{font-size:80px; margin-bottom:14px; line-height:1;}
+.catGame{position:relative; display:inline-block; margin-bottom:6px;}
+.catBox{font-size:80px; margin-bottom:14px; line-height:1; cursor:pointer; user-select:none; transition:transform .12s; display:inline-block;}
+.catBox:active{transform:scale(.9);}
+.catBox.bounce{animation:catBounce .35s;}
+@keyframes catBounce{0%{transform:scale(1) rotate(0);}30%{transform:scale(1.15) rotate(-6deg);}60%{transform:scale(.95) rotate(4deg);}100%{transform:scale(1) rotate(0);}}
+.catHearts{position:absolute; inset:0; pointer-events:none; overflow:visible;}
+.heartFloat{position:absolute; font-size:18px; opacity:1; animation:heartUp 1s ease-out forwards;}
+@keyframes heartUp{0%{transform:translate(0,0) scale(.6); opacity:1;}100%{transform:translate(var(--dx,0px),-70px) scale(1.1); opacity:0;}}
 .thankYou h2{font-size:22px; margin-bottom:10px;}
 .thankYou p{color:var(--ink-soft); font-size:14px; line-height:1.6; max-width:420px; margin:0 auto;}
+.petHint{font-size:12.5px; color:var(--ink-faint); font-weight:600; margin-top:14px;}
 
 .resultsView .field{margin-bottom:18px;}
 .resultsView .ansBox{background:var(--bg-soft); border:1px solid var(--line-soft); border-radius:12px; padding:12px 14px; font-size:13.5px; color:var(--ink); white-space:pre-wrap;}
@@ -5234,6 +5243,7 @@ let STEP = 1;
 let SAVE_TIMER = null;
 let SAVING = false;
 
+function brandIcon(){ return '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/><path d="M9 10.5c.5-1 1.6-1 2 0M13 10.5c.5-1 1.6-1 2 0"/></svg>'; }
 function lsKey(){ return 'cmo_feedback_' + UID; }
 function loadLocal(){
   try{ return JSON.parse(localStorage.getItem(lsKey()) || '{}'); }catch(e){ return {}; }
@@ -5281,7 +5291,7 @@ async function doSave(){
 
 async function boot(){
   if(!UID){
-    document.getElementById('wrap').innerHTML = '<div class="errScreen">Ссылка неполная — не указан участник. Попросите новую ссылку у команды CMO Ядро.</div>';
+    document.getElementById('wrap').innerHTML = '<div class="errScreen">Ссылка неполная — не указан участник. Попроси новую ссылку у команды CMO Ядро.</div>';
     return;
   }
   const local = loadLocal();
@@ -5317,7 +5327,7 @@ function shell(inner, step){
   const pctFixed = step===1?4:(step===2?37:70);
   return \`
     <div class="topRow">
-      <div class="brand"><div class="badge">🌱</div><div class="t">CMO Ядро — обратная связь</div></div>
+      <div class="brand"><div class="badge">\${brandIcon()}</div><div class="t">CMO Ядро — обратная связь</div></div>
       <div class="saveState" id="saveState"></div>
     </div>
     <div class="vpnNote">
@@ -5343,22 +5353,22 @@ function render(){
 function page1(){
   return \`
   <div class="card">
-    <div class="encourage">Привет! 👋 Эта анкета поможет нам сделать <b>CMO Ядро</b> ещё полезнее именно для вас. Все вопросы <b>необязательны</b> — отвечайте на то, что откликается, это займёт пару минут.</div>
-    <h2 class="pageTitle">О вас</h2>
+    <div class="encourage">Привет! 👋 Эта анкета поможет нам сделать <b>CMO Ядро</b> ещё полезнее именно для тебя. Все вопросы <b>необязательны</b> — отвечай на то, что откликается, это займёт пару минут.</div>
+    <h2 class="pageTitle">О тебе</h2>
     <div class="field">
-      <label class="q">Какая у вас роль?</label>
+      <label class="q">Какая у тебя роль?</label>
       <div class="radioGroup" id="roleGroup">
         \${ROLES.map(r => \`<label class="radioOpt \${ANSWERS.role===r?'checked':''}"><input type="radio" name="role" value="\${r}" \${ANSWERS.role===r?'checked':''}> \${r}</label>\`).join('')}
       </div>
-      <input type="text" id="roleOtherInput" placeholder="Уточните вашу роль" value="\${(ANSWERS.roleOther||'').replace(/"/g,'&quot;')}" style="margin-top:10px; \${ANSWERS.role==='Другое'?'':'display:none'}">
+      <input type="text" id="roleOtherInput" placeholder="Уточни свою роль" value="\${(ANSWERS.roleOther||'').replace(/"/g,'&quot;')}" style="margin-top:10px; \${ANSWERS.role==='Другое'?'':'display:none'}">
     </div>
     <div class="field">
-      <label class="q">Какая у вас команда?</label>
-      <input type="text" id="teamInput" placeholder="Например: я один / 2 маркетолога + дизайнер…" value="\${(ANSWERS.team||'').replace(/"/g,'&quot;')}">
+      <label class="q">Какая у тебя команда?</label>
+      <input type="text" id="teamInput" placeholder="Например: я один / нас двое — маркетолог и дизайнер…" value="\${(ANSWERS.team||'').replace(/"/g,'&quot;')}">
     </div>
-    \${slider('ai','Насколько глубоко вы погружены в искусственный интеллект?', ANSWERS.ai)}
-    \${slider('marketing','Насколько глубоко вы погружены в маркетинг?', ANSWERS.marketing)}
-    \${slider('automation','Насколько глубоко вы погружены в автоматизацию?', ANSWERS.automation)}
+    \${slider('ai','Насколько глубоко ты погружён(а) в ИИ-решения?', ANSWERS.ai)}
+    \${slider('marketing','Насколько глубоко ты погружён(а) в маркетинг?', ANSWERS.marketing)}
+    \${slider('automation','Насколько глубоко ты погружён(а) в автоматизацию?', ANSWERS.automation)}
   </div>
   <div class="navRow"><button class="btn primary" onclick="goStep(2)">Далее →</button></div>
   \`;
@@ -5370,30 +5380,46 @@ function slider(name, label, val){
     <div class="field">
       <label class="q">\${label}</label>
       <div class="sliderWrap">
-        <div class="sliderTop"><span class="sliderVal" id="\${name}Val">\${v}</span></div>
-        <input type="range" min="0" max="10" step="1" value="\${v}" id="\${name}Slider" oninput="document.getElementById('\${name}Val').textContent=this.value" onchange="fieldChanged('\${name}', Number(this.value))">
+        <div class="sliderTrack" style="--pct:\${v/10}">
+          <div class="sliderBubble" id="\${name}Val">\${v}</div>
+          <input type="range" min="0" max="10" step="1" value="\${v}" id="\${name}Slider" oninput="moveBubble(this)" onchange="fieldChanged('\${name}', Number(this.value))">
+        </div>
         <div class="sliderScale"><span>0 — только начинаю</span><span>10 — эксперт</span></div>
       </div>
     </div>
   \`;
 }
 
+function moveBubble(el){
+  const pct = (Number(el.value) - Number(el.min)) / (Number(el.max) - Number(el.min));
+  const track = el.closest('.sliderTrack');
+  track.style.setProperty('--pct', pct);
+  const bubble = track.querySelector('.sliderBubble');
+  if(bubble) bubble.textContent = el.value;
+}
+
 function page2(){
   const nps = (ANSWERS.nps===undefined||ANSWERS.nps===null||ANSWERS.nps==='') ? 5 : ANSWERS.nps;
   return \`
   <div class="card">
-    <div class="encourage">Вы уже часть <b>CMO Ядро</b> — расскажите, что заходит лучше всего. Это поможет нам усилить именно то, что ценно для вас.</div>
-    <h2 class="pageTitle">Ваша оценка</h2>
+    <div class="encourage">Ты уже часть <b>CMO Ядро</b> — расскажи, что заходит лучше всего. Это поможет нам усилить именно то, что ценно для тебя.</div>
+    <h2 class="pageTitle">Твоя оценка</h2>
     <div class="field">
-      <label class="q">Насколько вероятно, что вы порекомендуете CMO Ядро коллеге?</label>
+      <label class="q">Насколько вероятно, что ты порекомендуешь CMO Ядро коллеге?</label>
       <div class="sliderWrap">
-        <div class="sliderTop"><span class="sliderVal" id="npsVal">\${nps}</span></div>
-        <input type="range" min="0" max="10" step="1" value="\${nps}" oninput="document.getElementById('npsVal').textContent=this.value" onchange="fieldChanged('nps', Number(this.value))">
+        <div class="sliderTrack" style="--pct:\${nps/10}">
+          <div class="sliderBubble" id="npsVal">\${nps}</div>
+          <input type="range" min="0" max="10" step="1" value="\${nps}" oninput="moveBubble(this)" onchange="fieldChanged('nps', Number(this.value))">
+        </div>
         <div class="sliderScale"><span>0 — точно нет</span><span>10 — точно да</span></div>
       </div>
     </div>
     <div class="field">
-      <label class="q">Оцените, насколько полезен для вас каждый формат (1–5)</label>
+      <label class="q">Почему именно такая оценка? Что нам улучшить, чтобы ты оценил(а) нас выше?</label>
+      <textarea id="npsReasonInput" placeholder="Например: очень нравится атмосфера, но хочется больше разборов моих кейсов…">\${(ANSWERS.npsReason||'')}</textarea>
+    </div>
+    <div class="field">
+      <label class="q">Оцени, насколько полезен для тебя каждый формат (1–5)</label>
       \${RATING_ITEMS.map(([k,label]) => {
         const v = (ANSWERS.ratings && ANSWERS.ratings[k]!==undefined && ANSWERS.ratings[k]!=='') ? ANSWERS.ratings[k] : 3;
         return \`<div class="ratingRow">
@@ -5414,13 +5440,13 @@ function page3(){
   const ta = (name, ph) => \`<textarea id="\${name}Input" placeholder="\${ph}" oninput="">\${(ANSWERS[name]||'')}</textarea>\`;
   return \`
   <div class="card">
-    <div class="encourage">Последний шаг 🙌 Ваши слова помогают нам видеть, что действительно важно. Пишите свободно, коротко или подробно — как удобно.</div>
+    <div class="encourage">Последний шаг 🙌 Твои слова помогают нам видеть, что действительно важно. Пиши свободно, коротко или подробно — как удобно.</div>
     <h2 class="pageTitle">В свободной форме</h2>
-    <div class="field"><label class="q">Какую проблему вы недавно решили с нашей помощью?</label>\${ta('problemSolved','Например: настроили воронку в CRM…')}</div>
-    <div class="field"><label class="q">Какая у вас сейчас самая горящая проблема в проекте?</label>\${ta('urgentProblem','')}</div>
-    <div class="field"><label class="q">В чём вам нужна наша помощь? Какой у вас запрос к нам?</label>\${ta('request','')}</div>
-    <div class="field"><label class="q">Каких инструментов вам не хватает в работе?</label>\${ta('missingTools','')}</div>
-    <div class="field"><label class="q">Чего вам не хватает в CMO Ядро?</label>\${ta('missingInCore','')}</div>
+    <div class="field"><label class="q">Какую проблему ты недавно решил(а) с нашей помощью?</label>\${ta('problemSolved','Например: настроили воронку в CRM и перестали терять заявки…')}</div>
+    <div class="field"><label class="q">Какая у тебя сейчас самая горящая проблема в проекте?</label>\${ta('urgentProblem','Например: не хватает лидов из контента, не понимаю, за что хвататься первым…')}</div>
+    <div class="field"><label class="q">В чём тебе нужна наша помощь? Какой у тебя запрос к нам?</label>\${ta('request','Например: разбор моей воронки на эфире, помощь с наймом маркетолога…')}</div>
+    <div class="field"><label class="q">Каких инструментов тебе не хватает в работе?</label>\${ta('missingTools','Например: шаблон медиаплана, чек-лист по запуску рекламы…')}</div>
+    <div class="field"><label class="q">Чего тебе не хватает в CMO Ядро?</label>\${ta('missingInCore','Например: больше живых разборов, форматов для новичков…')}</div>
   </div>
   <div class="navRow"><button class="btn" onclick="goStep(2)">← Назад</button><button class="btn accent" onclick="finishSurvey()">Завершить ✓</button></div>
   \`;
@@ -5441,6 +5467,8 @@ function attachHandlers(){
   if(roleOther) roleOther.addEventListener('input', () => fieldChanged('roleOther', roleOther.value));
   const team = document.getElementById('teamInput');
   if(team) team.addEventListener('input', () => fieldChanged('team', team.value));
+  const npsReason = document.getElementById('npsReasonInput');
+  if(npsReason) npsReason.addEventListener('input', () => fieldChanged('npsReason', npsReason.value));
   ['problemSolved','urgentProblem','request','missingTools','missingInCore'].forEach(name => {
     const el = document.getElementById(name+'Input');
     if(el) el.addEventListener('input', () => fieldChanged(name, el.value));
@@ -5454,15 +5482,55 @@ function finishSurvey(){
   doSave().then(()=>{ STEP = 4; render(); });
 }
 
+let PET_COUNT = 0;
+const PET_FACES = ['🐱','🐱','😺','😸','😻','😻'];
+const PET_MESSAGES = [
+  'Погладь котика — ему будет приятно 🐾',
+  'Мур… ещё разок?',
+  'Котику нравится!',
+  'Отличная работа, он доволен 😺',
+  'Он тебя обожает!',
+  'Максимум мурчания достигнут 💛'
+];
+
 function renderThanks(){
+  PET_COUNT = 0;
   document.getElementById('wrap').innerHTML = \`
-    <div class="topRow"><div class="brand"><div class="badge">🌱</div><div class="t">CMO Ядро — обратная связь</div></div></div>
+    <div class="topRow"><div class="brand"><div class="badge">\${brandIcon()}</div><div class="t">CMO Ядро — обратная связь</div></div></div>
     <div class="card thankYou">
-      <div class="catBox">🐱</div>
+      <div class="catGame">
+        <div class="catBox" id="catEmoji" onclick="petCat()">🐱</div>
+        <div class="catHearts" id="catHearts"></div>
+      </div>
       <h2>Спасибо большое!</h2>
-      <p>Ваши ответы сохранены. Это правда помогает нам делать CMO Ядро лучше для вас и всего комьюнити. Мур-мур и до встречи на воркшопе! 💛</p>
+      <p>Твои ответы сохранены. Это правда помогает нам делать CMO Ядро лучше для тебя и всего комьюнити. Мур-мур и до встречи на воркшопе! 💛</p>
+      <div class="petHint" id="petHint">Погладь котика — ему будет приятно 🐾</div>
+      <button class="btn" style="margin-top:18px; max-width:260px; margin-left:auto; margin-right:auto;" onclick="goStep(1)">✏️ Отредактировать ответы</button>
     </div>
   \`;
+}
+
+function petCat(){
+  PET_COUNT++;
+  const idx = Math.min(PET_COUNT, PET_FACES.length - 1);
+  const cat = document.getElementById('catEmoji');
+  const hint = document.getElementById('petHint');
+  const hearts = document.getElementById('catHearts');
+  if(cat){
+    cat.textContent = PET_FACES[idx];
+    cat.classList.remove('bounce'); void cat.offsetWidth; cat.classList.add('bounce');
+  }
+  if(hint) hint.textContent = PET_MESSAGES[idx];
+  if(hearts){
+    const h = document.createElement('div');
+    h.className = 'heartFloat';
+    h.textContent = ['💛','🐾','✨','💕'][Math.floor(Math.random()*4)];
+    h.style.left = (35 + Math.random()*30) + '%';
+    h.style.top = '10px';
+    h.style.setProperty('--dx', (Math.random()*40-20) + 'px');
+    hearts.appendChild(h);
+    setTimeout(()=> h.remove(), 1000);
+  }
 }
 
 function renderResults(){
@@ -5479,6 +5547,7 @@ function renderResults(){
       <div class="field"><label class="q">Команда</label>\${box(a.team)}</div>
       <div class="field"><label class="q">Погружение в AI / маркетинг / автоматизацию</label>\${box((a.ai??'—')+' / '+(a.marketing??'—')+' / '+(a.automation??'—'))}</div>
       <div class="field"><label class="q">NPS (рекомендация CMO Ядро)</label>\${box(a.nps!==undefined?a.nps+'/10':'')}</div>
+      <div class="field"><label class="q">Почему такая оценка / что улучшить</label>\${box(a.npsReason)}</div>
       <div class="field"><label class="q">Оценки форматов</label>\${ratingsHtml}</div>
       <div class="field"><label class="q">Какую проблему решили с нашей помощью?</label>\${box(a.problemSolved)}</div>
       <div class="field"><label class="q">Самая горящая проблема</label>\${box(a.urgentProblem)}</div>
