@@ -29,6 +29,8 @@ export default {
     if (url.pathname === '/api/admin/avatar') return apiCRMAvatar(request, env, url);
     if (url.pathname === '/api/community') return apiCommunity(request, env, url);
     if (url.pathname === '/community') return serveCommunity();
+    if (url.pathname === '/api/sale') return apiSale(request, env, url);
+    if (url.pathname === '/sale') return serveSale();
     if (url.pathname.startsWith("/api/admin/")) return apiAdminAction(request, env, url);
     if (url.pathname === "/" || url.pathname === "/app") return serveApp(env);
     if (url.pathname === "/quiz1" || url.pathname === "/worker/quiz1") return serveQuiz1();
@@ -5003,6 +5005,138 @@ async function apiCommunity(request, env, url) {
 
 function serveCommunity() {
   return new Response(getCommunityHTML(), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+// ══════════════════════════════════════════════
+// SALE CRM — отслеживание входящих заявок и продаж
+// (независимо от crm:/cmperson: — свой префикс lead:)
+// ══════════════════════════════════════════════
+
+const SALE_TAG_PALETTE = [
+  { bg: "#FDE7EC", border: "#F6B8C9", ink: "#C23A5B" },
+  { bg: "#FDEBDD", border: "#F6C9A0", ink: "#C2703A" },
+  { bg: "#FBF3D2", border: "#EBD98B", ink: "#A98A1A" },
+  { bg: "#E1F5EA", border: "#A9DFC0", ink: "#1F9D64" },
+  { bg: "#DCF3F3", border: "#A6DEDD", ink: "#1B8E8C" },
+  { bg: "#E1EBFB", border: "#AFC9F2", ink: "#3457C9" },
+  { bg: "#EAE4FB", border: "#C6B7F2", ink: "#6C4FC2" },
+  { bg: "#F6E3F5", border: "#E3B4E0", ink: "#A83AA8" },
+  { bg: "#F0ECE5", border: "#D8CFC0", ink: "#8A7B63" }
+];
+
+const SALE_DEFAULT_TAGS = [
+  { id: "hot", name: "Горячий", color: 0 },
+  { id: "warm", name: "Тёплый", color: 2 },
+  { id: "cold", name: "Холодный", color: 5 },
+  { id: "client", name: "Клиент", color: 3 }
+];
+
+function saleId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+async function getSaleTags(env) {
+  const tags = await env.KV.get("sale:tags", "json");
+  if (tags) return tags;
+  await env.KV.put("sale:tags", JSON.stringify(SALE_DEFAULT_TAGS));
+  return SALE_DEFAULT_TAGS;
+}
+
+async function apiSale(request, env, url) {
+  const auth = request.headers.get("Authorization") || "";
+  if (!auth.includes("admin_session_" + ADMIN_PASSWORD)) return jsonResp({ error: "Unauthorized" }, 401);
+
+  if (request.method === 'GET') {
+    const keys = await env.KV.list({ prefix: 'lead:' });
+    const leads = (await Promise.all(keys.keys.map(k => env.KV.get(k.name, 'json')))).filter(Boolean);
+    leads.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const tags = await getSaleTags(env);
+    return jsonResp({ ok: true, leads, tags, palette: SALE_TAG_PALETTE });
+  }
+
+  if (request.method !== 'POST') return jsonResp({ error: 'Not found' }, 404);
+
+  const body = await request.json();
+  const action = body.action;
+
+  async function getLead(id) {
+    return await env.KV.get(`lead:${id}`, 'json');
+  }
+  async function saveLead(l) {
+    l.updatedAt = Date.now();
+    await env.KV.put(`lead:${l.id}`, JSON.stringify(l));
+    return l;
+  }
+
+  if (action === 'create-tag') {
+    const tags = await getSaleTags(env);
+    const tag = { id: saleId(), name: (body.name || '').trim() || 'Без названия', color: Number(body.color) || 0 };
+    tags.push(tag);
+    await env.KV.put("sale:tags", JSON.stringify(tags));
+    return jsonResp({ ok: true, tags });
+  }
+
+  if (action === 'delete-tag') {
+    let tags = await getSaleTags(env);
+    tags = tags.filter(t => t.id !== body.id);
+    await env.KV.put("sale:tags", JSON.stringify(tags));
+    const keys = await env.KV.list({ prefix: 'lead:' });
+    const leads = (await Promise.all(keys.keys.map(k => env.KV.get(k.name, 'json')))).filter(Boolean);
+    for (const l of leads) {
+      if (l.tagId === body.id) { l.tagId = null; await saveLead(l); }
+    }
+    return jsonResp({ ok: true, tags });
+  }
+
+  if (action === 'create') {
+    const id = saleId();
+    const lead = {
+      id,
+      name: body.name || '',
+      telegram: body.telegram || '',
+      tgUsername: body.tgUsername || '',
+      status: body.status || 'Новая заявка',
+      task: body.task || '',
+      tagId: body.tagId || null,
+      history: [{ date: new Date().toISOString().slice(0, 10), text: 'Лид создан', createdAt: Date.now() }],
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    await env.KV.put(`lead:${id}`, JSON.stringify(lead));
+    return jsonResp({ ok: true, lead });
+  }
+
+  if (action === 'update-field') {
+    const l = await getLead(body.id);
+    if (!l) return jsonResp({ ok: false, error: 'Не найдено' }, 404);
+    const field = body.field;
+    const allowed = ['name', 'telegram', 'tgUsername', 'status', 'task', 'tagId'];
+    if (!allowed.includes(field)) return jsonResp({ ok: false, error: 'Некорректное поле' }, 400);
+    const oldVal = l[field];
+    l[field] = body.value;
+    if (oldVal !== body.value) {
+      const labels = { name: 'Имя', telegram: 'Telegram', tgUsername: 'Username', status: 'Статус', task: 'Задача', tagId: 'Тег' };
+      l.history = l.history || [];
+      l.history.push({
+        date: new Date().toISOString().slice(0, 10),
+        text: `${labels[field] || field}: «${body.value || '—'}»`,
+        createdAt: Date.now()
+      });
+    }
+    await saveLead(l);
+    return jsonResp({ ok: true, lead: l });
+  }
+
+  if (action === 'delete') {
+    await env.KV.delete(`lead:${body.id}`);
+    return jsonResp({ ok: true });
+  }
+
+  return jsonResp({ error: 'Unknown action' }, 404);
+}
+
+function serveSale() {
+  return new Response(getSaleHTML(), { headers: { "Content-Type": "text/html; charset=utf-8" } });
 }
 
 async function apiAdminCRM(request, env, url) {
@@ -12953,6 +13087,535 @@ function setPickedDate(containerId, iso){
   document.getElementById(containerId+'_txt').textContent = shortMode ? fmtDate(iso) : fmtDateFull(iso);
   renderCal(containerId);
 }
+</script>
+</body>
+</html>`;
+}
+
+// ─── SALE CRM HTML/CSS/JS ─────────────────────────────────────
+function getSaleHTML() {
+  return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Sale CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f2ee;
+  --bg-soft:#fbfaf8;
+  --panel:#ffffff;
+  --ink:#181614;
+  --ink-soft:#6b6560;
+  --ink-faint:#a29c96;
+  --line:#e8e3dc;
+  --line-soft:#f0ece5;
+  --accent:#ff5a36;
+  --accent-soft:#fff0ea;
+  --accent-ink:#c23f20;
+  --green:#1f9d64;
+  --red:#e0453a;
+  --red-soft:#fdeceb;
+  --shadow-sm:0 1px 2px rgba(24,22,20,.05);
+  --shadow-md:0 10px 30px -12px rgba(24,22,20,.18);
+  --shadow-lg:0 30px 80px -20px rgba(24,22,20,.35);
+  --radius:16px;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0;
+  font-family:'Manrope',-apple-system,BlinkMacSystemFont,sans-serif;
+  background:var(--bg);
+  color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{font-family:'Unbounded',sans-serif; margin:0; letter-spacing:-0.01em;}
+button{font-family:inherit;}
+::selection{background:var(--accent-soft); color:var(--accent-ink);}
+
+/* ───── Login ───── */
+#loginScreen{
+  position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+  background:radial-gradient(circle at 20% 20%, #fff 0%, var(--bg) 60%);
+  z-index:500;
+}
+.loginCard{
+  background:var(--panel); border-radius:24px; padding:44px 40px; width:340px;
+  box-shadow:var(--shadow-lg); border:1px solid var(--line-soft); text-align:center;
+}
+.loginCard .badge{
+  width:52px; height:52px; border-radius:14px; margin:0 auto 18px;
+  background:linear-gradient(135deg,var(--accent),#ff8a5b);
+  display:flex; align-items:center; justify-content:center; font-size:22px; color:#fff;
+  box-shadow:0 10px 24px -8px rgba(255,90,54,.55);
+}
+.loginCard h1{font-size:20px; margin-bottom:6px;}
+.loginCard p{color:var(--ink-soft); font-size:13.5px; margin:0 0 22px;}
+.loginCard input{
+  width:100%; padding:13px 16px; border-radius:12px; border:1.5px solid var(--line);
+  font-size:15px; outline:none; margin-bottom:12px; background:var(--bg-soft); transition:.15s;
+}
+.loginCard input:focus{border-color:var(--accent); background:#fff;}
+.loginCard button{
+  width:100%; padding:13px; border-radius:12px; border:none; background:var(--ink); color:#fff;
+  font-weight:700; font-size:14.5px; cursor:pointer; transition:.15s;
+}
+.loginCard button:hover{background:#000;}
+.loginErr{color:var(--red); font-size:12.5px; margin-top:10px; min-height:14px;}
+
+/* ───── App shell ───── */
+#app{display:none; min-height:100vh; flex-direction:column;}
+
+.topbar{
+  display:flex; align-items:center; gap:10px; padding:16px 24px; flex-wrap:wrap;
+  border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:20;
+}
+.searchWrap{position:relative; flex:1; min-width:180px;}
+.searchWrap input{
+  width:100%; padding:10px 34px 10px 36px; border-radius:11px; border:1.5px solid var(--line);
+  font-size:13.5px; outline:none; background:var(--bg-soft); transition:.15s;
+}
+.searchWrap input:focus{border-color:var(--accent); background:#fff;}
+.searchWrap .searchIcon{position:absolute; left:12px; top:50%; transform:translateY(-50%); opacity:.4; pointer-events:none;}
+.searchWrap .clearBtn{
+  position:absolute; right:8px; top:50%; transform:translateY(-50%); width:22px; height:22px; border-radius:50%;
+  border:none; background:var(--line-soft); color:var(--ink-soft); display:none; align-items:center; justify-content:center; cursor:pointer;
+}
+.searchWrap .clearBtn:hover{background:var(--accent-soft); color:var(--accent-ink);}
+.searchWrap.hasText .clearBtn{display:flex;}
+
+.tagBar{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+.tagChip{
+  display:inline-flex; align-items:center; gap:6px; padding:7px 13px; border-radius:20px; font-size:12.5px; font-weight:700;
+  cursor:pointer; border:1.5px solid transparent; background:var(--line-soft); color:var(--ink-soft); transition:.15s; white-space:nowrap;
+}
+.tagChip:hover{transform:translateY(-1px);}
+.tagChip.active{box-shadow:var(--shadow-sm);}
+.tagChip .dot{width:8px; height:8px; border-radius:50%; flex-shrink:0;}
+
+.btn{
+  display:inline-flex; align-items:center; gap:7px; padding:9px 16px; border-radius:11px;
+  border:1.5px solid var(--line); background:#fff; color:var(--ink); font-size:13.5px; font-weight:600;
+  cursor:pointer; transition:.15s; white-space:nowrap; flex-shrink:0;
+}
+.btn:hover{border-color:var(--ink); transform:translateY(-1px);}
+.btn.accent{background:var(--accent); color:#fff; border-color:var(--accent); box-shadow:0 8px 20px -8px rgba(255,90,54,.6);}
+.btn.accent:hover{background:var(--accent-ink); border-color:var(--accent-ink);}
+.btn.iconOnly{width:36px; height:36px; padding:0; justify-content:center; border-radius:50%;}
+
+.popoverWrap{position:relative; flex-shrink:0;}
+.popover{
+  position:absolute; top:calc(100% + 8px); left:0; background:#fff; border-radius:16px; box-shadow:var(--shadow-lg);
+  border:1px solid var(--line-soft); padding:16px; width:240px; z-index:80; display:none;
+}
+.popover.show{display:block;}
+.popover h4{font-size:11.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint); margin-bottom:10px;}
+.popover input{
+  width:100%; padding:9px 12px; border-radius:9px; border:1.5px solid var(--line); font-size:13.5px;
+  outline:none; background:var(--bg-soft); margin-bottom:10px;
+}
+.popover input:focus{border-color:var(--accent); background:#fff;}
+.swatchGrid{display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-bottom:12px;}
+.swatch{width:100%; aspect-ratio:1; border-radius:9px; cursor:pointer; border:2px solid transparent; transition:.12s;}
+.swatch.selected{border-color:var(--ink); transform:scale(1.08);}
+
+/* ───── List ───── */
+.listWrap{flex:1; padding:18px 24px 60px; display:flex; flex-direction:column; gap:10px;}
+.emptyState{text-align:center; padding:60px 20px; color:var(--ink-faint);}
+
+.leadRow{
+  display:flex; align-items:center; gap:14px; padding:12px 16px; border-radius:14px;
+  border:1.5px solid var(--line-soft); background:var(--panel); box-shadow:var(--shadow-sm); transition:.15s;
+}
+.leadRow:hover{box-shadow:var(--shadow-md);}
+
+.tgBtn{
+  width:36px; height:36px; border-radius:50%; border:none; background:#e1ebfb; color:#3457c9;
+  display:flex; align-items:center; justify-content:center; cursor:pointer; transition:.15s; flex-shrink:0;
+}
+.tgBtn:hover{transform:scale(1.08);}
+.tgBtn.disabled{opacity:.35; cursor:default; pointer-events:none;}
+
+.colName{width:180px; flex-shrink:0; min-width:0;}
+.colDate{width:96px; flex-shrink:0; font-size:12px; color:var(--ink-faint); white-space:nowrap;}
+.colStatus{width:180px; flex-shrink:0; min-width:0;}
+.colTask{flex:1; min-width:0;}
+
+.editable{
+  padding:6px 9px; border-radius:8px; font-size:13.5px; cursor:text; transition:.12s; word-break:break-word;
+  border:1.5px solid transparent; min-height:16px; line-height:1.35;
+}
+.editable:hover{background:var(--bg-soft); border-color:var(--line);}
+.editable:focus{outline:none; background:#fff; border-color:var(--accent); cursor:text;}
+.editable.placeholder{color:var(--ink-faint); font-weight:500;}
+.colName .editable{font-weight:700;}
+.colStatus .editable{font-weight:600;}
+.colTask .editable{color:var(--ink-soft);}
+
+.tagBtnWrap{position:relative; flex-shrink:0; margin-left:auto;}
+.tagIconBtn{
+  width:30px; height:30px; border-radius:50%; border:1.5px solid var(--line); background:var(--bg-soft); cursor:pointer;
+  display:flex; align-items:center; justify-content:center; transition:.15s;
+}
+.tagIconBtn:hover{transform:scale(1.08);}
+.tagDropdown{
+  position:absolute; top:calc(100% + 8px); right:0; background:#fff; border-radius:14px; box-shadow:var(--shadow-lg);
+  border:1px solid var(--line-soft); padding:8px; width:180px; z-index:90; display:none;
+}
+.tagDropdown.show{display:block;}
+.tagOpt{
+  display:flex; align-items:center; gap:9px; padding:8px 10px; border-radius:9px; cursor:pointer; font-size:13px; font-weight:600; transition:.12s;
+}
+.tagOpt:hover{background:var(--bg-soft);}
+.tagOpt.selected{background:var(--line-soft);}
+.tagOpt .dot{width:9px; height:9px; border-radius:50%; flex-shrink:0;}
+
+.delBtn{
+  width:28px; height:28px; border-radius:50%; border:none; background:transparent; color:var(--ink-faint);
+  display:flex; align-items:center; justify-content:center; cursor:pointer; transition:.15s; flex-shrink:0; opacity:0;
+}
+.leadRow:hover .delBtn{opacity:1;}
+.delBtn:hover{background:var(--red-soft); color:var(--red);}
+
+.toast{
+  position:fixed; bottom:26px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--ink); color:#fff;
+  padding:11px 20px; border-radius:11px; font-size:13px; font-weight:600; z-index:400; opacity:0; pointer-events:none; transition:.2s; box-shadow:var(--shadow-lg);
+}
+.toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+@media (max-width:860px){
+  .leadRow{flex-wrap:wrap;}
+  .colName{width:auto; flex:1 1 140px;}
+  .colDate{order:5; width:auto;}
+  .colStatus{width:auto; flex:1 1 140px;}
+  .colTask{flex:1 1 100%; order:6;}
+}
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <div class="loginCard">
+    <div class="badge">◆</div>
+    <h1>Sale CRM</h1>
+    <p>Доступ только для команды</p>
+    <input type="password" id="loginPass" placeholder="Пароль" onkeydown="if(event.key==='Enter')doLogin()">
+    <button onclick="doLogin()">Войти</button>
+    <div class="loginErr" id="loginErr"></div>
+  </div>
+</div>
+
+<div id="app">
+  <div class="topbar">
+    <div class="searchWrap" id="searchWrap">
+      <svg class="searchIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input id="searchInput" placeholder="Поиск по имени, username, статусу, задаче..." oninput="onSearchInput()">
+      <button class="clearBtn" onclick="clearSearch()">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div class="tagBar" id="tagBar"></div>
+
+    <div class="popoverWrap" id="addTagWrap">
+      <button class="btn iconOnly" title="Добавить тег" onclick="toggleAddTag(event)">+</button>
+      <div class="popover" id="addTagPopover">
+        <h4>Новый тег</h4>
+        <input id="newTagName" placeholder="Название тега" onkeydown="if(event.key==='Enter')submitNewTag()">
+        <div class="swatchGrid" id="swatchGrid"></div>
+        <button class="btn accent" style="width:100%; justify-content:center;" onclick="submitNewTag()">Добавить</button>
+      </div>
+    </div>
+
+    <button class="btn accent" onclick="createLead()">+ Лид</button>
+  </div>
+
+  <div class="listWrap" id="listWrap"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let ADMIN_TOKEN = localStorage.getItem('saleToken') || '';
+let LEADS = [];
+let TAGS = [];
+let PALETTE = [];
+let ACTIVE_FILTERS = new Set();
+let SEARCH = '';
+let SELECTED_COLOR = 0;
+
+function authHeaders(){ return {'Content-Type':'application/json', 'Authorization':'admin_session_'+ADMIN_TOKEN}; }
+
+function doLogin(){
+  const pass = document.getElementById('loginPass').value;
+  ADMIN_TOKEN = pass;
+  localStorage.setItem('saleToken', ADMIN_TOKEN);
+  load();
+}
+
+function showLogin(msg){
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('loginErr').textContent = msg || '';
+}
+
+async function load(){
+  const r = await fetch('/api/sale', {headers: authHeaders()});
+  if(r.status === 401){ showLogin('Неверный пароль'); return; }
+  const data = await r.json();
+  if(!data.ok){ showLogin('Ошибка загрузки'); return; }
+  LEADS = data.leads || [];
+  TAGS = data.tags || [];
+  PALETTE = data.palette || [];
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  renderSwatches();
+  renderTagBar();
+  renderList();
+}
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 1800);
+}
+
+function tagById(id){ return TAGS.find(t => t.id === id); }
+function colorFor(colorIdx){ return PALETTE[colorIdx] || PALETTE[0] || {bg:'#fff',border:'#eee',ink:'#666'}; }
+
+function renderSwatches(){
+  const grid = document.getElementById('swatchGrid');
+  grid.innerHTML = '';
+  PALETTE.forEach((c, i) => {
+    const sw = document.createElement('div');
+    sw.className = 'swatch' + (i === SELECTED_COLOR ? ' selected' : '');
+    sw.style.background = c.bg;
+    sw.style.borderColor = i === SELECTED_COLOR ? c.ink : 'transparent';
+    sw.onclick = () => { SELECTED_COLOR = i; renderSwatches(); };
+    grid.appendChild(sw);
+  });
+}
+
+function toggleAddTag(e){
+  e.stopPropagation();
+  document.getElementById('addTagPopover').classList.toggle('show');
+}
+document.addEventListener('click', (e) => {
+  if(!e.target.closest('#addTagWrap')) document.getElementById('addTagPopover').classList.remove('show');
+  if(!e.target.closest('.tagBtnWrap')) document.querySelectorAll('.tagDropdown.show').forEach(d => d.classList.remove('show'));
+});
+
+async function submitNewTag(){
+  const name = document.getElementById('newTagName').value.trim();
+  if(!name){ toast('Введите название тега'); return; }
+  const r = await fetch('/api/sale', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'create-tag', name, color: SELECTED_COLOR})});
+  const data = await r.json();
+  if(data.ok){
+    TAGS = data.tags;
+    document.getElementById('newTagName').value = '';
+    document.getElementById('addTagPopover').classList.remove('show');
+    renderTagBar();
+    renderList();
+    toast('Тег добавлен');
+  }
+}
+
+function renderTagBar(){
+  const bar = document.getElementById('tagBar');
+  bar.innerHTML = '';
+  TAGS.forEach(tag => {
+    const c = colorFor(tag.color);
+    const chip = document.createElement('div');
+    chip.className = 'tagChip' + (ACTIVE_FILTERS.has(tag.id) ? ' active' : '');
+    if(ACTIVE_FILTERS.has(tag.id)){
+      chip.style.background = c.bg;
+      chip.style.borderColor = c.border;
+      chip.style.color = c.ink;
+    }
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.background = c.ink;
+    chip.appendChild(dot);
+    chip.appendChild(document.createTextNode(tag.name));
+    chip.onclick = () => {
+      if(ACTIVE_FILTERS.has(tag.id)) ACTIVE_FILTERS.delete(tag.id);
+      else ACTIVE_FILTERS.add(tag.id);
+      renderTagBar();
+      renderList();
+    };
+    bar.appendChild(chip);
+  });
+}
+
+function onSearchInput(){
+  SEARCH = document.getElementById('searchInput').value.trim().toLowerCase();
+  document.getElementById('searchWrap').classList.toggle('hasText', !!SEARCH);
+  renderList();
+}
+function clearSearch(){
+  document.getElementById('searchInput').value = '';
+  SEARCH = '';
+  document.getElementById('searchWrap').classList.remove('hasText');
+  renderList();
+}
+
+function fmtDate(ts){
+  const d = new Date(ts);
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  return dd + '.' + mm + '.' + String(d.getFullYear()).slice(2);
+}
+
+function matchesFilters(lead){
+  if(ACTIVE_FILTERS.size > 0 && !ACTIVE_FILTERS.has(lead.tagId)) return false;
+  if(SEARCH){
+    const hay = [lead.name, lead.tgUsername, lead.status, lead.task].join(' ').toLowerCase();
+    if(!hay.includes(SEARCH)) return false;
+  }
+  return true;
+}
+
+function renderList(){
+  const wrap = document.getElementById('listWrap');
+  wrap.innerHTML = '';
+  const visible = LEADS.filter(matchesFilters);
+  if(visible.length === 0){
+    const e = document.createElement('div');
+    e.className = 'emptyState';
+    e.textContent = LEADS.length === 0 ? 'Пока нет заявок' : 'Ничего не найдено';
+    wrap.appendChild(e);
+    return;
+  }
+  visible.forEach(lead => wrap.appendChild(buildRow(lead)));
+}
+
+function buildEditable(lead, field, value, placeholder){
+  const el = document.createElement('div');
+  el.className = 'editable' + (!value ? ' placeholder' : '');
+  el.contentEditable = 'true';
+  el.textContent = value || placeholder;
+  el.dataset.placeholder = placeholder;
+  el.addEventListener('focus', () => {
+    if(!lead[field]) el.textContent = '';
+    el.classList.remove('placeholder');
+  });
+  el.addEventListener('blur', () => {
+    const val = el.textContent.trim();
+    if(!val){ el.textContent = placeholder; el.classList.add('placeholder'); }
+    if(val !== (lead[field] || '')) saveField(lead.id, field, val);
+  });
+  el.addEventListener('keydown', (e) => {
+    if(e.key === 'Enter'){ e.preventDefault(); el.blur(); }
+  });
+  return el;
+}
+
+async function saveField(id, field, value){
+  const r = await fetch('/api/sale', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'update-field', id, field, value})});
+  const data = await r.json();
+  if(data.ok){
+    const idx = LEADS.findIndex(l => l.id === id);
+    if(idx >= 0) LEADS[idx] = data.lead;
+  }
+}
+
+function buildRow(lead){
+  const c = colorFor(tagById(lead.tagId) ? tagById(lead.tagId).color : null);
+  const row = document.createElement('div');
+  row.className = 'leadRow';
+  row.style.background = lead.tagId ? c.bg : 'var(--panel)';
+  row.style.borderColor = lead.tagId ? c.border : 'var(--line-soft)';
+
+  const tgUser = (lead.tgUsername || '').replace(/^@/, '');
+  const tgBtn = document.createElement('button');
+  tgBtn.className = 'tgBtn' + (tgUser ? '' : ' disabled');
+  tgBtn.innerHTML = '<svg width="17" height="17" viewBox="0 0 240 240" fill="none"><circle cx="120" cy="120" r="120" fill="#37aee2"/><path d="M52 122l122-47c6-2 11 1 9 10l-21 99c-2 8-7 10-14 6l-38-28-18 17c-2 2-4 4-8 4l3-40 73-66c3-3-1-4-4-2l-90 57-39-12c-8-3-8-8 2-11z" fill="#fff"/></svg>';
+  tgBtn.onclick = () => { if(tgUser) window.open('https://t.me/' + tgUser, '_blank'); };
+  row.appendChild(tgBtn);
+
+  const colName = document.createElement('div');
+  colName.className = 'colName';
+  colName.appendChild(buildEditable(lead, 'name', lead.name || (tgUser ? '@'+tgUser : ''), 'Имя / username'));
+  row.appendChild(colName);
+
+  const colDate = document.createElement('div');
+  colDate.className = 'colDate';
+  colDate.textContent = fmtDate(lead.createdAt);
+  row.appendChild(colDate);
+
+  const colStatus = document.createElement('div');
+  colStatus.className = 'colStatus';
+  colStatus.appendChild(buildEditable(lead, 'status', lead.status, 'Статус'));
+  row.appendChild(colStatus);
+
+  const colTask = document.createElement('div');
+  colTask.className = 'colTask';
+  colTask.appendChild(buildEditable(lead, 'task', lead.task, 'Задача'));
+  row.appendChild(colTask);
+
+  const tagWrap = document.createElement('div');
+  tagWrap.className = 'tagBtnWrap';
+  const tagBtn = document.createElement('button');
+  tagBtn.className = 'tagIconBtn';
+  tagBtn.style.background = c.bg;
+  tagBtn.style.borderColor = c.border;
+  tagBtn.innerHTML = '<span class="dot" style="width:12px;height:12px;border-radius:50%;background:' + c.ink + '"></span>';
+  tagBtn.onclick = (e) => {
+    e.stopPropagation();
+    document.querySelectorAll('.tagDropdown.show').forEach(d => { if(d !== dropdown) d.classList.remove('show'); });
+    dropdown.classList.toggle('show');
+  };
+  tagWrap.appendChild(tagBtn);
+
+  const dropdown = document.createElement('div');
+  dropdown.className = 'tagDropdown';
+  const noneOpt = document.createElement('div');
+  noneOpt.className = 'tagOpt' + (!lead.tagId ? ' selected' : '');
+  noneOpt.innerHTML = '<span class="dot" style="background:var(--line)"></span>Без тега';
+  noneOpt.onclick = () => { saveField(lead.id, 'tagId', null); lead.tagId = null; renderList(); };
+  dropdown.appendChild(noneOpt);
+  TAGS.forEach(tag => {
+    const tc = colorFor(tag.color);
+    const opt = document.createElement('div');
+    opt.className = 'tagOpt' + (lead.tagId === tag.id ? ' selected' : '');
+    opt.innerHTML = '<span class="dot" style="background:' + tc.ink + '"></span>' + tag.name;
+    opt.onclick = () => { saveField(lead.id, 'tagId', tag.id); lead.tagId = tag.id; renderList(); };
+    dropdown.appendChild(opt);
+  });
+  tagWrap.appendChild(dropdown);
+  row.appendChild(tagWrap);
+
+  const delBtn = document.createElement('button');
+  delBtn.className = 'delBtn';
+  delBtn.title = 'Удалить лида';
+  delBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0l-1 14a2 2 0 01-2 2H7a2 2 0 01-2-2L4 6"/></svg>';
+  delBtn.onclick = async () => {
+    if(!confirm('Удалить лида «' + (lead.name || tgUser || '—') + '»?')) return;
+    await fetch('/api/sale', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'delete', id:lead.id})});
+    LEADS = LEADS.filter(l => l.id !== lead.id);
+    renderList();
+  };
+  row.appendChild(delBtn);
+
+  return row;
+}
+
+async function createLead(){
+  const r = await fetch('/api/sale', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'create'})});
+  const data = await r.json();
+  if(data.ok){
+    LEADS.unshift(data.lead);
+    renderList();
+    toast('Лид добавлен');
+  }
+}
+
+load();
 </script>
 </body>
 </html>`;
