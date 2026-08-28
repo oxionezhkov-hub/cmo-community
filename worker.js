@@ -5098,6 +5098,7 @@ async function apiSale(request, env, url) {
       status: body.status || 'Новая заявка',
       task: body.task || '',
       tagId: body.tagId || null,
+      appDate: body.appDate || new Date().toISOString().slice(0, 10),
       history: [{ date: new Date().toISOString().slice(0, 10), text: 'Лид создан', createdAt: Date.now() }],
       createdAt: Date.now(),
       updatedAt: Date.now()
@@ -5110,12 +5111,12 @@ async function apiSale(request, env, url) {
     const l = await getLead(body.id);
     if (!l) return jsonResp({ ok: false, error: 'Не найдено' }, 404);
     const field = body.field;
-    const allowed = ['name', 'telegram', 'tgUsername', 'status', 'task', 'tagId'];
+    const allowed = ['name', 'telegram', 'tgUsername', 'status', 'task', 'tagId', 'appDate'];
     if (!allowed.includes(field)) return jsonResp({ ok: false, error: 'Некорректное поле' }, 400);
     const oldVal = l[field];
     l[field] = body.value;
     if (oldVal !== body.value) {
-      const labels = { name: 'Имя', telegram: 'Telegram', tgUsername: 'Username', status: 'Статус', task: 'Задача', tagId: 'Тег' };
+      const labels = { name: 'Имя', telegram: 'Telegram', tgUsername: 'Username', status: 'Статус', task: 'Задача', tagId: 'Тег', appDate: 'Дата заявки' };
       l.history = l.history || [];
       l.history.push({
         date: new Date().toISOString().slice(0, 10),
@@ -13300,6 +13301,12 @@ button{font-family:inherit;}
 .tagChip:hover{transform:translateY(-1px);}
 .tagChip.active{box-shadow:var(--shadow-sm);}
 .tagChip .dot{width:8px; height:8px; border-radius:50%; flex-shrink:0;}
+.tagChip .tagDel{
+  width:14px; height:14px; border-radius:50%; border:none; background:rgba(0,0,0,.08); color:inherit;
+  display:none; align-items:center; justify-content:center; cursor:pointer; margin-left:2px; padding:0; flex-shrink:0; opacity:.7;
+}
+.tagChip:hover .tagDel{display:flex;}
+.tagChip .tagDel:hover{opacity:1; background:var(--red); color:#fff;}
 
 .btn{
   display:inline-flex; align-items:center; gap:7px; padding:9px 16px; border-radius:11px;
@@ -13313,8 +13320,8 @@ button{font-family:inherit;}
 
 .popoverWrap{position:relative; flex-shrink:0;}
 .popover{
-  position:absolute; top:calc(100% + 8px); left:0; background:#fff; border-radius:16px; box-shadow:var(--shadow-lg);
-  border:1px solid var(--line-soft); padding:16px; width:240px; z-index:80; display:none;
+  position:absolute; top:calc(100% + 8px); right:0; background:#fff; border-radius:16px; box-shadow:var(--shadow-lg);
+  border:1px solid var(--line-soft); padding:16px; width:240px; max-width:calc(100vw - 32px); z-index:80; display:none;
 }
 .popover.show{display:block;}
 .popover h4{font-size:11.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint); margin-bottom:10px;}
@@ -13342,10 +13349,27 @@ button{font-family:inherit;}
   display:flex; align-items:center; justify-content:center; cursor:pointer; transition:.15s; flex-shrink:0;
 }
 .tgBtn:hover{transform:scale(1.08);}
-.tgBtn.disabled{opacity:.35; cursor:default; pointer-events:none;}
+.tgBtn.empty{background:var(--line-soft); color:var(--ink-faint);}
+.tgWrap{position:relative; flex-shrink:0;}
+.tgPopover{
+  position:absolute; top:calc(100% + 8px); left:0; background:#fff; border-radius:14px; box-shadow:var(--shadow-lg);
+  border:1px solid var(--line-soft); padding:12px; width:220px; max-width:calc(100vw - 32px); z-index:90; display:none;
+}
+.tgPopover.show{display:block;}
+.tgPopover input{
+  width:100%; padding:9px 12px; border-radius:9px; border:1.5px solid var(--line); font-size:13.5px;
+  outline:none; background:var(--bg-soft);
+}
+.tgPopover input:focus{border-color:var(--accent); background:#fff;}
 
 .colName{width:180px; flex-shrink:0; min-width:0;}
-.colDate{width:96px; flex-shrink:0; font-size:12px; color:var(--ink-faint); white-space:nowrap;}
+.colDate{width:112px; flex-shrink:0;}
+.colDate input[type=date]{
+  width:100%; padding:6px 8px; border-radius:8px; border:1.5px solid transparent; font-size:12px; color:var(--ink-faint);
+  background:transparent; font-family:inherit; cursor:pointer; transition:.12s;
+}
+.colDate input[type=date]:hover{background:var(--bg-soft); border-color:var(--line);}
+.colDate input[type=date]:focus{outline:none; background:#fff; border-color:var(--accent); color:var(--ink);}
 .colStatus{width:180px; flex-shrink:0; min-width:0;}
 .colTask{flex:1; min-width:0;}
 
@@ -13512,6 +13536,7 @@ function toggleAddTag(e){
 document.addEventListener('click', (e) => {
   if(!e.target.closest('#addTagWrap')) document.getElementById('addTagPopover').classList.remove('show');
   if(!e.target.closest('.tagBtnWrap')) document.querySelectorAll('.tagDropdown.show').forEach(d => d.classList.remove('show'));
+  if(!e.target.closest('.tgWrap')) document.querySelectorAll('.tgPopover.show').forEach(d => d.classList.remove('show'));
 });
 
 async function submitNewTag(){
@@ -13545,7 +13570,28 @@ function renderTagBar(){
     dot.className = 'dot';
     dot.style.background = c.ink;
     chip.appendChild(dot);
-    chip.appendChild(document.createTextNode(tag.name));
+    const label = document.createElement('span');
+    label.textContent = tag.name;
+    chip.appendChild(label);
+    const delBtn = document.createElement('button');
+    delBtn.className = 'tagDel';
+    delBtn.title = 'Удалить тег';
+    delBtn.innerHTML = '<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+    delBtn.onclick = async (e) => {
+      e.stopPropagation();
+      if(!confirm('Удалить тег «' + tag.name + '»? Он будет снят со всех лидов.')) return;
+      const r = await fetch('/api/sale', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'delete-tag', id:tag.id})});
+      const data = await r.json();
+      if(data.ok){
+        TAGS = data.tags;
+        ACTIVE_FILTERS.delete(tag.id);
+        LEADS.forEach(l => { if(l.tagId === tag.id) l.tagId = null; });
+        renderTagBar();
+        renderList();
+        toast('Тег удалён');
+      }
+    };
+    chip.appendChild(delBtn);
     chip.onclick = () => {
       if(ACTIVE_FILTERS.has(tag.id)) ACTIVE_FILTERS.delete(tag.id);
       else ACTIVE_FILTERS.add(tag.id);
@@ -13636,11 +13682,35 @@ function buildRow(lead){
   row.style.borderColor = lead.tagId ? c.border : 'var(--line-soft)';
 
   const tgUser = (lead.tgUsername || '').replace(/^@/, '');
+  const tgWrap = document.createElement('div');
+  tgWrap.className = 'tgWrap';
   const tgBtn = document.createElement('button');
-  tgBtn.className = 'tgBtn' + (tgUser ? '' : ' disabled');
-  tgBtn.innerHTML = '<svg width="17" height="17" viewBox="0 0 240 240" fill="none"><circle cx="120" cy="120" r="120" fill="#37aee2"/><path d="M52 122l122-47c6-2 11 1 9 10l-21 99c-2 8-7 10-14 6l-38-28-18 17c-2 2-4 4-8 4l3-40 73-66c3-3-1-4-4-2l-90 57-39-12c-8-3-8-8 2-11z" fill="#fff"/></svg>';
-  tgBtn.onclick = () => { if(tgUser) window.open('https://t.me/' + tgUser, '_blank'); };
-  row.appendChild(tgBtn);
+  tgBtn.className = 'tgBtn' + (tgUser ? '' : ' empty');
+  tgBtn.title = tgUser ? 'Открыть telegram' : 'Добавить ссылку на telegram';
+  tgBtn.innerHTML = '<svg width="17" height="17" viewBox="0 0 240 240" fill="none"><circle cx="120" cy="120" r="120" fill="' + (tgUser ? '#37aee2' : '#c9c2ba') + '"/><path d="M52 122l122-47c6-2 11 1 9 10l-21 99c-2 8-7 10-14 6l-38-28-18 17c-2 2-4 4-8 4l3-40 73-66c3-3-1-4-4-2l-90 57-39-12c-8-3-8-8 2-11z" fill="#fff"/></svg>';
+  const tgPop = document.createElement('div');
+  tgPop.className = 'tgPopover';
+  const tgInput = document.createElement('input');
+  tgInput.placeholder = '@username или ссылка';
+  tgInput.value = lead.tgUsername || '';
+  tgPop.appendChild(tgInput);
+  function saveTg(){
+    const val = tgInput.value.trim().replace(/^https?:\\/\\/t\\.me\\//i, '').replace(/^@/, '');
+    tgPop.classList.remove('show');
+    if(val !== (lead.tgUsername || '')) saveField(lead.id, 'tgUsername', val).then(renderList);
+  }
+  tgInput.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); saveTg(); } });
+  tgInput.addEventListener('blur', saveTg);
+  tgBtn.onclick = (e) => {
+    if(tgUser){ window.open('https://t.me/' + tgUser, '_blank'); return; }
+    e.stopPropagation();
+    document.querySelectorAll('.tgPopover.show').forEach(d => { if(d !== tgPop) d.classList.remove('show'); });
+    tgPop.classList.toggle('show');
+    if(tgPop.classList.contains('show')) setTimeout(() => tgInput.focus(), 0);
+  };
+  tgWrap.appendChild(tgBtn);
+  tgWrap.appendChild(tgPop);
+  row.appendChild(tgWrap);
 
   const colName = document.createElement('div');
   colName.className = 'colName';
@@ -13649,7 +13719,11 @@ function buildRow(lead){
 
   const colDate = document.createElement('div');
   colDate.className = 'colDate';
-  colDate.textContent = fmtDate(lead.createdAt);
+  const dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.value = lead.appDate || new Date(lead.createdAt).toISOString().slice(0, 10);
+  dateInput.addEventListener('change', () => saveField(lead.id, 'appDate', dateInput.value));
+  colDate.appendChild(dateInput);
   row.appendChild(colDate);
 
   const colStatus = document.createElement('div');
