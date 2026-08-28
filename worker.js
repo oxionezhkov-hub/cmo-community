@@ -29,6 +29,9 @@ export default {
     if (url.pathname === '/api/admin/avatar') return apiCRMAvatar(request, env, url);
     if (url.pathname === '/api/community') return apiCommunity(request, env, url);
     if (url.pathname === '/community') return serveCommunity();
+    if (url.pathname === '/api/feedback') return apiFeedback(request, env, url);
+    if (url.pathname === '/feedback/results') return serveFeedback(url, true);
+    if (url.pathname === '/feedback') return serveFeedback(url, false);
     if (url.pathname === '/api/sale') return apiSale(request, env, url);
     if (url.pathname === '/sale') return serveSale();
     if (url.pathname.startsWith("/api/admin/")) return apiAdminAction(request, env, url);
@@ -5030,6 +5033,468 @@ async function apiCommunity(request, env, url) {
 
 function serveCommunity() {
   return new Response(getCommunityHTML(), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+// ══════════════════════════════════════════════
+// FEEDBACK — опросник для участников комьюнити (feedback:<id> в KV)
+// ══════════════════════════════════════════════
+const FEEDBACK_FIELDS = ['role','roleOther','team','ai','marketing','automation','nps',
+  'ratings','problemSolved','urgentProblem','request','missingTools','missingInCore'];
+
+function feedbackAnsweredCount(a) {
+  if (!a) return 0;
+  let n = 0;
+  ['role','roleOther','team','problemSolved','urgentProblem','request','missingTools','missingInCore'].forEach(f => {
+    if (a[f] !== undefined && a[f] !== null && String(a[f]).trim() !== '') n++;
+  });
+  ['ai','marketing','automation','nps'].forEach(f => {
+    if (a[f] !== undefined && a[f] !== null && a[f] !== '') n++;
+  });
+  if (a.ratings && typeof a.ratings === 'object') {
+    n += Object.values(a.ratings).filter(v => v !== undefined && v !== null && v !== '').length;
+  }
+  return n;
+}
+
+async function apiFeedback(request, env, url) {
+  if (request.method === 'GET') {
+    const u = url.searchParams.get('u');
+    if (u) {
+      const a = (await env.KV.get(`feedback:${u}`, 'json')) || null;
+      const answered = feedbackAnsweredCount(a);
+      return jsonResp({ ok: true, answers: a || {}, answered, hasAnswered: answered > 0 });
+    }
+    // Bulk status list — admin use only (community page dashboard)
+    const auth = request.headers.get('Authorization') || '';
+    if (!auth.includes('admin_session_' + ADMIN_PASSWORD)) return jsonResp({ error: 'Unauthorized' }, 401);
+    const keys = await env.KV.list({ prefix: 'feedback:' });
+    const entries = await Promise.all(keys.keys.map(async k => {
+      const a = await env.KV.get(k.name, 'json');
+      return [k.name.replace('feedback:', ''), feedbackAnsweredCount(a) > 0];
+    }));
+    const status = {};
+    entries.forEach(([id, has]) => { status[id] = has; });
+    return jsonResp({ ok: true, status });
+  }
+
+  if (request.method !== 'POST') return jsonResp({ error: 'Not found' }, 404);
+
+  const body = await request.json();
+  const u = body.u || body.id;
+  if (!u) return jsonResp({ ok: false, error: 'Не указан пользователь' }, 400);
+
+  const existing = (await env.KV.get(`feedback:${u}`, 'json')) || {};
+  const patch = body.patch || {};
+  FEEDBACK_FIELDS.forEach(f => {
+    if (patch[f] !== undefined) {
+      if (f === 'ratings' && typeof patch.ratings === 'object' && patch.ratings) {
+        existing.ratings = Object.assign({}, existing.ratings || {}, patch.ratings);
+      } else {
+        existing[f] = patch[f];
+      }
+    }
+  });
+  existing.updatedAt = Date.now();
+  existing.answeredCount = feedbackAnsweredCount(existing);
+  await env.KV.put(`feedback:${u}`, JSON.stringify(existing));
+  return jsonResp({ ok: true, answers: existing, answered: existing.answeredCount });
+}
+
+function serveFeedback(url, forceResults) {
+  return new Response(getFeedbackHTML(forceResults), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+function getFeedbackHTML(forceResults) {
+  return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Обратная связь · CMO Ядро</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f2ee; --bg-soft:#fbfaf8; --panel:#ffffff; --ink:#181614; --ink-soft:#6b6560; --ink-faint:#a29c96;
+  --line:#e8e3dc; --line-soft:#f0ece5; --accent:#ff5a36; --accent-soft:#fff0ea; --accent-ink:#c23f20;
+  --green:#1f9d64; --green-soft:#e7f7ee; --amber:#c98a1a; --amber-soft:#fdf3e0; --red:#e0453a; --red-soft:#fdeceb;
+  --shadow-sm:0 1px 2px rgba(24,22,20,.05); --shadow-md:0 10px 30px -12px rgba(24,22,20,.18); --shadow-lg:0 30px 80px -20px rgba(24,22,20,.35);
+  --radius:18px;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{margin:0; font-family:'Manrope',-apple-system,BlinkMacSystemFont,sans-serif; background:linear-gradient(160deg,var(--bg) 0%, #efe9df 100%); color:var(--ink); min-height:100vh; -webkit-font-smoothing:antialiased;}
+h1,h2,h3{font-family:'Unbounded',sans-serif; margin:0; letter-spacing:-0.01em;}
+button,input,textarea,select{font-family:inherit;}
+.wrap{max-width:640px; margin:0 auto; padding:22px 18px 80px;}
+
+.vpnNote{
+  display:flex; align-items:center; gap:9px; background:var(--amber-soft); border:1px solid #f0d9a8; color:#8a6412;
+  font-size:12.5px; font-weight:600; padding:10px 14px; border-radius:12px; margin-bottom:16px;
+}
+.vpnNote svg{flex-shrink:0;}
+
+.topRow{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px;}
+.brand{display:flex; align-items:center; gap:10px;}
+.brand .badge{width:38px; height:38px; border-radius:11px; background:linear-gradient(135deg,var(--accent),#ff8a5b); display:flex; align-items:center; justify-content:center; font-size:17px; color:#fff; box-shadow:0 8px 20px -8px rgba(255,90,54,.55); flex-shrink:0;}
+.brand .t{font-family:'Unbounded',sans-serif; font-size:14.5px; font-weight:700;}
+.saveState{display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700; color:var(--ink-faint); opacity:0; transition:.2s;}
+.saveState.show{opacity:1;}
+.saveState.pending{color:var(--amber);}
+.saveState.saved{color:var(--green);}
+.saveState .dot{width:7px; height:7px; border-radius:50%; background:currentColor;}
+.saveState.pending .dot{animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+
+.progressBar{height:8px; border-radius:5px; background:var(--line-soft); overflow:hidden; margin-bottom:22px;}
+.progressBar .fill{height:100%; background:linear-gradient(90deg,var(--accent),#ff8a5b); border-radius:5px; transition:width .3s;}
+.stepsLabel{display:flex; justify-content:space-between; font-size:11px; color:var(--ink-faint); font-weight:700; margin:-14px 0 20px; text-transform:uppercase; letter-spacing:.04em;}
+
+.card{background:var(--panel); border-radius:var(--radius); padding:26px 22px; box-shadow:var(--shadow-md); border:1px solid var(--line-soft); margin-bottom:16px;}
+.encourage{font-size:14px; color:var(--ink-soft); line-height:1.5; margin-bottom:22px; background:var(--accent-soft); border-radius:13px; padding:14px 16px; border:1px solid #ffd9c8;}
+.encourage b{color:var(--accent-ink);}
+h2.pageTitle{font-size:19px; margin-bottom:4px;}
+
+.field{margin-bottom:24px;}
+.field:last-child{margin-bottom:0;}
+.field label.q{display:block; font-weight:700; font-size:14px; margin-bottom:10px; line-height:1.4;}
+.field .hint{font-weight:500; color:var(--ink-faint); font-size:12px; margin-top:6px;}
+
+.radioGroup{display:flex; flex-direction:column; gap:8px;}
+.radioOpt{display:flex; align-items:center; gap:10px; padding:11px 14px; border:1.5px solid var(--line); border-radius:12px; cursor:pointer; transition:.15s; font-size:13.5px; font-weight:600;}
+.radioOpt:hover{border-color:var(--accent); background:var(--accent-soft);}
+.radioOpt.checked{border-color:var(--accent); background:var(--accent-soft); color:var(--accent-ink);}
+.radioOpt input{accent-color:var(--accent); width:16px; height:16px; flex-shrink:0;}
+
+input[type=text], textarea{
+  width:100%; padding:12px 14px; border-radius:12px; border:1.5px solid var(--line); font-size:13.5px; outline:none;
+  background:var(--bg-soft); transition:.15s; resize:vertical;
+}
+input[type=text]:focus, textarea:focus{border-color:var(--accent); background:#fff;}
+textarea{min-height:84px; line-height:1.5;}
+
+.sliderWrap{margin-bottom:6px;}
+.sliderTop{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;}
+.sliderVal{font-family:'Unbounded',sans-serif; font-weight:700; font-size:15px; color:var(--accent-ink); background:var(--accent-soft); border-radius:8px; padding:2px 10px; min-width:28px; text-align:center;}
+input[type=range]{
+  -webkit-appearance:none; width:100%; height:6px; border-radius:4px; background:var(--line); outline:none; cursor:pointer;
+}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:22px; height:22px; border-radius:50%; background:var(--accent); border:3px solid #fff; box-shadow:0 2px 8px rgba(0,0,0,.25); cursor:pointer;}
+input[type=range]::-moz-range-thumb{width:22px; height:22px; border-radius:50%; background:var(--accent); border:3px solid #fff; box-shadow:0 2px 8px rgba(0,0,0,.25); cursor:pointer;}
+.sliderScale{display:flex; justify-content:space-between; font-size:10.5px; color:var(--ink-faint); margin-top:4px;}
+
+.ratingRow{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid var(--line-soft);}
+.ratingRow:last-child{border-bottom:none;}
+.ratingRow .rLabel{font-size:13px; font-weight:600; flex:1;}
+.ratingRow .rSlider{flex:1; max-width:180px; display:flex; align-items:center; gap:8px;}
+.ratingRow .rSlider input{flex:1;}
+.ratingRow .rVal{font-family:'Unbounded',sans-serif; font-weight:700; font-size:13px; color:var(--accent-ink); min-width:16px; text-align:center;}
+
+.navRow{display:flex; gap:10px; margin-top:18px;}
+.btn{display:inline-flex; align-items:center; justify-content:center; gap:7px; padding:13px 22px; border-radius:13px; border:1.5px solid var(--line); background:#fff; color:var(--ink); font-size:14px; font-weight:700; cursor:pointer; transition:.15s; flex:1;}
+.btn:hover{border-color:var(--ink); transform:translateY(-1px);}
+.btn.primary{background:var(--ink); color:#fff; border-color:var(--ink);}
+.btn.primary:hover{background:#000;}
+.btn.accent{background:var(--accent); color:#fff; border-color:var(--accent); box-shadow:0 8px 20px -8px rgba(255,90,54,.6);}
+.btn.accent:hover{background:var(--accent-ink); border-color:var(--accent-ink);}
+
+.thankYou{text-align:center; padding:40px 20px;}
+.catBox{font-size:80px; margin-bottom:14px; line-height:1;}
+.thankYou h2{font-size:22px; margin-bottom:10px;}
+.thankYou p{color:var(--ink-soft); font-size:14px; line-height:1.6; max-width:420px; margin:0 auto;}
+
+.resultsView .field{margin-bottom:18px;}
+.resultsView .ansBox{background:var(--bg-soft); border:1px solid var(--line-soft); border-radius:12px; padding:12px 14px; font-size:13.5px; color:var(--ink); white-space:pre-wrap;}
+.resultsView .ansBox.empty{color:var(--ink-faint); font-style:italic;}
+
+.errScreen{max-width:420px; margin:80px auto; text-align:center; color:var(--ink-soft); font-size:14px;}
+</style>
+</head>
+<body>
+<div class="wrap" id="wrap">Загрузка…</div>
+<script>
+const params = new URLSearchParams(location.search);
+const UID = params.get('u') || '';
+const IS_RESULTS = ${forceResults ? 'true' : "params.get('view') === 'results'"};
+
+const ROLES = ['Предприниматель','Директор по маркетингу','Маркетолог','Руководитель проекта','Специалист по продажам','Другое'];
+const RATING_ITEMS = [
+  ['workshops','Воркшопы по субботам'],
+  ['forums','Форум-группы по четвергам'],
+  ['streams','Эфиры по пятницам'],
+  ['chat','Общение в чате'],
+  ['experts','Поддержка от экспертов'],
+  ['kb','База знаний'],
+  ['networking','Нетворкинг с другими участниками']
+];
+
+let ANSWERS = {};
+let STEP = 1;
+let SAVE_TIMER = null;
+let SAVING = false;
+
+function lsKey(){ return 'cmo_feedback_' + UID; }
+function loadLocal(){
+  try{ return JSON.parse(localStorage.getItem(lsKey()) || '{}'); }catch(e){ return {}; }
+}
+function saveLocal(a){
+  try{ localStorage.setItem(lsKey(), JSON.stringify(a)); }catch(e){}
+}
+
+function setSaveState(state){
+  let el = document.getElementById('saveState');
+  if(!el) return;
+  el.className = 'saveState show ' + state;
+  el.innerHTML = state === 'pending'
+    ? '<span class="dot"></span> сохраняю…'
+    : (state === 'saved' ? '<span class="dot"></span> сохранено' : '');
+  if(state === 'saved'){
+    clearTimeout(el._t);
+    el._t = setTimeout(()=>{ el.classList.remove('show'); }, 1400);
+  }
+}
+
+function queueSave(patch){
+  Object.assign(ANSWERS, patch);
+  saveLocal(ANSWERS);
+  setSaveState('pending');
+  clearTimeout(SAVE_TIMER);
+  SAVE_TIMER = setTimeout(()=> doSave(patch), 600);
+}
+
+async function doSave(){
+  if(!UID) return;
+  SAVING = true;
+  try{
+    await fetch('/api/feedback', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ u: UID, patch: ANSWERS })
+    });
+    setSaveState('saved');
+  }catch(e){
+    setSaveState('pending');
+  }
+  SAVING = false;
+}
+
+async function boot(){
+  if(!UID){
+    document.getElementById('wrap').innerHTML = '<div class="errScreen">Ссылка неполная — не указан участник. Попросите новую ссылку у команды CMO Ядро.</div>';
+    return;
+  }
+  const local = loadLocal();
+  try{
+    const r = await fetch('/api/feedback?u=' + encodeURIComponent(UID));
+    const d = await r.json();
+    ANSWERS = Object.assign({}, local, d.answers || {});
+  }catch(e){
+    ANSWERS = local;
+  }
+  if(IS_RESULTS){ renderResults(); return; }
+  render();
+}
+
+function fieldChanged(name, value){
+  const patch = {}; patch[name] = value;
+  queueSave(patch);
+}
+
+function ratingChanged(key, value){
+  ANSWERS.ratings = ANSWERS.ratings || {};
+  ANSWERS.ratings[key] = Number(value);
+  saveLocal(ANSWERS);
+  setSaveState('pending');
+  clearTimeout(SAVE_TIMER);
+  SAVE_TIMER = setTimeout(()=> doSave(), 600);
+}
+
+function progressPct(){ return Math.round((STEP-1)/3*100) + (STEP>3? 0:0); }
+
+function shell(inner, step){
+  const pct = step > 3 ? 100 : Math.round((step-1)/3*100 + 33.34*0.15);
+  const pctFixed = step===1?4:(step===2?37:70);
+  return \`
+    <div class="topRow">
+      <div class="brand"><div class="badge">🌱</div><div class="t">CMO Ядро — обратная связь</div></div>
+      <div class="saveState" id="saveState"></div>
+    </div>
+    <div class="vpnNote">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M12 2l8 4v6c0 5-3.4 8.5-8 10-4.6-1.5-8-5-8-10V6l8-4z"/></svg>
+      Для сохранения ответов должен быть включён VPN
+    </div>
+    <div class="progressBar"><div class="fill" style="width:\${step>3?100:pctFixed}%"></div></div>
+    \${inner}
+  \`;
+}
+
+function render(){
+  if(STEP > 3){ renderThanks(); return; }
+  const wrap = document.getElementById('wrap');
+  let inner = '';
+  if(STEP === 1) inner = page1();
+  else if(STEP === 2) inner = page2();
+  else inner = page3();
+  wrap.innerHTML = shell(inner, STEP);
+  attachHandlers();
+}
+
+function page1(){
+  return \`
+  <div class="card">
+    <div class="encourage">Привет! 👋 Эта анкета поможет нам сделать <b>CMO Ядро</b> ещё полезнее именно для вас. Все вопросы <b>необязательны</b> — отвечайте на то, что откликается, это займёт пару минут.</div>
+    <h2 class="pageTitle">О вас</h2>
+    <div class="field">
+      <label class="q">Какая у вас роль?</label>
+      <div class="radioGroup" id="roleGroup">
+        \${ROLES.map(r => \`<label class="radioOpt \${ANSWERS.role===r?'checked':''}"><input type="radio" name="role" value="\${r}" \${ANSWERS.role===r?'checked':''}> \${r}</label>\`).join('')}
+      </div>
+      <input type="text" id="roleOtherInput" placeholder="Уточните вашу роль" value="\${(ANSWERS.roleOther||'').replace(/"/g,'&quot;')}" style="margin-top:10px; \${ANSWERS.role==='Другое'?'':'display:none'}">
+    </div>
+    <div class="field">
+      <label class="q">Какая у вас команда?</label>
+      <input type="text" id="teamInput" placeholder="Например: я один / 2 маркетолога + дизайнер…" value="\${(ANSWERS.team||'').replace(/"/g,'&quot;')}">
+    </div>
+    \${slider('ai','Насколько глубоко вы погружены в искусственный интеллект?', ANSWERS.ai)}
+    \${slider('marketing','Насколько глубоко вы погружены в маркетинг?', ANSWERS.marketing)}
+    \${slider('automation','Насколько глубоко вы погружены в автоматизацию?', ANSWERS.automation)}
+  </div>
+  <div class="navRow"><button class="btn primary" onclick="goStep(2)">Далее →</button></div>
+  \`;
+}
+
+function slider(name, label, val){
+  const v = (val===undefined || val===null || val==='') ? 5 : val;
+  return \`
+    <div class="field">
+      <label class="q">\${label}</label>
+      <div class="sliderWrap">
+        <div class="sliderTop"><span class="sliderVal" id="\${name}Val">\${v}</span></div>
+        <input type="range" min="0" max="10" step="1" value="\${v}" id="\${name}Slider" oninput="document.getElementById('\${name}Val').textContent=this.value" onchange="fieldChanged('\${name}', Number(this.value))">
+        <div class="sliderScale"><span>0 — только начинаю</span><span>10 — эксперт</span></div>
+      </div>
+    </div>
+  \`;
+}
+
+function page2(){
+  const nps = (ANSWERS.nps===undefined||ANSWERS.nps===null||ANSWERS.nps==='') ? 5 : ANSWERS.nps;
+  return \`
+  <div class="card">
+    <div class="encourage">Вы уже часть <b>CMO Ядро</b> — расскажите, что заходит лучше всего. Это поможет нам усилить именно то, что ценно для вас.</div>
+    <h2 class="pageTitle">Ваша оценка</h2>
+    <div class="field">
+      <label class="q">Насколько вероятно, что вы порекомендуете CMO Ядро коллеге?</label>
+      <div class="sliderWrap">
+        <div class="sliderTop"><span class="sliderVal" id="npsVal">\${nps}</span></div>
+        <input type="range" min="0" max="10" step="1" value="\${nps}" oninput="document.getElementById('npsVal').textContent=this.value" onchange="fieldChanged('nps', Number(this.value))">
+        <div class="sliderScale"><span>0 — точно нет</span><span>10 — точно да</span></div>
+      </div>
+    </div>
+    <div class="field">
+      <label class="q">Оцените, насколько полезен для вас каждый формат (1–5)</label>
+      \${RATING_ITEMS.map(([k,label]) => {
+        const v = (ANSWERS.ratings && ANSWERS.ratings[k]!==undefined && ANSWERS.ratings[k]!=='') ? ANSWERS.ratings[k] : 3;
+        return \`<div class="ratingRow">
+          <div class="rLabel">\${label}</div>
+          <div class="rSlider">
+            <input type="range" min="1" max="5" step="1" value="\${v}" oninput="document.getElementById('rVal_\${k}').textContent=this.value" onchange="ratingChanged('\${k}', this.value)">
+            <span class="rVal" id="rVal_\${k}">\${v}</span>
+          </div>
+        </div>\`;
+      }).join('')}
+    </div>
+  </div>
+  <div class="navRow"><button class="btn" onclick="goStep(1)">← Назад</button><button class="btn primary" onclick="goStep(3)">Далее →</button></div>
+  \`;
+}
+
+function page3(){
+  const ta = (name, ph) => \`<textarea id="\${name}Input" placeholder="\${ph}" oninput="">\${(ANSWERS[name]||'')}</textarea>\`;
+  return \`
+  <div class="card">
+    <div class="encourage">Последний шаг 🙌 Ваши слова помогают нам видеть, что действительно важно. Пишите свободно, коротко или подробно — как удобно.</div>
+    <h2 class="pageTitle">В свободной форме</h2>
+    <div class="field"><label class="q">Какую проблему вы недавно решили с нашей помощью?</label>\${ta('problemSolved','Например: настроили воронку в CRM…')}</div>
+    <div class="field"><label class="q">Какая у вас сейчас самая горящая проблема в проекте?</label>\${ta('urgentProblem','')}</div>
+    <div class="field"><label class="q">В чём вам нужна наша помощь? Какой у вас запрос к нам?</label>\${ta('request','')}</div>
+    <div class="field"><label class="q">Каких инструментов вам не хватает в работе?</label>\${ta('missingTools','')}</div>
+    <div class="field"><label class="q">Чего вам не хватает в CMO Ядро?</label>\${ta('missingInCore','')}</div>
+  </div>
+  <div class="navRow"><button class="btn" onclick="goStep(2)">← Назад</button><button class="btn accent" onclick="finishSurvey()">Завершить ✓</button></div>
+  \`;
+}
+
+function attachHandlers(){
+  document.querySelectorAll('#roleGroup input[type=radio]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      document.querySelectorAll('#roleGroup .radioOpt').forEach(o=>o.classList.remove('checked'));
+      inp.closest('.radioOpt').classList.add('checked');
+      const otherInput = document.getElementById('roleOtherInput');
+      if(inp.value === 'Другое'){ if(otherInput) otherInput.style.display=''; }
+      else { if(otherInput) otherInput.style.display='none'; }
+      fieldChanged('role', inp.value);
+    });
+  });
+  const roleOther = document.getElementById('roleOtherInput');
+  if(roleOther) roleOther.addEventListener('input', () => fieldChanged('roleOther', roleOther.value));
+  const team = document.getElementById('teamInput');
+  if(team) team.addEventListener('input', () => fieldChanged('team', team.value));
+  ['problemSolved','urgentProblem','request','missingTools','missingInCore'].forEach(name => {
+    const el = document.getElementById(name+'Input');
+    if(el) el.addEventListener('input', () => fieldChanged(name, el.value));
+  });
+}
+
+function goStep(n){ STEP = n; window.scrollTo(0,0); render(); }
+
+function finishSurvey(){
+  clearTimeout(SAVE_TIMER);
+  doSave().then(()=>{ STEP = 4; render(); });
+}
+
+function renderThanks(){
+  document.getElementById('wrap').innerHTML = \`
+    <div class="topRow"><div class="brand"><div class="badge">🌱</div><div class="t">CMO Ядро — обратная связь</div></div></div>
+    <div class="card thankYou">
+      <div class="catBox">🐱</div>
+      <h2>Спасибо большое!</h2>
+      <p>Ваши ответы сохранены. Это правда помогает нам делать CMO Ядро лучше для вас и всего комьюнити. Мур-мур и до встречи на воркшопе! 💛</p>
+    </div>
+  \`;
+}
+
+function renderResults(){
+  const a = ANSWERS || {};
+  const box = (v) => v ? \`<div class="ansBox">\${escapeHtml(String(v))}</div>\` : '<div class="ansBox empty">Нет ответа</div>';
+  const ratingsHtml = RATING_ITEMS.map(([k,label]) => {
+    const v = a.ratings && a.ratings[k]!==undefined ? a.ratings[k] : null;
+    return \`<div class="ratingRow"><div class="rLabel">\${label}</div><div class="rVal">\${v!==null?v+'/5':'—'}</div></div>\`;
+  }).join('');
+  document.getElementById('wrap').innerHTML = \`
+    <div class="topRow"><div class="brand"><div class="badge">📋</div><div class="t">Ответы участника</div></div></div>
+    <div class="card resultsView">
+      <div class="field"><label class="q">Роль</label>\${box(a.role==='Другое'? (a.roleOther||'Другое') : a.role)}</div>
+      <div class="field"><label class="q">Команда</label>\${box(a.team)}</div>
+      <div class="field"><label class="q">Погружение в AI / маркетинг / автоматизацию</label>\${box((a.ai??'—')+' / '+(a.marketing??'—')+' / '+(a.automation??'—'))}</div>
+      <div class="field"><label class="q">NPS (рекомендация CMO Ядро)</label>\${box(a.nps!==undefined?a.nps+'/10':'')}</div>
+      <div class="field"><label class="q">Оценки форматов</label>\${ratingsHtml}</div>
+      <div class="field"><label class="q">Какую проблему решили с нашей помощью?</label>\${box(a.problemSolved)}</div>
+      <div class="field"><label class="q">Самая горящая проблема</label>\${box(a.urgentProblem)}</div>
+      <div class="field"><label class="q">Запрос к нам</label>\${box(a.request)}</div>
+      <div class="field"><label class="q">Каких инструментов не хватает</label>\${box(a.missingTools)}</div>
+      <div class="field"><label class="q">Чего не хватает в CMO Ядро</label>\${box(a.missingInCore)}</div>
+    </div>
+  \`;
+}
+
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+boot();
+</script>
+</body>
+</html>`;
 }
 
 // ══════════════════════════════════════════════
@@ -12245,6 +12710,8 @@ tbody tr.rowProblem{background:var(--red-soft);}
 .iconBtn:hover{background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink); transform:scale(1.06);}
 .iconBtn.copied{background:var(--green-soft); border-color:var(--green); color:var(--green);}
 .iconGroup{display:flex; gap:6px;}
+.iconBtn.fbYellow{background:var(--amber-soft); border-color:var(--amber); color:var(--amber);}
+.iconBtn.fbGreen{background:var(--green-soft); border-color:var(--green); color:var(--green);}
 
 .nameCell{font-weight:700;}
 .faint{color:var(--ink-faint); font-weight:500;}
@@ -12595,6 +13062,7 @@ tbody tr.rowProblem{background:var(--red-soft);}
 <script>
 let ADMIN_TOKEN = localStorage.getItem('communityToken') || '';
 let PEOPLE = [];
+let FEEDBACK_STATUS = {};
 let CURRENT = null;
 let EXPANDED = localStorage.getItem('communityExpanded') === '1';
 let saveFieldTimer = null;
@@ -12649,6 +13117,28 @@ async function loadPeople(){
   const d = await r.json();
   PEOPLE = d.people || [];
   renderTable();
+  loadFeedbackStatus();
+}
+
+async function loadFeedbackStatus(){
+  try{
+    const r = await fetch('/api/feedback', {headers: authHeaders()});
+    const d = await r.json();
+    FEEDBACK_STATUS = d.status || {};
+    renderTable();
+  }catch(e){}
+}
+
+async function feedbackAction(btn, id){
+  const url = location.origin + '/feedback?u=' + id;
+  if(FEEDBACK_STATUS[id]){
+    window.open(location.origin + '/feedback/results?u=' + id, '_blank');
+    return;
+  }
+  try{ await navigator.clipboard.writeText(url); }catch(e){}
+  showToast('Ссылка на опросник скопирована');
+  btn.classList.add('copied');
+  setTimeout(()=>btn.classList.remove('copied'), 1200);
 }
 
 function logout(){
@@ -12744,6 +13234,9 @@ function renderTable(){
         (tgHref ? '<a class="iconBtn" title="Открыть telegram" href="'+tgHref+'" target="_blank" rel="noopener">' +
           '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M21.05 3.6L2.9 10.7c-1.24.5-1.23 1.2-.23 1.5l4.65 1.45 1.8 5.5c.22.6.37.85.76.85.3 0 .43-.14.6-.3l1.62-1.57 3.37 2.5c.62.34 1.06.16 1.22-.57l2.2-10.4c.25-.9-.34-1.3-1.34-.86z"/></svg>' +
         '</a>' : '<span class="iconBtn" style="opacity:.3; cursor:default;"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M21.05 3.6L2.9 10.7c-1.24.5-1.23 1.2-.23 1.5l4.65 1.45 1.8 5.5c.22.6.37.85.76.85.3 0 .43-.14.6-.3l1.62-1.57 3.37 2.5c.62.34 1.06.16 1.22-.57l2.2-10.4c.25-.9-.34-1.3-1.34-.86z"/></svg></span>') +
+        '<button class="iconBtn '+(FEEDBACK_STATUS[p.id] ? 'fbGreen' : 'fbYellow')+'" title="'+(FEEDBACK_STATUS[p.id] ? 'Смотреть ответы опросника' : 'Скопировать ссылку на опросник')+'" onclick="feedbackAction(this,\\''+p.id+'\\')">'+
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>'+
+        '</button>' +
       '</div></td>';
     const nameHtml = '<td class="nameCol"><div class="nameCell">'+(p.name||'Без имени')+'</div></td>';
     let rowClass = 'pRow';
