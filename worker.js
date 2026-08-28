@@ -4940,7 +4940,7 @@ async function apiCommunity(request, env, url) {
   if (action === 'update-fields') {
     const p = await getPerson(body.id);
     if (!p) return jsonResp({ ok: false, error: 'Не найдено' }, 404);
-    ['name', 'telegram', 'tgUsername', 'email'].forEach(f => {
+    ['name', 'telegram', 'tgUsername', 'email', 'accessStatus', 'accessNote'].forEach(f => {
       if (body[f] !== undefined) p[f] = body[f];
     });
     await savePerson(p);
@@ -12074,6 +12074,9 @@ tbody tr.pRow td{padding:13px 14px; font-size:13.5px; border-top:1px solid var(-
 tbody tr.pRow td:first-child{border-left:1px solid var(--line-soft); border-radius:13px 0 0 13px;}
 tbody tr.pRow td:last-child{border-right:1px solid var(--line-soft); border-radius:0 13px 13px 0;}
 td.nameCol, td.dateCol, td.ratingCol{white-space:nowrap;}
+tbody tr.rowPaused{background:var(--amber-soft);}
+tbody tr.rowProblem{background:var(--red-soft);}
+.statusNoteCell{font-weight:600; color:var(--ink);}
 
 .iconBtn{
   width:30px; height:30px; border-radius:9px; border:1px solid var(--line); background:var(--bg-soft);
@@ -12113,16 +12116,18 @@ td.nameCol, td.dateCol, td.ratingCol{white-space:nowrap;}
 @media (max-width:860px){ #panel{width:100%; max-width:none;} }
 
 .panelHead{
-  display:flex; align-items:center; gap:16px; padding:20px 24px; border-bottom:1px solid var(--line); flex-shrink:0; background:var(--panel);
+  display:flex; align-items:center; gap:12px; padding:20px 24px; border-bottom:1px solid var(--line); flex-shrink:0; background:var(--panel);
 }
-.panelHead h2{font-size:19px;}
+.panelHead .phInfo{flex:1; min-width:0;}
+.panelHead h2{font-size:19px; display:flex; align-items:baseline; gap:6px; flex-wrap:wrap;}
+.panelHead .phTotal{font-family:'Manrope',sans-serif; font-size:14px; font-weight:600; color:var(--ink-faint);}
 .panelHead .meta{font-size:12.5px; color:var(--ink-faint); margin-top:2px;}
+#editPencilBtn.toggled{background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink);}
 .panelBody{flex:1; display:flex; overflow:hidden;}
-@media (max-width:860px){ .panelBody{flex-direction:column; overflow:auto;} }
+@media (max-width:860px){ .panelBody{flex-direction:column; overflow:auto; position:relative;} }
 .panelLeft{flex:1.3; overflow-y:auto; padding:22px 24px 60px;}
 @media (max-width:860px){ .panelLeft{padding:18px 16px 30px;} }
 .panelRight{flex:1; overflow-y:auto; padding:22px 24px 60px; border-left:1px solid var(--line); background:var(--panel);}
-@media (max-width:860px){ .panelRight{border-left:none; border-top:1px solid var(--line); padding:0;} }
 
 .section{background:var(--panel); border:1px solid var(--line-soft); border-radius:var(--radius); padding:18px 20px; margin-bottom:14px; box-shadow:var(--shadow-sm);}
 .section h3{font-size:12.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint); margin-bottom:12px; display:flex; align-items:center; justify-content:space-between;}
@@ -12136,12 +12141,16 @@ td.nameCol, td.dateCol, td.ratingCol{white-space:nowrap;}
 .field{margin-bottom:0;}
 .field.full{grid-column:1/-1;}
 
-.totalPaid{
-  display:flex; align-items:baseline; justify-content:space-between; padding:15px 18px; border-radius:14px;
-  background:linear-gradient(135deg,#1a1815,#2b2621); color:#fff; margin-bottom:14px;
+.statusBtns{display:flex; gap:8px;}
+.statusBtn{
+  flex:1; padding:9px 8px; border-radius:10px; border:1.5px solid var(--line); background:var(--bg-soft);
+  font-size:12.5px; font-weight:700; cursor:pointer; transition:.15s; color:var(--ink-soft);
 }
-.totalPaid .num{font-family:'Unbounded',sans-serif; font-size:22px; font-weight:700;}
-.totalPaid .lbl{font-size:11.5px; color:#c9c2ba; text-transform:uppercase; letter-spacing:.05em;}
+.statusBtn:hover{border-color:var(--ink);}
+.statusBtn.active{color:#fff; border-color:transparent;}
+.statusBtn[data-v=""].active{background:var(--green);}
+.statusBtn.paused.active{background:var(--amber);}
+.statusBtn.problem.active{background:var(--red);}
 
 /* custom date picker */
 .datePick{position:relative; flex:none;}
@@ -12201,7 +12210,7 @@ td.nameCol, td.dateCol, td.ratingCol{white-space:nowrap;}
 
 /* history */
 .histEmpty{text-align:center; color:var(--ink-faint); padding:30px 10px; font-size:13px;}
-.histItem{display:flex; gap:12px; padding:12px 0; border-bottom:1px solid var(--line-soft);}
+.histItem{display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--line-soft);}
 .histItem:last-child{border-bottom:none;}
 .histIcon{
   width:32px; height:32px; border-radius:9px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
@@ -12210,16 +12219,17 @@ td.nameCol, td.dateCol, td.ratingCol{white-space:nowrap;}
 .histIcon.request{background:#e7edfd; color:#3457c9;}
 .histIcon.note{background:var(--line-soft); color:var(--ink-soft);}
 .histIcon.payment{background:var(--green-soft); color:var(--green);}
-.histBody{flex:1; min-width:0;}
-.histTop{display:flex; align-items:center; justify-content:space-between; gap:8px;}
-.histTitle{font-weight:700; font-size:13.5px;}
+.histText{flex:1; min-width:0; font-size:13.5px; font-weight:700; word-break:break-word; white-space:pre-wrap;}
+.histRight{display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex-shrink:0;}
 .histDate{font-size:11px; color:var(--ink-faint); white-space:nowrap;}
-.histText{font-size:13px; color:var(--ink-soft); margin-top:3px; word-break:break-word; white-space:pre-wrap;}
-.histActions{display:flex; gap:12px; margin-top:4px;}
-.histDel{opacity:0; transition:.15s; cursor:pointer; color:var(--ink-faint); background:none; border:none; font-size:12px;}
-.histItem:hover .histDel{opacity:1;}
+.histActions{display:flex; gap:10px;}
+.histDel{cursor:pointer; color:var(--ink-faint); background:none; border:none; font-size:11.5px; transition:.15s;}
 .histDel:hover{color:var(--accent-ink);}
 .histActions .histDel:last-child:hover{color:var(--red);}
+
+.histEditItem{align-items:flex-start;}
+.histEditBody{flex:1; min-width:0;}
+.histEditBody .textInput{width:100%;}
 
 .closeX{
   width:36px; height:36px; border-radius:11px; border:1px solid var(--line); background:#fff; cursor:pointer;
@@ -12239,14 +12249,22 @@ td.nameCol, td.dateCol, td.ratingCol{white-space:nowrap;}
 
 .histToggle{display:none;}
 @media (max-width:860px){
+  .panelRight{
+    position:fixed; left:0; right:0; bottom:0; z-index:130; background:var(--panel);
+    border-radius:18px 18px 0 0; box-shadow:0 -12px 40px rgba(20,17,14,.25);
+    transform:translateY(calc(100% - 54px)); transition:transform .28s cubic-bezier(.2,.8,.2,1);
+    max-height:78vh; display:flex; flex-direction:column; padding:0; border-left:none; border-top:1px solid var(--line);
+  }
+  .panelRight.open{transform:translateY(0);}
   .histToggle{
     display:flex; width:100%; align-items:center; justify-content:space-between; padding:16px; background:var(--panel);
-    border:none; border-bottom:1px solid var(--line); font-family:'Unbounded',sans-serif; font-size:13px; font-weight:700; cursor:pointer;
+    border:none; border-radius:18px 18px 0 0; font-family:'Unbounded',sans-serif; font-size:13px; font-weight:700; cursor:pointer; flex-shrink:0;
   }
   .histToggle svg{transition:.2s;}
   .histToggle.open svg{transform:rotate(180deg);}
-  #historyWrap{display:none; padding:18px 16px 30px;}
-  #historyWrap.open{display:block;}
+  #historyWrap{overflow-y:auto; padding:0 16px 24px; flex:1;}
+  .historyTitleDesktop{display:none;}
+  .panelLeft{padding-bottom:90px;}
 }
 </style>
 </head>
@@ -12309,9 +12327,12 @@ td.nameCol, td.dateCol, td.ratingCol{white-space:nowrap;}
 <div id="overlay" onclick="closePanel()"></div>
 <div id="panel">
   <div class="panelHead">
-    <div>
-      <h2 id="pName">—</h2>
+    <div class="phInfo">
+      <h2><span id="pName">—</span><span class="phTotal" id="pHeaderTotal"></span></h2>
     </div>
+    <button class="iconBtn" id="editPencilBtn" title="Редактировать данные участника" onclick="toggleEditFields()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M17 3a2.83 2.83 0 014 4L7.5 20.5 2 22l1.5-5.5z"/></svg>
+    </button>
     <button class="closeX" onclick="closePanel()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6L6 18M6 6l12 12"/></svg>
     </button>
@@ -12319,7 +12340,7 @@ td.nameCol, td.dateCol, td.ratingCol{white-space:nowrap;}
   <div class="panelBody">
     <div class="panelLeft">
 
-      <div class="section">
+      <div class="section" id="editFieldsSection" style="display:none;">
         <h3>Данные участника</h3>
         <div class="fieldGrid">
           <div class="field"><label>Имя</label><input id="fName" oninput="scheduleFieldSave()"></div>
@@ -12329,12 +12350,21 @@ td.nameCol, td.dateCol, td.ratingCol{white-space:nowrap;}
         <div class="delRow"><button class="delPersonBtn" onclick="deletePerson()">Удалить участника</button></div>
       </div>
 
-      <div class="totalPaid">
-        <div>
-          <div class="lbl">Всего оплачено</div>
-          <div class="num" id="totalPaidNum">0 ₽</div>
+      <div class="section">
+        <h3>Статус доступа</h3>
+        <div class="statusBtns">
+          <button type="button" class="statusBtn" data-v="" onclick="pickAccessStatus('')">Активен</button>
+          <button type="button" class="statusBtn paused" data-v="paused" onclick="pickAccessStatus('paused')">Приостановлен</button>
+          <button type="button" class="statusBtn problem" data-v="problem" onclick="pickAccessStatus('problem')">Проблема</button>
+        </div>
+        <div class="inlineRow" style="margin-top:10px;">
+          <textarea id="statusNote" class="textInput" rows="2" placeholder="Причина приостановки / в чём проблема..."></textarea>
+        </div>
+        <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+          <button class="btn accent small" onclick="saveAccessStatus()">Сохранить статус</button>
         </div>
       </div>
+
       <div class="section">
         <h3>Оплата</h3>
         <div class="inlineRow">
@@ -12400,11 +12430,28 @@ let PEOPLE = [];
 let CURRENT = null;
 let EXPANDED = localStorage.getItem('communityExpanded') === '1';
 let saveFieldTimer = null;
-let editingEntries = {payment:null, rating:null, request:null, note:null};
+let historyEditing = null; // {kind, entryId}
+let selectedAccessStatus = '';
 
 document.addEventListener('keydown', (e) => {
-  if(e.key === 'Escape' && document.getElementById('panel').classList.contains('show')) closePanel();
+  if(e.key === 'Escape'){
+    if(document.getElementById('panel').classList.contains('show')){ closePanel(); return; }
+    const si = document.getElementById('searchInput');
+    if(si.value){ clearSearch(); }
+    si.blur();
+    return;
+  }
+  if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f'){
+    if(!document.getElementById('panel').classList.contains('show')){
+      e.preventDefault();
+      const si = document.getElementById('searchInput');
+      si.focus();
+      si.select();
+    }
+  }
 });
+
+function capitalize(s){ if(!s) return s; return s.charAt(0).toUpperCase()+s.slice(1); }
 
 function authHeaders(){ return {'Content-Type':'application/json','Authorization':'admin_session_'+ADMIN_TOKEN}; }
 
@@ -12521,22 +12568,33 @@ function renderTable(){
   }
 
   tbody.innerHTML = list.map(p => {
-    const rating = lastOf(p.ratings);
-    const request = lastOf(p.requests);
-    const note = lastOf(p.notes);
-    const payment = lastOf(p.payments);
     const tg = (p.telegram||'').trim();
     const tgHref = tg ? (tg.startsWith('http')? tg : 'https://t.me/'+tg.replace('@','')) : '';
-    return '<tr class="pRow" onclick="handleRowClick(event,\\''+p.id+'\\')">' +
-      '<td onclick="event.stopPropagation()"><div class="iconGroup">' +
+    const actionsHtml = '<td onclick="event.stopPropagation()"><div class="iconGroup">' +
         '<button class="iconBtn" title="Скопировать email" onclick="copyEmail(this,\\''+(p.email||'').replace(/'/g,"\\\\'")+'\\')">'+
           '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>'+
         '</button>' +
         (tgHref ? '<a class="iconBtn" title="Открыть telegram" href="'+tgHref+'" target="_blank" rel="noopener">' +
           '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M21.05 3.6L2.9 10.7c-1.24.5-1.23 1.2-.23 1.5l4.65 1.45 1.8 5.5c.22.6.37.85.76.85.3 0 .43-.14.6-.3l1.62-1.57 3.37 2.5c.62.34 1.06.16 1.22-.57l2.2-10.4c.25-.9-.34-1.3-1.34-.86z"/></svg>' +
         '</a>' : '<span class="iconBtn" style="opacity:.3; cursor:default;"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M21.05 3.6L2.9 10.7c-1.24.5-1.23 1.2-.23 1.5l4.65 1.45 1.8 5.5c.22.6.37.85.76.85.3 0 .43-.14.6-.3l1.62-1.57 3.37 2.5c.62.34 1.06.16 1.22-.57l2.2-10.4c.25-.9-.34-1.3-1.34-.86z"/></svg></span>') +
-      '</div></td>' +
-      '<td class="nameCol"><div class="nameCell">'+(p.name||'Без имени')+'</div></td>' +
+      '</div></td>';
+    const nameHtml = '<td class="nameCol"><div class="nameCell">'+(p.name||'Без имени')+'</div></td>';
+    let rowClass = 'pRow';
+    if(p.accessStatus === 'paused') rowClass += ' rowPaused';
+    else if(p.accessStatus === 'problem') rowClass += ' rowProblem';
+
+    if(p.accessStatus === 'paused' || p.accessStatus === 'problem'){
+      const label = p.accessStatus === 'paused' ? '⏸ Приостановлен: ' : '⚠️ Проблема: ';
+      return '<tr class="'+rowClass+'" onclick="handleRowClick(event,\\''+p.id+'\\')">' + actionsHtml + nameHtml +
+        '<td colspan="6" class="statusNoteCell">'+label+escapeHtml(p.accessNote||'—')+'</td>' +
+      '</tr>';
+    }
+
+    const rating = lastOf(p.ratings);
+    const request = lastOf(p.requests);
+    const note = lastOf(p.notes);
+    const payment = lastOf(p.payments);
+    return '<tr class="'+rowClass+'" onclick="handleRowClick(event,\\''+p.id+'\\')">' + actionsHtml + nameHtml +
       '<td class="hidden-col expandCol faint">'+(p.tgUsername||tg||'—')+'</td>' +
       '<td class="hidden-col expandCol faint">'+(p.email||'—')+'</td>' +
       '<td class="dateCol mono">'+(payment? fmtDate(payment.date) : '—')+'</td>' +
@@ -12573,9 +12631,10 @@ function showToast(msg){
 
 /* ───── Panel ───── */
 function openNewPerson(){
-  CURRENT = { id:null, name:'', telegram:'', tgUsername:'', email:'', ratings:[], requests:[], notes:[], payments:[] };
+  CURRENT = { id:null, name:'', telegram:'', tgUsername:'', email:'', ratings:[], requests:[], notes:[], payments:[], accessStatus:'', accessNote:'' };
   fillPanel();
   showPanel();
+  toggleEditFields();
   document.getElementById('fName').focus();
 }
 
@@ -12590,35 +12649,57 @@ function showPanel(){
   document.getElementById('overlay').classList.add('show');
   document.getElementById('panel').classList.add('show');
   document.getElementById('histToggleBtn').classList.remove('open');
-  document.getElementById('historyWrap').classList.remove('open');
-  clearEditing();
+  document.querySelector('.panelRight').classList.remove('open');
+  document.getElementById('editFieldsSection').style.display = 'none';
+  document.getElementById('editPencilBtn').classList.remove('toggled');
+  historyEditing = null;
 }
 function closePanel(){
   document.getElementById('overlay').classList.remove('show');
   document.getElementById('panel').classList.remove('show');
   CURRENT = null;
-  clearEditing();
+  historyEditing = null;
 }
-function clearEditing(){
-  editingEntries = {payment:null, rating:null, request:null, note:null};
-  const labels = {paySubmitBtn:'Добавить', ratingSubmitBtn:'Сохранить', reqSubmitBtn:'Сохранить', noteSubmitBtn:'Сохранить'};
-  Object.keys(labels).forEach(id => { const el = document.getElementById(id); if(el) el.textContent = labels[id]; });
+function toggleEditFields(){
+  const el = document.getElementById('editFieldsSection');
+  const willShow = el.style.display === 'none';
+  el.style.display = willShow ? 'block' : 'none';
+  document.getElementById('editPencilBtn').classList.toggle('toggled', willShow);
+  if(willShow) el.scrollIntoView({behavior:'smooth', block:'start'});
 }
 function toggleHistoryMobile(){
   document.getElementById('histToggleBtn').classList.toggle('open');
-  document.getElementById('historyWrap').classList.toggle('open');
+  document.querySelector('.panelRight').classList.toggle('open');
+}
+
+function pickAccessStatus(v){
+  selectedAccessStatus = v;
+  document.querySelectorAll('.statusBtn').forEach(b => b.classList.toggle('active', b.dataset.v === v));
+}
+
+async function saveAccessStatus(){
+  const note = document.getElementById('statusNote').value.trim();
+  if(selectedAccessStatus && !note){ showToast('Укажи причину'); return; }
+  await ensurePersonCreated();
+  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'update-fields', id:CURRENT.id, accessStatus:selectedAccessStatus, accessNote:note})});
+  const d = await r.json();
+  applyPersonUpdate(d.person);
+  showToast('Статус обновлён');
 }
 
 function fillPanel(){
-  clearEditing();
+  historyEditing = null;
   const p = CURRENT;
   document.getElementById('pName').textContent = p.name || 'Новый участник';
+  document.getElementById('pHeaderTotal').textContent = ', ' + fmtMoney(sumPayments(p.payments));
   document.getElementById('fName').value = p.name||'';
   document.getElementById('fTelegram').value = p.telegram||'';
   document.getElementById('fEmail').value = p.email||'';
   document.getElementById('payAmount').value = 5000;
 
-  document.getElementById('totalPaidNum').textContent = fmtMoney(sumPayments(p.payments));
+  selectedAccessStatus = p.accessStatus || '';
+  document.getElementById('statusNote').value = p.accessNote || '';
+  document.querySelectorAll('.statusBtn').forEach(b => b.classList.toggle('active', b.dataset.v === selectedAccessStatus));
 
   const rating = lastOf(p.ratings);
   document.getElementById('currentRatingView').innerHTML = rating
@@ -12638,34 +12719,34 @@ function fillPanel(){
   document.getElementById('reqText').value = '';
   document.getElementById('noteText').value = '';
 
-  buildRatingPicker(rating ? rating.value : 7);
+  buildRatingPicker('ratingPick', rating ? rating.value : 7);
   renderHistory();
   setupDatePickers();
 }
 
-const ratingPickerState = { selected: 7 };
-function buildRatingPicker(selected){
-  ratingPickerState.selected = selected;
-  const container = document.getElementById('ratingPick');
+const ratingPickerState = {};
+function buildRatingPicker(containerId, selected){
+  ratingPickerState[containerId] = selected;
+  const container = document.getElementById(containerId);
   container.innerHTML =
-    '<div class="dateDisplay" id="ratingPick_disp"><span id="ratingPick_txt">'+selected+'</span>' +
+    '<div class="dateDisplay" id="'+containerId+'_disp"><span id="'+containerId+'_txt">'+selected+'</span>' +
       '<svg width="12" height="8" viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 1l5 5 5-5"/></svg>' +
     '</div>' +
-    '<div class="ratingPop" id="ratingPick_pop"></div>';
-  document.getElementById('ratingPick_disp').onclick = (e) => { e.stopPropagation(); toggleRatingPop(); };
-  renderRatingPop();
+    '<div class="ratingPop" id="'+containerId+'_pop"></div>';
+  document.getElementById(containerId+'_disp').onclick = (e) => { e.stopPropagation(); toggleRatingPop(containerId); };
+  renderRatingPop(containerId);
 }
-function renderRatingPop(){
-  const pop = document.getElementById('ratingPick_pop');
+function renderRatingPop(containerId){
+  const pop = document.getElementById(containerId+'_pop');
   let html = '';
   for(let i=10;i>=0;i--){
-    html += '<div class="ratingOpt'+(i===ratingPickerState.selected?' selected':'')+'" onclick="event.stopPropagation();pickRating('+i+')">'+i+'</div>';
+    html += '<div class="ratingOpt'+(i===ratingPickerState[containerId]?' selected':'')+'" onclick="event.stopPropagation();pickRating(\\''+containerId+'\\','+i+')">'+i+'</div>';
   }
   pop.innerHTML = html;
   pop.onclick = (e)=>e.stopPropagation();
 }
-function toggleRatingPop(){
-  const pop = document.getElementById('ratingPick_pop');
+function toggleRatingPop(containerId){
+  const pop = document.getElementById(containerId+'_pop');
   const willShow = !pop.classList.contains('show');
   document.querySelectorAll('.calPop,.ratingPop').forEach(el => el.classList.remove('show'));
   if(!willShow) return;
@@ -12673,12 +12754,19 @@ function toggleRatingPop(){
   pop.classList.add('show');
   positionFloating(pop);
 }
-function pickRating(value){
-  ratingPickerState.selected = value;
-  document.getElementById('ratingPick_txt').textContent = value;
-  document.getElementById('ratingPick_pop').classList.remove('show');
-  renderRatingPop();
+function pickRating(containerId, value){
+  ratingPickerState[containerId] = value;
+  document.getElementById(containerId+'_txt').textContent = value;
+  document.getElementById(containerId+'_pop').classList.remove('show');
+  renderRatingPop(containerId);
 }
+
+const HIST_ICONS = {
+  rating: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>',
+  request: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 11.5a8.38 8.38 0 01-9 8.4A8.5 8.5 0 013 11.5 8.38 8.38 0 0112 3a8.5 8.5 0 019 8.5z"/></svg>',
+  note: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>',
+  payment: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>'
+};
 
 function renderHistory(){
   const p = CURRENT;
@@ -12690,48 +12778,79 @@ function renderHistory(){
   items.sort((a,b)=> (b.date>a.date?1:b.date<a.date?-1:b.createdAt-a.createdAt));
   const el = document.getElementById('historyList');
   if(!items.length){ el.innerHTML = '<div class="histEmpty">История пока пуста</div>'; return; }
-  const icons = {
-    rating: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>',
-    request: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 11.5a8.38 8.38 0 01-9 8.4A8.5 8.5 0 013 11.5 8.38 8.38 0 0112 3a8.5 8.5 0 019 8.5z"/></svg>',
-    note: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>',
-    payment: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>'
-  };
-  el.innerHTML = items.map(it =>
-    '<div class="histItem">' +
-      '<div class="histIcon '+it.type+'">'+icons[it.type]+'</div>' +
-      '<div class="histBody">' +
-        '<div class="histTop"><span class="histTitle">'+escapeHtml(it.text)+'</span><span class="histDate">'+fmtDate(it.date)+'</span></div>' +
+  el.innerHTML = items.map(it => {
+    if(historyEditing && historyEditing.kind===it.type && historyEditing.entryId===it.entryId) return renderHistEditRow(it);
+    return renderHistViewRow(it);
+  }).join('');
+  if(historyEditing){
+    buildDatePicker('histEditDatePick');
+    const items2 = items.find(it=>it.type===historyEditing.kind && it.entryId===historyEditing.entryId);
+    if(items2){
+      setPickedDate('histEditDatePick', items2.date);
+      if(historyEditing.kind==='rating') buildRatingPicker('histEditRatingPick', items2.value);
+    }
+  }
+}
+
+function renderHistViewRow(it){
+  return '<div class="histItem">' +
+      '<div class="histIcon '+it.type+'">'+HIST_ICONS[it.type]+'</div>' +
+      '<div class="histText">'+escapeHtml(capitalize(it.text))+'</div>' +
+      '<div class="histRight">' +
+        '<span class="histDate">'+fmtDate(it.date)+'</span>' +
         '<div class="histActions">' +
           '<button class="histDel" onclick="editEntry(\\''+it.type+'\\',\\''+it.entryId+'\\')">изменить</button>' +
           '<button class="histDel" onclick="deleteEntry(\\''+it.type+'\\',\\''+it.entryId+'\\')">удалить</button>' +
         '</div>' +
       '</div>' +
-    '</div>'
-  ).join('');
+    '</div>';
+}
+
+function renderHistEditRow(it){
+  let bodyHtml;
+  if(it.type === 'payment'){
+    bodyHtml = '<input type="number" id="histEditAmount" class="textInput" value="'+it.amount+'" style="max-width:130px;">';
+  } else if(it.type === 'rating'){
+    bodyHtml = '<div class="ratingPick" id="histEditRatingPick"></div>';
+  } else {
+    bodyHtml = '<textarea id="histEditText" class="textInput" rows="2">'+escapeHtml(it.text)+'</textarea>';
+  }
+  return '<div class="histItem histEditItem">' +
+      '<div class="histIcon '+it.type+'">'+HIST_ICONS[it.type]+'</div>' +
+      '<div class="histEditBody">' +
+        bodyHtml +
+        '<div class="inlineRow" style="margin-top:8px;">' +
+          '<div class="datePick" id="histEditDatePick"></div>' +
+          '<button class="btn accent small" onclick="saveHistoryEdit()">Сохранить</button>' +
+          '<button class="btn small ghost" onclick="cancelHistoryEdit()">Отмена</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
 }
 
 function editEntry(kind, entryId){
-  const p = CURRENT;
-  const listName = {rating:'ratings', request:'requests', note:'notes', payment:'payments'}[kind];
-  const entry = (p[listName]||[]).find(e=>e.entryId===entryId);
-  if(!entry) return;
-  editingEntries[kind] = entryId;
-  const btnMap = {payment:'paySubmitBtn', rating:'ratingSubmitBtn', request:'reqSubmitBtn', note:'noteSubmitBtn'};
-  if(kind==='payment'){
-    document.getElementById('payAmount').value = entry.amount;
-    setPickedDate('payDatePick', entry.date);
-  } else if(kind==='rating'){
-    buildRatingPicker(entry.value);
-    setPickedDate('ratingDatePick', entry.date);
-  } else if(kind==='request'){
-    document.getElementById('reqText').value = entry.text;
-    setPickedDate('reqDatePick', entry.date);
-  } else if(kind==='note'){
-    document.getElementById('noteText').value = entry.text;
-    setPickedDate('noteDatePick', entry.date);
-  }
-  document.getElementById(btnMap[kind]).textContent = 'Сохранить изменения';
-  document.getElementById(btnMap[kind]).scrollIntoView({behavior:'smooth', block:'center'});
+  historyEditing = {kind, entryId};
+  renderHistory();
+}
+
+function cancelHistoryEdit(){
+  historyEditing = null;
+  renderHistory();
+}
+
+async function saveHistoryEdit(){
+  if(!historyEditing) return;
+  const {kind, entryId} = historyEditing;
+  const date = getPickedDate('histEditDatePick');
+  const body = {action:'edit-entry', id:CURRENT.id, kind, entryId, date};
+  if(kind==='payment') body.amount = Number(document.getElementById('histEditAmount').value);
+  else if(kind==='rating') body.value = ratingPickerState['histEditRatingPick'];
+  else body.text = document.getElementById('histEditText').value.trim();
+  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify(body)});
+  const d = await r.json();
+  historyEditing = null;
+  applyPersonUpdate(d.person);
+  showToast('Запись обновлена');
 }
 
 async function scheduleFieldSave(){
@@ -12774,9 +12893,10 @@ async function deletePerson(){
 
 async function deleteEntry(kind, entryId){
   if(!CURRENT || !CURRENT.id) return;
+  if(historyEditing && historyEditing.kind===kind && historyEditing.entryId===entryId) historyEditing = null;
   const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'delete-entry', id:CURRENT.id, kind, entryId})});
   const d = await r.json();
-  if(d.ok){ Object.assign(CURRENT, d.person); const idx=PEOPLE.findIndex(p=>p.id===CURRENT.id); if(idx>=0) PEOPLE[idx]=CURRENT; fillPanel(); renderTable(); }
+  if(d.ok) applyPersonUpdate(d.person);
 }
 
 async function submitPayment(){
@@ -12784,28 +12904,20 @@ async function submitPayment(){
   if(!amount || amount<=0){ showToast('Укажи сумму'); return; }
   await ensurePersonCreated();
   const date = getPickedDate('payDatePick');
-  const editId = editingEntries.payment;
-  const body = editId
-    ? {action:'edit-entry', id:CURRENT.id, kind:'payment', entryId:editId, amount, date}
-    : {action:'add-payment', id:CURRENT.id, amount, date};
-  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify(body)});
+  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'add-payment', id:CURRENT.id, amount, date})});
   const d = await r.json();
   applyPersonUpdate(d.person);
-  showToast(editId ? 'Оплата обновлена' : 'Оплата добавлена');
+  showToast('Оплата добавлена');
 }
 
 async function submitRating(){
-  const value = ratingPickerState.selected;
+  const value = ratingPickerState['ratingPick'];
   await ensurePersonCreated();
   const date = getPickedDate('ratingDatePick');
-  const editId = editingEntries.rating;
-  const body = editId
-    ? {action:'edit-entry', id:CURRENT.id, kind:'rating', entryId:editId, value, date}
-    : {action:'add-rating', id:CURRENT.id, value, date};
-  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify(body)});
+  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'add-rating', id:CURRENT.id, value, date})});
   const d = await r.json();
   applyPersonUpdate(d.person);
-  showToast(editId ? 'Оценка обновлена' : 'Оценка сохранена');
+  showToast('Оценка сохранена');
 }
 
 async function submitRequest(){
@@ -12813,14 +12925,10 @@ async function submitRequest(){
   if(!text){ showToast('Введи текст запроса'); return; }
   await ensurePersonCreated();
   const date = getPickedDate('reqDatePick');
-  const editId = editingEntries.request;
-  const body = editId
-    ? {action:'edit-entry', id:CURRENT.id, kind:'request', entryId:editId, text, date}
-    : {action:'add-request', id:CURRENT.id, text, date};
-  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify(body)});
+  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'add-request', id:CURRENT.id, text, date})});
   const d = await r.json();
   applyPersonUpdate(d.person);
-  showToast(editId ? 'Запрос обновлён' : 'Запрос сохранён');
+  showToast('Запрос сохранён');
 }
 
 async function submitNote(){
@@ -12828,14 +12936,10 @@ async function submitNote(){
   if(!text){ showToast('Введи текст примечания'); return; }
   await ensurePersonCreated();
   const date = getPickedDate('noteDatePick');
-  const editId = editingEntries.note;
-  const body = editId
-    ? {action:'edit-entry', id:CURRENT.id, kind:'note', entryId:editId, text, date}
-    : {action:'add-note', id:CURRENT.id, text, date};
-  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify(body)});
+  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'add-note', id:CURRENT.id, text, date})});
   const d = await r.json();
   applyPersonUpdate(d.person);
-  showToast(editId ? 'Примечание обновлено' : 'Примечание сохранено');
+  showToast('Примечание сохранено');
 }
 
 function applyPersonUpdate(person){
@@ -12957,6 +13061,7 @@ function setPickedDate(containerId, iso){
 </body>
 </html>`;
 }
+
 
 // ─── QUIZ 1 HTML/CSS/JS ─────────────────────────────────────
 function getQuiz1HTML() {
