@@ -5039,12 +5039,12 @@ function serveCommunity() {
 // FEEDBACK — опросник для участников комьюнити (feedback:<id> в KV)
 // ══════════════════════════════════════════════
 const FEEDBACK_FIELDS = ['role','roleOther','team','ai','marketing','automation','nps','npsReason',
-  'ratings','problemSolved','urgentProblem','request','missingTools','goal2026','referral'];
+  'ratings','problemSolved','urgentProblem','shareTopic','missingTools','goal2026','referral'];
 
 function feedbackAnsweredCount(a) {
   if (!a) return 0;
   let n = 0;
-  ['role','roleOther','team','problemSolved','urgentProblem','request','missingTools','goal2026','referral','npsReason'].forEach(f => {
+  ['role','roleOther','team','problemSolved','urgentProblem','shareTopic','missingTools','goal2026','referral','npsReason'].forEach(f => {
     if (a[f] !== undefined && a[f] !== null && String(a[f]).trim() !== '') n++;
   });
   ['ai','marketing','automation','nps'].forEach(f => {
@@ -5445,7 +5445,7 @@ function page3(){
     <h2 class="pageTitle">В свободной форме</h2>
     <div class="field"><label class="q">Какую проблему ты недавно решил(а) с нашей помощью?</label>\${ta('problemSolved','Например: настроили воронку в CRM и перестали терять заявки…')}</div>
     <div class="field"><label class="q">Какая у тебя сейчас самая горящая проблема в проекте?</label>\${ta('urgentProblem','Например: не хватает лидов из контента, не понимаю, за что хвататься первым…')}</div>
-    <div class="field"><label class="q">В чём тебе нужна наша помощь? Какой у тебя запрос к нам?</label>\${ta('request','Например: разбор моей воронки на эфире, помощь с наймом маркетолога…')}</div>
+    <div class="field"><label class="q">Какими знаниями, опытом или ценностями ты хотел(а) бы поделиться с другими участниками в следующем месяце?</label><div class="hint" style="margin:-4px 0 10px;">Возможно, у тебя есть тема, в которой ты эксперт, личный опыт или просто то, чем хочется вдохновить других</div>\${ta('shareTopic','Например: расскажу, как настроил сквозную аналитику без бюджета на дорогие сервисы…')}</div>
     <div class="field"><label class="q">Каких инструментов тебе не хватает в работе?</label>\${ta('missingTools','Например: шаблон медиаплана, чек-лист по запуску рекламы…')}</div>
     <div class="field"><label class="q">Какую цель ты хочешь достичь в жизни до конца 2026 года?</label>\${ta('goal2026','Например: выйти на доход X, запустить свой продукт, нанять первого сотрудника…')}</div>
     <div class="field"><label class="q">Кого можешь порекомендовать для приглашения в CMO Ядро? Поделись контактом</label>\${ta('referral','Например: Иван, маркетолог, @ivan_tg или ivan@mail.com…')}</div>
@@ -5471,7 +5471,7 @@ function attachHandlers(){
   if(team) team.addEventListener('input', () => fieldChanged('team', team.value));
   const npsReason = document.getElementById('npsReasonInput');
   if(npsReason) npsReason.addEventListener('input', () => fieldChanged('npsReason', npsReason.value));
-  ['problemSolved','urgentProblem','request','missingTools','goal2026','referral'].forEach(name => {
+  ['problemSolved','urgentProblem','shareTopic','missingTools','goal2026','referral'].forEach(name => {
     const el = document.getElementById(name+'Input');
     if(el) el.addEventListener('input', () => fieldChanged(name, el.value));
   });
@@ -5553,7 +5553,7 @@ function renderResults(){
       <div class="field"><label class="q">Оценки форматов</label>\${ratingsHtml}</div>
       <div class="field"><label class="q">Какую проблему решили с нашей помощью?</label>\${box(a.problemSolved)}</div>
       <div class="field"><label class="q">Самая горящая проблема</label>\${box(a.urgentProblem)}</div>
-      <div class="field"><label class="q">Запрос к нам</label>\${box(a.request)}</div>
+      <div class="field"><label class="q">Чем поделится в следующем месяце</label>\${box(a.shareTopic)}</div>
       <div class="field"><label class="q">Каких инструментов не хватает</label>\${box(a.missingTools)}</div>
       <div class="field"><label class="q">Цель до конца 2026 года</label>\${box(a.goal2026)}</div>
       <div class="field"><label class="q">Рекомендация для приглашения в CMO Ядро</label>\${box(a.referral)}</div>
