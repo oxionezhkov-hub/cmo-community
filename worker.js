@@ -6748,17 +6748,6 @@ function getMiniAppHTML() {
       </span>
       Ядро
     </button>
-    <button class="nav-item" id="nav-kb" onclick="navTo('kb')">
-      <span class="nav-icon">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-          <line x1="9" y1="7" x2="15" y2="7"/>
-          <line x1="9" y1="11" x2="15" y2="11"/>
-        </svg>
-      </span>
-      База знаний
-    </button>
     <button class="nav-item active" id="nav-progress" onclick="navTo('progress')">
       <span class="nav-icon">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -7698,13 +7687,19 @@ let moduleOrderCache = null;
 function renderYadroRedirect(container) {
   container.innerHTML = \`
     <div class="empty-state" style="padding-top:32px">
-      <div class="empty-state-icon">🚀</div>
+      <div class="empty-state-icon" style="display:flex;justify-content:center;margin-bottom:16px">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="7"/>
+          <line x1="16.5" y1="16.5" x2="21" y2="21"/>
+          <path d="M8.5 11a2.5 2.5 0 0 1 2.5-2.5" stroke-opacity="0.6"/>
+        </svg>
+      </div>
       <div style="font-size:18px;font-weight:700;margin-bottom:10px">База знаний переехала</div>
       <div style="font-size:14px;color:var(--text2);line-height:1.5;max-width:340px;margin:0 auto 20px">
         Мы перенесли базу знаний и записи на удобный сайт с ИИ-поиском.
       </div>
       <a href="https://cmo.pro/yadro" target="_blank" rel="noopener"
-        style="display:inline-block;padding:12px 24px;border-radius:12px;background:var(--accent, #6c5ce7);color:#fff;font-weight:600;text-decoration:none;margin-bottom:16px">
+        style="display:inline-block;padding:12px 24px;border-radius:12px;background:#6c5ce7;color:#fff;font-weight:600;text-decoration:none;margin-bottom:16px">
         Открыть cmo.pro/yadro
       </a>
       <div style="font-size:13px;color:var(--text3);line-height:1.5;max-width:340px;margin:0 auto">
