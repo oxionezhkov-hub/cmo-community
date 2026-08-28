@@ -4932,6 +4932,7 @@ async function apiCommunity(request, env, url) {
       requests: [],
       notes: [],
       payments: [],
+      statusChanges: [],
       createdAt: Date.now(),
       updatedAt: Date.now()
     };
@@ -4978,9 +4979,9 @@ async function apiCommunity(request, env, url) {
   if (action === 'delete-entry') {
     const p = await getPerson(body.id);
     if (!p) return jsonResp({ ok: false, error: 'Не найдено' }, 404);
-    const listName = { rating: 'ratings', request: 'requests', note: 'notes', payment: 'payments' }[body.kind];
-    if (!listName || !p[listName]) return jsonResp({ ok: false, error: 'Некорректный тип' });
-    p[listName] = p[listName].filter(e => e.entryId !== body.entryId);
+    const listName = { rating: 'ratings', request: 'requests', note: 'notes', payment: 'payments', status: 'statusChanges' }[body.kind];
+    if (!listName) return jsonResp({ ok: false, error: 'Некорректный тип' });
+    p[listName] = (p[listName] || []).filter(e => e.entryId !== body.entryId);
     await savePerson(p);
     return jsonResp({ ok: true, person: p });
   }
@@ -4988,14 +4989,38 @@ async function apiCommunity(request, env, url) {
   if (action === 'edit-entry') {
     const p = await getPerson(body.id);
     if (!p) return jsonResp({ ok: false, error: 'Не найдено' }, 404);
-    const listName = { rating: 'ratings', request: 'requests', note: 'notes', payment: 'payments' }[body.kind];
+    const listName = { rating: 'ratings', request: 'requests', note: 'notes', payment: 'payments', status: 'statusChanges' }[body.kind];
     if (!listName || !p[listName]) return jsonResp({ ok: false, error: 'Некорректный тип' });
     const entry = p[listName].find(e => e.entryId === body.entryId);
     if (!entry) return jsonResp({ ok: false, error: 'Запись не найдена' }, 404);
     if (body.date) entry.date = body.date;
     if (body.kind === 'rating') entry.value = Number(body.value);
     else if (body.kind === 'payment') entry.amount = Number(body.amount) || 0;
+    else if (body.kind === 'status') entry.note = body.text || '';
     else entry.text = body.text || '';
+    await savePerson(p);
+    return jsonResp({ ok: true, person: p });
+  }
+
+  if (action === 'set-access-status') {
+    const p = await getPerson(body.id);
+    if (!p) return jsonResp({ ok: false, error: 'Не найдено' }, 404);
+    if (!p.statusChanges) p.statusChanges = [];
+    const status = body.status || '';
+    if (status) {
+      p.accessStatus = status;
+      p.accessNote = body.note || '';
+      p.statusChanges.push({
+        entryId: cmId(),
+        date: body.date || new Date().toISOString().slice(0, 10),
+        createdAt: Date.now(),
+        status,
+        note: body.note || ''
+      });
+    } else {
+      p.accessStatus = '';
+      p.accessNote = '';
+    }
     await savePerson(p);
     return jsonResp({ ok: true, person: p });
   }
@@ -12277,14 +12302,14 @@ tbody tr.rowProblem{background:var(--red-soft);}
 
 .statusBtns{display:flex; gap:8px;}
 .statusBtn{
-  flex:1; padding:9px 8px; border-radius:10px; border:1.5px solid var(--line); background:var(--bg-soft);
+  padding:8px 14px; border-radius:10px; border:1.5px solid var(--line); background:var(--bg-soft);
   font-size:12.5px; font-weight:700; cursor:pointer; transition:.15s; color:var(--ink-soft);
 }
 .statusBtn:hover{border-color:var(--ink);}
-.statusBtn.active{color:#fff; border-color:transparent;}
-.statusBtn[data-v=""].active{background:var(--green);}
-.statusBtn.paused.active{background:var(--amber);}
-.statusBtn.problem.active{background:var(--red);}
+.statusBtn.paused.active{background:var(--amber); border-color:var(--amber); color:#fff;}
+.statusBtn.problem.active{background:var(--red); border-color:var(--red); color:#fff;}
+.statusPopover{width:260px;}
+.statusPopover textarea{margin-bottom:0;}
 
 /* custom date picker */
 .datePick{position:relative; flex:none;}
@@ -12353,10 +12378,13 @@ tbody tr.rowProblem{background:var(--red-soft);}
 .histIcon.request{background:#e7edfd; color:#3457c9;}
 .histIcon.note{background:var(--line-soft); color:var(--ink-soft);}
 .histIcon.payment{background:var(--green-soft); color:var(--green);}
+.histIcon.status-paused{background:var(--amber-soft); color:#a06b0a;}
+.histIcon.status-problem{background:var(--red-soft); color:var(--red);}
 .histText{flex:1; min-width:0; font-size:13.5px; font-weight:700; word-break:break-word; white-space:pre-wrap;}
 .histRight{display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex-shrink:0;}
 .histDate{font-size:11px; color:var(--ink-faint); white-space:nowrap;}
-.histActions{display:flex; gap:10px;}
+.histActions{display:flex; gap:10px; opacity:0; transition:.15s;}
+.histItem:hover .histActions{opacity:1;}
 .histDel{cursor:pointer; color:var(--ink-faint); background:none; border:none; font-size:11.5px; transition:.15s;}
 .histDel:hover{color:var(--accent-ink);}
 .histActions .histDel:last-child:hover{color:var(--red);}
@@ -12485,26 +12513,31 @@ tbody tr.rowProblem{background:var(--red-soft);}
       </div>
 
       <div class="section">
-        <h3>Статус доступа</h3>
-        <div class="statusBtns">
-          <button type="button" class="statusBtn" data-v="" onclick="pickAccessStatus('')">Активен</button>
-          <button type="button" class="statusBtn paused" data-v="paused" onclick="pickAccessStatus('paused')">Приостановлен</button>
-          <button type="button" class="statusBtn problem" data-v="problem" onclick="pickAccessStatus('problem')">Проблема</button>
-        </div>
-        <div class="inlineRow" style="margin-top:10px;">
-          <textarea id="statusNote" class="textInput" rows="2" placeholder="Причина приостановки / в чём проблема..."></textarea>
-        </div>
-        <div style="margin-top:10px; display:flex; justify-content:flex-end;">
-          <button class="btn accent small" onclick="saveAccessStatus()">Сохранить статус</button>
-        </div>
-      </div>
-
-      <div class="section">
         <h3>Оплата</h3>
         <div class="inlineRow">
           <input type="number" id="payAmount" class="textInput" value="5000" style="max-width:130px;" placeholder="Сумма">
           <div class="datePick" id="payDatePick"></div>
           <button class="btn accent small" id="paySubmitBtn" onclick="submitPayment()">Добавить</button>
+        </div>
+        <div class="statusBtns" style="margin-top:12px;">
+          <div class="popoverWrap">
+            <button type="button" class="statusBtn paused" id="statusBtnPaused" onclick="clickStatusBtn('paused')">Приостановлен</button>
+            <div class="popover statusPopover" id="statusPopover_paused">
+              <textarea id="statusReason_paused" class="textInput" rows="3" placeholder="Причина приостановки..."></textarea>
+              <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+                <button class="btn accent small" onclick="submitAccessStatus('paused')">Сохранить</button>
+              </div>
+            </div>
+          </div>
+          <div class="popoverWrap">
+            <button type="button" class="statusBtn problem" id="statusBtnProblem" onclick="clickStatusBtn('problem')">Проблема</button>
+            <div class="popover statusPopover" id="statusPopover_problem">
+              <textarea id="statusReason_problem" class="textInput" rows="3" placeholder="В чём проблема..."></textarea>
+              <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+                <button class="btn accent small" onclick="submitAccessStatus('problem')">Сохранить</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -12565,7 +12598,6 @@ let CURRENT = null;
 let EXPANDED = localStorage.getItem('communityExpanded') === '1';
 let saveFieldTimer = null;
 let historyEditing = null; // {kind, entryId}
-let selectedAccessStatus = '';
 
 document.addEventListener('keydown', (e) => {
   if(e.key === 'Escape'){
@@ -12765,7 +12797,7 @@ function showToast(msg){
 
 /* ───── Panel ───── */
 function openNewPerson(){
-  CURRENT = { id:null, name:'', telegram:'', tgUsername:'', email:'', ratings:[], requests:[], notes:[], payments:[], accessStatus:'', accessNote:'' };
+  CURRENT = { id:null, name:'', telegram:'', tgUsername:'', email:'', ratings:[], requests:[], notes:[], payments:[], statusChanges:[], accessStatus:'', accessNote:'' };
   fillPanel();
   showPanel();
   toggleEditFields();
@@ -12806,34 +12838,51 @@ function toggleHistoryMobile(){
   document.querySelector('.panelRight').classList.toggle('open');
 }
 
-function pickAccessStatus(v){
-  selectedAccessStatus = v;
-  document.querySelectorAll('.statusBtn').forEach(b => b.classList.toggle('active', b.dataset.v === v));
+async function clickStatusBtn(kind){
+  if(CURRENT.accessStatus === kind){
+    document.querySelectorAll('.statusPopover').forEach(p=>p.classList.remove('show'));
+    await callSetAccessStatus('', '');
+    return;
+  }
+  const pop = document.getElementById('statusPopover_'+kind);
+  const willShow = !pop.classList.contains('show');
+  document.querySelectorAll('.statusPopover').forEach(p=>p.classList.remove('show'));
+  if(willShow){
+    document.getElementById('statusReason_'+kind).value = '';
+    pop.classList.add('show');
+    document.getElementById('statusReason_'+kind).focus();
+  }
 }
 
-async function saveAccessStatus(){
-  const note = document.getElementById('statusNote').value.trim();
-  if(selectedAccessStatus && !note){ showToast('Укажи причину'); return; }
+async function submitAccessStatus(kind){
+  const note = document.getElementById('statusReason_'+kind).value.trim();
+  if(!note){ showToast('Укажи причину'); return; }
+  document.getElementById('statusPopover_'+kind).classList.remove('show');
+  await callSetAccessStatus(kind, note);
+}
+
+async function callSetAccessStatus(status, note){
   await ensurePersonCreated();
-  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'update-fields', id:CURRENT.id, accessStatus:selectedAccessStatus, accessNote:note})});
+  const date = todayISO();
+  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({action:'set-access-status', id:CURRENT.id, status, note, date})});
   const d = await r.json();
   applyPersonUpdate(d.person);
-  showToast('Статус обновлён');
+  showToast(status ? 'Статус обновлён' : 'Статус снят');
 }
 
 function fillPanel(){
   historyEditing = null;
   const p = CURRENT;
   document.getElementById('pName').textContent = p.name || 'Новый участник';
-  document.getElementById('pHeaderTotal').textContent = ', ' + fmtMoney(sumPayments(p.payments));
+  document.getElementById('pHeaderTotal').textContent = ' ' + fmtMoney(sumPayments(p.payments));
   document.getElementById('fName').value = p.name||'';
   document.getElementById('fTelegram').value = p.telegram||'';
   document.getElementById('fEmail').value = p.email||'';
   document.getElementById('payAmount').value = 5000;
 
-  selectedAccessStatus = p.accessStatus || '';
-  document.getElementById('statusNote').value = p.accessNote || '';
-  document.querySelectorAll('.statusBtn').forEach(b => b.classList.toggle('active', b.dataset.v === selectedAccessStatus));
+  document.getElementById('statusBtnPaused').classList.toggle('active', p.accessStatus === 'paused');
+  document.getElementById('statusBtnProblem').classList.toggle('active', p.accessStatus === 'problem');
+  document.querySelectorAll('.statusPopover').forEach(el => el.classList.remove('show'));
 
   const rating = lastOf(p.ratings);
   document.getElementById('currentRatingView').innerHTML = rating
@@ -12899,8 +12948,12 @@ const HIST_ICONS = {
   rating: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>',
   request: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 11.5a8.38 8.38 0 01-9 8.4A8.5 8.5 0 013 11.5 8.38 8.38 0 0112 3a8.5 8.5 0 019 8.5z"/></svg>',
   note: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>',
-  payment: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>'
+  payment: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>',
+  'status-paused': '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>',
+  'status-problem': '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>'
 };
+
+function histIconClass(it){ return it.type === 'status' ? ('status-'+it.subtype) : it.type; }
 
 function renderHistory(){
   const p = CURRENT;
@@ -12909,6 +12962,7 @@ function renderHistory(){
   (p.requests||[]).forEach(e=>items.push({type:'request', text:e.text, ...e}));
   (p.notes||[]).forEach(e=>items.push({type:'note', text:e.text, ...e}));
   (p.payments||[]).forEach(e=>items.push({type:'payment', text: fmtMoney(e.amount), ...e}));
+  (p.statusChanges||[]).forEach(e=>items.push({type:'status', subtype:e.status, text:e.note, ...e}));
   items.sort((a,b)=> (b.date>a.date?1:b.date<a.date?-1:b.createdAt-a.createdAt));
   const el = document.getElementById('historyList');
   if(!items.length){ el.innerHTML = '<div class="histEmpty">История пока пуста</div>'; return; }
@@ -12928,7 +12982,7 @@ function renderHistory(){
 
 function renderHistViewRow(it){
   return '<div class="histItem">' +
-      '<div class="histIcon '+it.type+'">'+HIST_ICONS[it.type]+'</div>' +
+      '<div class="histIcon '+histIconClass(it)+'">'+HIST_ICONS[histIconClass(it)]+'</div>' +
       '<div class="histText">'+escapeHtml(capitalize(it.text))+'</div>' +
       '<div class="histRight">' +
         '<span class="histDate">'+fmtDate(it.date)+'</span>' +
@@ -12950,7 +13004,7 @@ function renderHistEditRow(it){
     bodyHtml = '<textarea id="histEditText" class="textInput" rows="2">'+escapeHtml(it.text)+'</textarea>';
   }
   return '<div class="histItem histEditItem">' +
-      '<div class="histIcon '+it.type+'">'+HIST_ICONS[it.type]+'</div>' +
+      '<div class="histIcon '+histIconClass(it)+'">'+HIST_ICONS[histIconClass(it)]+'</div>' +
       '<div class="histEditBody">' +
         bodyHtml +
         '<div class="inlineRow" style="margin-top:8px;">' +
@@ -13724,6 +13778,7 @@ load();
 </body>
 </html>`;
 }
+
 
 // ─── QUIZ 1 HTML/CSS/JS ─────────────────────────────────────
 function getQuiz1HTML() {
