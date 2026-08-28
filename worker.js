@@ -5038,13 +5038,13 @@ function serveCommunity() {
 // ══════════════════════════════════════════════
 // FEEDBACK — опросник для участников комьюнити (feedback:<id> в KV)
 // ══════════════════════════════════════════════
-const FEEDBACK_FIELDS = ['role','roleOther','team','ai','marketing','automation','nps',
-  'ratings','problemSolved','urgentProblem','request','missingTools','missingInCore'];
+const FEEDBACK_FIELDS = ['role','roleOther','team','ai','marketing','automation','nps','npsReason',
+  'ratings','problemSolved','urgentProblem','request','missingTools','goal2026','referral'];
 
 function feedbackAnsweredCount(a) {
   if (!a) return 0;
   let n = 0;
-  ['role','roleOther','team','problemSolved','urgentProblem','request','missingTools','missingInCore','npsReason'].forEach(f => {
+  ['role','roleOther','team','problemSolved','urgentProblem','request','missingTools','goal2026','referral','npsReason'].forEach(f => {
     if (a[f] !== undefined && a[f] !== null && String(a[f]).trim() !== '') n++;
   });
   ['ai','marketing','automation','nps'].forEach(f => {
@@ -5111,6 +5111,7 @@ function getFeedbackHTML(forceResults) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>Обратная связь · CMO Ядро</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%23ff5a36'/%3E%3Ctext x='50' y='68' font-size='58' text-anchor='middle'%3E%F0%9F%92%AC%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@600;700&display=swap" rel="stylesheet">
@@ -5446,7 +5447,8 @@ function page3(){
     <div class="field"><label class="q">Какая у тебя сейчас самая горящая проблема в проекте?</label>\${ta('urgentProblem','Например: не хватает лидов из контента, не понимаю, за что хвататься первым…')}</div>
     <div class="field"><label class="q">В чём тебе нужна наша помощь? Какой у тебя запрос к нам?</label>\${ta('request','Например: разбор моей воронки на эфире, помощь с наймом маркетолога…')}</div>
     <div class="field"><label class="q">Каких инструментов тебе не хватает в работе?</label>\${ta('missingTools','Например: шаблон медиаплана, чек-лист по запуску рекламы…')}</div>
-    <div class="field"><label class="q">Чего тебе не хватает в CMO Ядро?</label>\${ta('missingInCore','Например: больше живых разборов, форматов для новичков…')}</div>
+    <div class="field"><label class="q">Какую цель ты хочешь достичь в жизни до конца 2026 года?</label>\${ta('goal2026','Например: выйти на доход X, запустить свой продукт, нанять первого сотрудника…')}</div>
+    <div class="field"><label class="q">Кого можешь порекомендовать для приглашения в CMO Ядро? Поделись контактом</label>\${ta('referral','Например: Иван, маркетолог, @ivan_tg или ivan@mail.com…')}</div>
   </div>
   <div class="navRow"><button class="btn" onclick="goStep(2)">← Назад</button><button class="btn accent" onclick="finishSurvey()">Завершить ✓</button></div>
   \`;
@@ -5469,7 +5471,7 @@ function attachHandlers(){
   if(team) team.addEventListener('input', () => fieldChanged('team', team.value));
   const npsReason = document.getElementById('npsReasonInput');
   if(npsReason) npsReason.addEventListener('input', () => fieldChanged('npsReason', npsReason.value));
-  ['problemSolved','urgentProblem','request','missingTools','missingInCore'].forEach(name => {
+  ['problemSolved','urgentProblem','request','missingTools','goal2026','referral'].forEach(name => {
     const el = document.getElementById(name+'Input');
     if(el) el.addEventListener('input', () => fieldChanged(name, el.value));
   });
@@ -5553,7 +5555,8 @@ function renderResults(){
       <div class="field"><label class="q">Самая горящая проблема</label>\${box(a.urgentProblem)}</div>
       <div class="field"><label class="q">Запрос к нам</label>\${box(a.request)}</div>
       <div class="field"><label class="q">Каких инструментов не хватает</label>\${box(a.missingTools)}</div>
-      <div class="field"><label class="q">Чего не хватает в CMO Ядро</label>\${box(a.missingInCore)}</div>
+      <div class="field"><label class="q">Цель до конца 2026 года</label>\${box(a.goal2026)}</div>
+      <div class="field"><label class="q">Рекомендация для приглашения в CMO Ядро</label>\${box(a.referral)}</div>
     </div>
   \`;
 }
@@ -12625,6 +12628,7 @@ function getCommunityHTML() {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Комьюнити CRM</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%233457C9'/%3E%3Ctext x='50' y='68' font-size='58' text-anchor='middle'%3E%F0%9F%91%A5%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@600;700&display=swap" rel="stylesheet">
@@ -13821,6 +13825,7 @@ function getSaleHTML() {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Sale CRM</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%231F9D64'/%3E%3Ctext x='50' y='68' font-size='58' text-anchor='middle'%3E%F0%9F%92%B0%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@600;700&display=swap" rel="stylesheet">
