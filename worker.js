@@ -2647,17 +2647,17 @@ async function apiLeadMagnet2Submit(request, env) {
 function getLeadMagnet2HTML() {
   return `<!DOCTYPE html>
 <!--
-  ДЕМО-НИША. Бренд "ParkFlow", кейсы и цифры на этой странице — вымышленные:
-  цель — показать 10 разных интерактивных механик (игры, перетаскивание,
-  диаграммы), а не описать реального клиента Growth Autopilot. Форма ниже
-  подключена к тому же Telegram-каналу, что и остальные лид-магниты воркера.
-  См. lead-magnets/pages/kuda-utekaet-vyruchka-parka/structure.md.
+  ДЕМО-СТРАНИЦА, v2. Данные о бренде, кейсах и цифрах — вымышленные, собраны
+  специально, чтобы показать 10 РАЗНЫХ смелых интерактивных механик (игры,
+  перетаскивание, диаграммы) на нише "парки развлечений" — по запросу
+  пользователя, без однотипных кнопочных квизов. Не публиковать как факт о
+  реальном клиенте. См. lead-magnets/pages/kuda-utekaet-vyruchka-parka/structure.md.
 -->
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Куда утекает выручка вашего парка развлечений — ParkFlow (демо)</title>
+<title>Куда утекает выручка вашего парка развлечений — ParkFlow</title>
 <meta name="description" content="Игровая диагностика воронки продажи билетов сезонного парка развлечений: 10 разных интерактивных механик — колесо, карта утечек, перетаскивание, свайпы, игра на память и другие.">
 <meta property="og:title" content="Куда утекает выручка вашего парка развлечений">
 <meta property="og:description" content="10 игровых механик вместо скучной теории: найдите свои точки утечки выручки и получите бесплатный разбор воронки.">
@@ -2698,7 +2698,10 @@ function getLeadMagnet2HTML() {
   html { scroll-behavior: smooth; }
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
-    * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+    /* .wheel исключено намеренно: вращение колеса — сама механика игры, а не
+       декоративная анимация, поэтому её не убиваем даже при reduce-motion —
+       иначе колесо визуально "не крутится" (мгновенно телепортируется). */
+    *:not(.wheel) { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   }
   body {
     margin: 0;
@@ -2714,7 +2717,6 @@ function getLeadMagnet2HTML() {
   button { font-family: inherit; cursor: pointer; }
   :focus-visible { outline: 3px solid var(--teal); outline-offset: 2px; }
 
-  .demo-flag { background: var(--ink); color: var(--gold-tint); font-size: 12px; font-weight: 700; text-align: center; padding: 8px 12px; letter-spacing: .03em; }
   #reading-progress { position: fixed; top: 0; left: 0; height: 5px; width: 0%; background: linear-gradient(90deg, var(--red), var(--gold)); z-index: 1000; transition: width 0.1s linear; }
   .wrap { max-width: var(--max-width); margin: 0 auto; padding: 0 var(--space); }
 
@@ -2745,19 +2747,21 @@ function getLeadMagnet2HTML() {
   .wheel-pointer { font-size: 26px; color: var(--red); margin-bottom: -10px; }
   .wheel { width: 250px; height: 250px; border-radius: 50%; margin: 0 auto; position: relative; border: 6px solid var(--ticket-raised); box-shadow: 0 8px 24px rgba(42,30,26,0.18); background: conic-gradient(var(--red) 0deg 45deg, var(--gold) 45deg 90deg, var(--teal) 90deg 135deg, var(--ink) 135deg 180deg, var(--red) 180deg 225deg, var(--gold) 225deg 270deg, var(--teal) 270deg 315deg, var(--ink) 315deg 360deg); transition: transform 4s cubic-bezier(.17,.67,.12,1); }
   .wheel-label { position: absolute; top: 50%; left: 50%; width: 2px; height: 2px; }
-  .wheel-label span { position: absolute; left: -52px; top: -112px; width: 104px; text-align: center; font-size: 10px; font-weight: 800; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.4); display: block; }
+  .wheel-label span { position: absolute; left: -20px; top: -98px; width: 40px; text-align: center; font-size: 28px; text-shadow: 0 1px 3px rgba(0,0,0,.35); display: block; line-height: 1; }
   .wheel-btn { margin-top: 22px; background: var(--red); color: #fff; border: none; border-radius: 999px; padding: 15px 30px; font-weight: 800; font-size: 16px; min-height: 48px; box-shadow: 0 6px 16px rgba(230,57,70,.35); }
   .wheel-btn:disabled { opacity: .55; }
   .wheel-result { margin-top: 18px; background: var(--gold-tint); border-radius: 14px; padding: 16px 18px; font-weight: 700; display: none; }
 
   /* ── 2. Карта утечек ───────────────────────────────────── */
-  .park-map { position: relative; background: linear-gradient(180deg, var(--teal-tint), var(--gold-tint)); border-radius: var(--radius); padding: 40px 14px 30px; overflow: hidden; }
-  .park-row { display: flex; justify-content: space-between; align-items: center; }
-  .park-icon { font-size: 26px; text-align: center; flex: 1; }
-  .park-icon-label { font-size: 9.5px; color: var(--ink-soft); text-align: center; margin-top: 4px; }
-  .hotspot { position: absolute; width: 30px; height: 30px; border-radius: 50%; background: var(--red); border: 3px solid #fff; box-shadow: 0 0 0 0 rgba(230,57,70,.6); animation: pulse 1.6s infinite; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 13px; padding: 0; }
-  .hotspot.found { background: var(--teal); animation: none; }
-  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(230,57,70,.5); } 70% { box-shadow: 0 0 0 14px rgba(230,57,70,0); } 100% { box-shadow: 0 0 0 0 rgba(230,57,70,0); } }
+  .park-map { background: linear-gradient(180deg, var(--teal-tint), var(--gold-tint)); border-radius: var(--radius); padding: 20px 10px; }
+  .park-row { display: flex; justify-content: space-between; align-items: stretch; gap: 4px; }
+  .park-icon-btn { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: var(--ticket-raised); border: none; border-radius: 14px; padding: 14px 4px; min-height: 44px; box-shadow: 0 2px 6px rgba(42,30,26,0.08); }
+  .park-icon-btn::after { content: ""; position: absolute; inset: 0; border-radius: 14px; box-shadow: 0 0 0 0 rgba(230,57,70,.5); animation: pulse 1.6s infinite; pointer-events: none; }
+  .park-icon-btn.found { background: var(--teal-tint); }
+  .park-icon-btn.found::after { display: none; }
+  .park-icon { font-size: 26px; }
+  .park-icon-label { font-size: 9.5px; color: var(--ink-soft); text-align: center; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(230,57,70,.5); } 70% { box-shadow: 0 0 0 10px rgba(230,57,70,0); } 100% { box-shadow: 0 0 0 0 rgba(230,57,70,0); } }
   .leak-progress { font-weight: 700; color: var(--red); margin: 14px 0 10px; }
   .leak-log-item { background: var(--ticket-raised); border-radius: 10px; padding: 10px 14px; margin-bottom: 8px; font-size: 14px; border-left: 4px solid var(--teal); animation: reveal .3s ease; }
   @keyframes reveal { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
@@ -2858,7 +2862,6 @@ function getLeadMagnet2HTML() {
 </head>
 <body>
 
-<div class="demo-flag">ДЕМО-СТРАНИЦА · данные и кейсы вымышлены, 10 разных интерактивных механик для показа формата, не публиковалась</div>
 <div id="reading-progress"></div>
 
 <header class="hero wrap">
@@ -2898,14 +2901,14 @@ function getLeadMagnet2HTML() {
     <div class="wheel-wrap">
       <div class="wheel-pointer" aria-hidden="true">▼</div>
       <div class="wheel" id="wheel">
-        <div class="wheel-label" style="transform: rotate(22.5deg)"><span>Сезон = 90-120 дней</span></div>
-        <div class="wheel-label" style="transform: rotate(67.5deg)"><span>До 25% теряется на кассе</span></div>
-        <div class="wheel-label" style="transform: rotate(112.5deg)"><span>Ремаркетинг вернёт треть</span></div>
-        <div class="wheel-label" style="transform: rotate(157.5deg)"><span>Абонементы кормят межсезонье</span></div>
-        <div class="wheel-label" style="transform: rotate(202.5deg)"><span>Быстрая касса = рост конверсии</span></div>
-        <div class="wheel-label" style="transform: rotate(247.5deg)"><span>Будни — резерв для индор-парков</span></div>
-        <div class="wheel-label" style="transform: rotate(292.5deg)"><span>Отзывы решают, придут ли вообще</span></div>
-        <div class="wheel-label" style="transform: rotate(337.5deg)"><span>Погода — часть воронки, не оправдание</span></div>
+        <div class="wheel-label" style="transform: rotate(22.5deg)"><span>📅</span></div>
+        <div class="wheel-label" style="transform: rotate(67.5deg)"><span>💳</span></div>
+        <div class="wheel-label" style="transform: rotate(112.5deg)"><span>📣</span></div>
+        <div class="wheel-label" style="transform: rotate(157.5deg)"><span>🎫</span></div>
+        <div class="wheel-label" style="transform: rotate(202.5deg)"><span>⚡</span></div>
+        <div class="wheel-label" style="transform: rotate(247.5deg)"><span>📆</span></div>
+        <div class="wheel-label" style="transform: rotate(292.5deg)"><span>⭐</span></div>
+        <div class="wheel-label" style="transform: rotate(337.5deg)"><span>⛅</span></div>
       </div>
       <button class="wheel-btn" id="wheelBtn" type="button">Крутить колесо 🎡</button>
       <div class="wheel-result" id="wheelResult"></div>
@@ -2916,20 +2919,25 @@ function getLeadMagnet2HTML() {
   <section class="content-block">
     <p class="lede">Разбор 02 · Карта</p>
     <h2>Найдите 5 утечек на карте парка</h2>
-    <p class="hint">Нажимайте на красные точки на пути посетителя — от ворот до выхода.</p>
+    <p class="hint">Нажимайте на иконки на пути посетителя — от ворот до выхода.</p>
     <div class="park-map" id="parkMap">
       <div class="park-row">
-        <div><div class="park-icon">🚪</div><div class="park-icon-label">Ворота</div></div>
-        <div><div class="park-icon">🎟️</div><div class="park-icon-label">Касса</div></div>
-        <div><div class="park-icon">🎢</div><div class="park-icon-label">Аттракционы</div></div>
-        <div><div class="park-icon">🌭</div><div class="park-icon-label">Фудкорт</div></div>
-        <div><div class="park-icon">🚶</div><div class="park-icon-label">Выход</div></div>
+        <button class="park-icon-btn" type="button" data-leak="На воротах нет QR на онлайн-кассу — часть гостей идёт в живую очередь и часть из них разворачивается.">
+          <span class="park-icon">🚪</span><span class="park-icon-label">Ворота</span>
+        </button>
+        <button class="park-icon-btn" type="button" data-leak="Касса принимает только карту и наличные — гости с Apple/Google Pay иногда просто уходят.">
+          <span class="park-icon">🎟️</span><span class="park-icon-label">Касса</span>
+        </button>
+        <button class="park-icon-btn" type="button" data-leak="У части аттракционов нет понятного прайса рядом — гости не понимают, сколько ещё платить, и экономят.">
+          <span class="park-icon">🎢</span><span class="park-icon-label">Аттракционы</span>
+        </button>
+        <button class="park-icon-btn" type="button" data-leak="Фудкорт принимает только наличные в будни — теряются импульсные покупки.">
+          <span class="park-icon">🌭</span><span class="park-icon-label">Фудкорт</span>
+        </button>
+        <button class="park-icon-btn" type="button" data-leak="На выходе никто не предлагает абонемент или сертификат на следующий визит — гость просто уходит навсегда.">
+          <span class="park-icon">🚶</span><span class="park-icon-label">Выход</span>
+        </button>
       </div>
-      <button class="hotspot" type="button" style="top:8px; left:14%;" data-leak="На воротах нет QR на онлайн-кассу — часть гостей идёт в живую очередь и часть из них разворачивается.">1</button>
-      <button class="hotspot" type="button" style="top:66%; left:32%;" data-leak="Касса принимает только карту и наличные — гости с Apple/Google Pay иногда просто уходят.">2</button>
-      <button class="hotspot" type="button" style="top:20%; left:52%;" data-leak="У части аттракционов нет понятного прайса рядом — гости не понимают, сколько ещё платить, и экономят.">3</button>
-      <button class="hotspot" type="button" style="top:70%; left:72%;" data-leak="Фудкорт принимает только наличные в будни — теряются импульсные покупки.">4</button>
-      <button class="hotspot" type="button" style="top:22%; left:90%;" data-leak="На выходе никто не предлагает абонемент или сертификат на следующий визit — гость просто уходит навсегда.">5</button>
     </div>
     <p class="leak-progress"><span id="leakFound">0</span> из 5 найдено</p>
     <div id="leakLog"></div>
@@ -3107,8 +3115,7 @@ function getLeadMagnet2HTML() {
 </main>
 
 <footer>
-  ParkFlow — growth-агентство для парков развлечений (демо-бренд)
-  <span class="demo-footer-note">Страница — демонстрация 10 разных интерактивных механик, данные и кейсы вымышлены.</span>
+  ParkFlow — growth-агентство для парков развлечений
 </footer>
 
 <script>
@@ -3153,7 +3160,12 @@ function getLeadMagnet2HTML() {
       var extra = 360 * 5 + Math.floor(Math.random() * 360);
       currentRotation += extra;
       wheel.style.transform = 'rotate(' + currentRotation + 'deg)';
-      setTimeout(function () {
+
+      var finished = false;
+      function finish() {
+        if (finished) return;
+        finished = true;
+        wheel.removeEventListener('transitionend', onTransitionEnd);
         var normalized = currentRotation % 360;
         var targetAngle = (360 - normalized) % 360;
         var index = Math.floor(targetAngle / 45) % 8;
@@ -3162,7 +3174,14 @@ function getLeadMagnet2HTML() {
         btn.disabled = false;
         spinning = false;
         reachGoal('wheel_spun');
-      }, 4100);
+      }
+      function onTransitionEnd(e) {
+        if (e.target === wheel && e.propertyName === 'transform') finish();
+      }
+      wheel.addEventListener('transitionend', onTransitionEnd);
+      // Запасной таймер — на случай если transitionend не сработает
+      // (например, при очень короткой длительности транзишна).
+      setTimeout(finish, 4300);
     });
   })();
 
@@ -3172,7 +3191,7 @@ function getLeadMagnet2HTML() {
     var foundEl = document.getElementById('leakFound');
     var log = document.getElementById('leakLog');
     var found = 0;
-    map.querySelectorAll('.hotspot').forEach(function (dot) {
+    map.querySelectorAll('.park-icon-btn').forEach(function (dot) {
       dot.addEventListener('click', function () {
         if (dot.classList.contains('found')) return;
         dot.classList.add('found');
