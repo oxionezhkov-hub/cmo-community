@@ -3585,10 +3585,14 @@ function getLeadMagnet3HTML() {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>На тренировке — лев, на старте — мышь</title>
-<meta name="description" content="Почему сильный спортсмен «ватнеет» на соревнованиях — разбор механизма стартового мандража и что с этим реально делать. SportPsy174.">
+<meta name="description" content="Разбор для родителей: почему тело спортсмена «ватнеет» на старте, хотя на тренировке всё получается идеально — и что с этим действительно можно сделать. SportPsy174.">
 <meta property="og:title" content="На тренировке — лев, на старте — мышь">
-<meta property="og:description" content="Разбор стартового мандража у юных спортсменов: почему это происходит и что реально помогает. SportPsy174.">
+<meta property="og:description" content="Разбор механизма стартового мандража у юных спортсменов — не совет «соберись», а объяснение, что происходит с телом и как с этим работать.">
 <meta property="og:type" content="article">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 
 <!-- Яндекс.Метрика: ID-заглушка 12345678 — клиент попросил не подключать реальный счётчик сейчас.
      ВАЖНО: пока ID не заменён на настоящий, Фаза 6 (аналитика/дочитываемость) недоступна. -->
@@ -3604,360 +3608,450 @@ function getLeadMagnet3HTML() {
 
 <style>
   :root {
-    --bg: #0a0a0c;
-    --bg-alt: #111115;
-    --surface: #16161b;
-    --surface-2: #1c1c22;
-    --border: rgba(255,255,255,0.08);
-    --text: #f5f5f7;
-    --text-muted: #9a9aa5;
-    --text-faint: #6b6b76;
-    --blue: #3b6fe0;
-    --red: #e0433b;
-    --blue-soft: rgba(59,111,224,0.14);
-    --red-soft: rgba(224,67,59,0.14);
-    --radius: 20px;
-    --radius-sm: 12px;
-    --max-width: 760px;
-    --space: 24px;
-    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --ink: #121114;
+    --ink-2: #1a181c;
+    --paper: #f4efe3;
+    --paper-2: #ece5d3;
+    --paper-ink: #2a241c;
+    --paper-muted: #6f6656;
+    --hair: rgba(244,239,227,0.14);
+    --hair-strong: rgba(244,239,227,0.28);
+    --text: #ece7dd;
+    --text-soft: #b6b0a3;
+    --text-mute: #837c6f;
+    --signal: #ff5a36;
+    --signal-dim: rgba(255,90,54,0.16);
+    --ice: #6fb3cf;
+    --ice-dim: rgba(111,179,207,0.16);
+
+    --display: "Oswald", "Arial Narrow", sans-serif;
+    --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+    --mono: "IBM Plex Mono", "SF Mono", Consolas, monospace;
+
+    --max-article: 640px;
+    --max-wide: 900px;
+    --edge: 22px;
   }
 
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
   body {
     margin: 0;
-    background: var(--bg);
+    background: var(--ink);
     color: var(--text);
-    font-family: var(--font);
-    line-height: 1.6;
+    font-family: var(--serif);
+    line-height: 1.65;
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
   }
-  h1, h2, h3 { line-height: 1.22; margin: 0 0 0.5em; font-weight: 700; letter-spacing: -0.01em; }
-  p { margin: 0 0 1em; }
+  h1, h2, h3 { font-family: var(--display); line-height: 1.12; margin: 0 0 0.5em; font-weight: 600; letter-spacing: 0.005em; }
+  p { margin: 0 0 1.15em; }
   img { max-width: 100%; display: block; }
   a { color: inherit; }
   button { font-family: inherit; cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
 
-  .wrap { max-width: var(--max-width); margin: 0 auto; padding: 0 20px; }
+  .article-w { max-width: var(--max-article); margin: 0 auto; padding: 0 var(--edge); }
+  .wide-w { max-width: var(--max-wide); margin: 0 auto; padding: 0 var(--edge); }
 
-  #reading-progress {
-    position: fixed; top: 0; left: 0; height: 3px; width: 0%;
-    background: linear-gradient(90deg, var(--blue), var(--red)); z-index: 1000; transition: width 0.1s linear;
+  svg.icon { width: 18px; height: 18px; flex-shrink: 0; }
+
+  /* ---------- MASTHEAD + PULSE PROGRESS ---------- */
+  .masthead {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(18,17,20,0.92); backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--hair);
   }
-
-  .eyebrow {
-    text-transform: uppercase; letter-spacing: 0.16em; font-size: 12px; font-weight: 600;
-    color: var(--text-muted); margin-bottom: 18px; display: flex; align-items: center; justify-content: center; gap: 10px;
+  .masthead-row {
+    max-width: var(--max-wide); margin: 0 auto; padding: 12px var(--edge);
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
   }
-  .eyebrow::before, .eyebrow::after { content: ""; width: 24px; height: 1px; background: var(--border); }
+  .masthead-brand { display: flex; align-items: center; gap: 8px; font-family: var(--display); font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; }
+  .masthead-brand svg { color: var(--signal); }
+  .masthead-tag { font-family: var(--mono); font-size: 11px; color: var(--text-mute); letter-spacing: 0.04em; }
+
+  .pulse-track, .pulse-fill {
+    height: 3px; width: 100%;
+    background-repeat: repeat-x; background-size: 34px 12px; background-position: center;
+  }
+  .pulse-track {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 12'%3E%3Cpolyline points='0,6 7,6 9,2 12,10 15,3 18,8 20,6 34,6' fill='none' stroke='%233a373d' stroke-width='1.4'/%3E%3C/svg%3E");
+  }
+  .pulse-fill {
+    position: relative; margin-top: -3px; width: 0%; overflow: hidden; transition: width 0.12s linear;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 12'%3E%3Cpolyline points='0,6 7,6 9,2 12,10 15,3 18,8 20,6 34,6' fill='none' stroke='%23ff5a36' stroke-width='1.6'/%3E%3C/svg%3E");
+  }
 
   /* ---------- HERO ---------- */
-  .hero {
-    position: relative;
-    padding: 76px 0 56px;
-    text-align: center;
-    background:
-      radial-gradient(ellipse at 50% 0%, rgba(59,111,224,0.16), transparent 60%),
-      radial-gradient(ellipse at 50% 100%, rgba(224,67,59,0.10), transparent 55%),
-      var(--bg);
-    border-bottom: 1px solid var(--border);
-    overflow: hidden;
+  .hero { position: relative; border-bottom: 1px solid var(--hair); }
+  .hero-photo {
+    position: relative; height: 60vh; min-height: 420px; max-height: 640px; overflow: hidden;
   }
-  .hero::before {
-    content: "";
-    position: absolute; inset: 0;
-    background-image: repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(255,255,255,0.025) 40px),
-      repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(255,255,255,0.025) 40px);
-    pointer-events: none;
+  .hero-photo img {
+    width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%;
+    filter: grayscale(0.35) contrast(1.08) brightness(0.62) sepia(0.18) hue-rotate(-6deg);
   }
-  .hero-inner { position: relative; z-index: 1; }
-  .badge-row { display: flex; justify-content: center; gap: 8px; margin-bottom: 22px; }
-  .badge-row span {
-    width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
-    font-size: 18px; border: 1px solid var(--border);
+  .hero-photo::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(18,17,20,0.35) 0%, rgba(18,17,20,0.55) 55%, var(--ink) 100%),
+      linear-gradient(90deg, rgba(255,90,54,0.14), transparent 40%);
   }
-  .badge-row span:nth-child(odd) { background: var(--blue-soft); color: #7ea3f2; }
-  .badge-row span:nth-child(even) { background: var(--red-soft); color: #ef8b85; }
-  .hero h1 { font-size: clamp(28px, 6.4vw, 46px); max-width: 680px; margin-left: auto; margin-right: auto; }
-  .hero h1 .accent-blue { color: #7ea3f2; }
-  .hero h1 .accent-red { color: #ef8b85; }
-  .hero p.lede { color: var(--text-muted); font-size: clamp(16px, 2.6vw, 19px); max-width: 520px; margin: 0 auto 30px; }
-  .hero-tag {
-    display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 999px;
-    border: 1px solid var(--border); background: var(--surface); font-size: 13px; color: var(--text-muted);
+  .hero-copy {
+    position: absolute; left: 0; right: 0; bottom: 0; padding: 0 0 34px;
   }
-  .scroll-hint { margin-top: 46px; opacity: 0.5; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; }
+  .kicker {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--signal); display: block; margin-bottom: 14px;
+  }
+  .kicker.ice { color: var(--ice); }
+  .hero h1 {
+    font-size: clamp(32px, 7vw, 54px); max-width: 12ch; color: #fff;
+    text-shadow: 0 2px 24px rgba(0,0,0,0.4);
+  }
+  .hero h1 em { font-style: normal; color: var(--signal); }
+  .hero-sub { font-family: var(--serif); font-size: clamp(16px, 2.4vw, 19px); color: var(--text-soft); max-width: 46ch; margin: 14px 0 0; }
 
-  /* ---------- CONTENT BLOCKS ---------- */
-  .content-block { padding: 56px 0; border-top: 1px solid var(--border); }
-  .content-block h2 { font-size: clamp(22px, 4.4vw, 30px); }
-  .content-block .kicker {
-    text-transform: uppercase; letter-spacing: 0.14em; font-size: 12px; font-weight: 700;
-    margin-bottom: 12px; display: block;
+  .byline {
+    display: flex; align-items: center; gap: 12px; margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--hair-strong);
   }
-  .kicker.blue { color: #7ea3f2; }
-  .kicker.red { color: #ef8b85; }
-  .lead-text { color: var(--text-muted); font-size: 17px; }
+  .byline-avatar {
+    width: 38px; height: 38px; border-radius: 50%; background: var(--signal); color: #1a0a05;
+    display: flex; align-items: center; justify-content: center; font-family: var(--display); font-weight: 600; font-size: 14px; flex-shrink: 0;
+  }
+  .byline-name { font-size: 14px; font-weight: 600; }
+  .byline-role { font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); }
+  .byline-meta { margin-left: auto; font-family: var(--mono); font-size: 11.5px; color: var(--text-mute); text-align: right; white-space: nowrap; }
 
-  .zigzag { display: flex; flex-direction: column; gap: 28px; align-items: center; }
-  @media (min-width: 680px) {
-    .zigzag { flex-direction: row; align-items: center; gap: 44px; }
-    .zigzag.reverse { flex-direction: row-reverse; }
-  }
-  .zigzag-media { flex: 0 0 40%; width: 100%; }
-  .zigzag-media .ph {
-    aspect-ratio: 4/3; border-radius: var(--radius); background: var(--surface);
-    border: 1px solid var(--border); display: flex; align-items: center; justify-content: center;
-    font-size: 36px; color: var(--text-faint);
-  }
-  .zigzag-text { flex: 1; }
+  .photo-credit { font-family: var(--mono); font-size: 10.5px; color: var(--text-mute); padding: 8px var(--edge) 0; max-width: var(--max-wide); margin: 0 auto; }
+  .photo-credit a { color: var(--text-mute); text-decoration: underline; }
 
-  /* ---------- SELF-CHECK CHECKLIST ---------- */
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 26px 22px; }
-  .checklist-progress { font-size: 14px; color: var(--text-muted); margin-bottom: 16px; }
+  /* ---------- LEDE ---------- */
+  .lede {
+    padding: 44px 0 8px;
+  }
+  .lede p {
+    font-size: clamp(18px, 2.6vw, 21px); color: var(--text); font-style: italic;
+  }
+
+  /* ---------- ARTICLE TYPE ---------- */
+  .section { padding: 40px 0; }
+  .section + .section { border-top: 1px solid var(--hair); }
+  .section h2 {
+    font-size: clamp(23px, 4vw, 30px); color: #fff; margin-bottom: 0.65em;
+  }
+  .section p { color: var(--text-soft); font-size: 17px; }
+  .section p.drop::first-letter {
+    font-family: var(--display); font-size: 3.6em; float: left; line-height: 0.82;
+    padding: 0.03em 0.09em 0 0; color: var(--signal); font-weight: 600;
+  }
+
+  blockquote.pull {
+    margin: 26px 0; padding: 4px 0 4px 20px; border-left: 3px solid var(--signal);
+    font-family: var(--serif); font-style: italic; font-size: 21px; color: #fff; line-height: 1.4;
+  }
+
+  .inline-photo { margin: 8px 0 30px; }
+  .inline-photo img { border-radius: 2px; }
+  .inline-photo figcaption {
+    font-family: var(--mono); font-size: 12px; color: var(--text-mute); margin-top: 10px; line-height: 1.5;
+  }
+
+  ul.plain-list { margin: 0 0 1.2em; padding: 0; list-style: none; }
+  ul.plain-list li {
+    color: var(--text-soft); font-size: 17px; padding: 14px 0 14px 30px; border-top: 1px solid var(--hair); position: relative;
+  }
+  ul.plain-list li:first-child { border-top: none; }
+  ul.plain-list li::before {
+    content: "—"; position: absolute; left: 0; top: 14px; color: var(--signal); font-family: var(--mono);
+  }
+  ul.plain-list li strong { color: var(--text); }
+
+  /* ---------- INSERT / CALLOUT (paper card) ---------- */
+  .insert {
+    background: var(--paper); color: var(--paper-ink); border-radius: 3px; padding: 28px 24px;
+    box-shadow: 0 18px 40px -20px rgba(0,0,0,0.6);
+  }
+  .insert-label {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--paper-muted); display: flex; align-items: center; gap: 8px; margin-bottom: 14px;
+  }
+  .insert-label::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--signal); }
+  .insert h3 { font-family: var(--display); font-size: 20px; margin: 0 0 6px; color: var(--paper-ink); }
+  .insert p.insert-lead { color: var(--paper-muted); font-size: 15px; margin-bottom: 18px; }
+
+  /* Self-check checklist */
+  .checklist-progress { font-family: var(--mono); font-size: 12.5px; color: var(--paper-muted); margin-bottom: 12px; }
   .checklist label {
-    display: flex; gap: 12px; align-items: flex-start; padding: 13px 0; border-bottom: 1px solid var(--border); font-size: 16px;
+    display: flex; gap: 12px; align-items: flex-start; padding: 13px 0; border-top: 1px solid var(--paper-2); font-size: 15.5px;
   }
-  .checklist label:last-of-type { border-bottom: none; }
-  .checklist input { width: 22px; height: 22px; flex-shrink: 0; margin-top: 1px; accent-color: var(--blue); }
+  .checklist label:first-of-type { border-top: none; }
+  .checklist input { width: 20px; height: 20px; flex-shrink: 0; margin-top: 1px; accent-color: var(--signal); }
   .checklist-result {
-    margin-top: 18px; padding: 18px; border-radius: var(--radius-sm); background: var(--blue-soft);
-    border: 1px solid rgba(126,163,242,0.3); font-size: 15px; display: none;
+    margin-top: 16px; padding: 16px; border-radius: 2px; background: rgba(255,90,54,0.1);
+    border: 1px solid rgba(255,90,54,0.3); font-size: 14.5px; display: none;
   }
   .checklist-result.show { display: block; }
 
-  /* ---------- TRAJECTORY TOGGLE ---------- */
-  .traj-tabs { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+  /* Trajectory */
+  .traj-tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
   .traj-tabs button {
-    flex: 1; min-width: 140px; padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border);
-    background: var(--surface); color: var(--text-muted); font-size: 14px; font-weight: 600; min-height: 44px;
+    flex: 1; min-width: 130px; padding: 10px 12px; border-radius: 2px; border: 1px solid var(--paper-2);
+    background: transparent; color: var(--paper-muted); font-family: var(--mono); font-size: 12.5px; font-weight: 600; min-height: 40px;
   }
-  .traj-tabs button.active { background: var(--blue); color: #fff; border-color: var(--blue); }
-  .traj-panel { display: none; padding: 22px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); }
+  .traj-tabs button.active { background: var(--paper-ink); color: var(--paper); border-color: var(--paper-ink); }
+  .traj-panel { display: none; }
   .traj-panel.active { display: block; }
-  .traj-panel h3 { font-size: 18px; margin-bottom: 10px; }
-  .traj-panel p { color: var(--text-muted); margin: 0; }
+  .traj-panel h4 { font-family: var(--display); font-size: 16px; margin: 0 0 8px; }
+  .traj-panel p { color: var(--paper-muted); margin: 0; font-size: 15px; }
 
-  /* ---------- CASE ---------- */
-  .case-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 26px 22px; }
-  .case-quote { font-size: 19px; font-weight: 600; margin-bottom: 14px; }
-  .case-meta { color: var(--text-muted); font-size: 14px; margin-bottom: 4px; }
+  /* Case */
+  .case-meta { font-family: var(--mono); font-size: 12px; color: var(--paper-muted); margin-bottom: 6px; }
+  .case-quote { font-family: var(--display); font-size: 19px; font-weight: 600; margin-bottom: 12px; color: var(--paper-ink); }
+  .case-body p { color: var(--paper-muted); font-size: 15px; }
   .case-toggle {
-    margin-top: 14px; background: none; border: 1px solid var(--border); color: var(--text-muted);
-    padding: 10px 16px; border-radius: 999px; font-size: 14px; min-height: 44px;
+    margin-top: 6px; background: none; border: 1px solid var(--paper-ink); color: var(--paper-ink);
+    padding: 9px 16px; border-radius: 999px; font-family: var(--mono); font-size: 12.5px; min-height: 40px;
   }
   .case-details { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
-  .case-details.open { max-height: 300px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
-  .case-details p { color: var(--text-muted); }
+  .case-details.open { max-height: 300px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--paper-2); }
+  .case-details p { color: var(--paper-muted); font-size: 14.5px; }
 
-  /* ---------- OBJECTION BRANCH ---------- */
-  .objection-options { display: grid; gap: 10px; margin-bottom: 4px; }
+  /* Objection branch */
+  .objection-options { display: grid; gap: 8px; margin-bottom: 4px; }
   .objection-options button {
-    text-align: left; padding: 16px 18px; border-radius: var(--radius-sm); border: 1px solid var(--border);
-    background: var(--surface); color: var(--text); font-size: 15px; min-height: 44px;
+    text-align: left; padding: 14px 16px; border-radius: 2px; border: 1px solid var(--paper-2);
+    background: rgba(255,255,255,0.5); color: var(--paper-ink); font-size: 14.5px; min-height: 44px;
   }
-  .objection-options button.selected { border-color: var(--blue); background: var(--blue-soft); }
+  .objection-options button.selected { border-color: var(--signal); background: rgba(255,90,54,0.12); }
   .objection-answer {
-    display: none; margin-top: 16px; padding: 20px; border-radius: var(--radius); background: var(--surface-2);
-    border: 1px solid var(--border); font-size: 15px; color: var(--text-muted);
+    display: none; margin-top: 14px; padding: 18px; border-radius: 2px; background: rgba(0,0,0,0.05);
+    border-left: 3px solid var(--signal); font-size: 14.5px; color: var(--paper-muted);
   }
   .objection-answer.show { display: block; }
-  .objection-answer strong { color: var(--text); }
+  .objection-answer strong { color: var(--paper-ink); }
 
-  /* ---------- FINAL CTA ---------- */
-  .final-cta {
-    background: linear-gradient(160deg, var(--blue) 0%, #24408f 60%, #7a2620 130%);
-    border-radius: var(--radius); padding: 40px 26px; text-align: center; color: #fff;
+  /* ---------- FINAL CTA (editor's note) ---------- */
+  .editor-note {
+    background: var(--ink-2); border: 1px solid var(--hair-strong); border-radius: 3px; padding: 32px 26px;
+    position: relative;
   }
-  .final-cta h2 { color: #fff; }
-  .final-cta p.subtitle { color: rgba(255,255,255,0.85); font-size: 16px; max-width: 460px; margin: 0 auto 24px; }
+  .editor-note::before {
+    content: ""; position: absolute; top: 0; left: 0; width: 3px; height: 100%; background: var(--signal);
+  }
+  .editor-note h2 { font-size: 24px; margin-bottom: 10px; }
+  .editor-note p.lede-note { color: var(--text-soft); font-size: 16px; max-width: 48ch; }
   .cta-message {
-    background: rgba(0,0,0,0.25); border-radius: var(--radius-sm); padding: 16px; text-align: left;
-    font-size: 14px; color: rgba(255,255,255,0.9); margin: 0 auto 20px; max-width: 460px;
+    background: rgba(255,255,255,0.04); border: 1px solid var(--hair); border-radius: 2px; padding: 16px; margin: 18px 0 20px;
+    font-family: var(--serif); font-style: italic; font-size: 14.5px; color: var(--text-soft);
   }
-  .cta-message .label { text-transform: uppercase; letter-spacing: 0.1em; font-size: 11px; color: rgba(255,255,255,0.6); margin-bottom: 8px; display: block; }
+  .cta-message .label { font-family: var(--mono); font-style: normal; text-transform: uppercase; letter-spacing: 0.08em; font-size: 10.5px; color: var(--text-mute); margin-bottom: 8px; display: block; }
   .cta-button {
-    display: inline-flex; align-items: center; gap: 10px; background: #fff; color: #16161b;
-    padding: 16px 30px; border-radius: 999px; font-size: 16px; font-weight: 700; text-decoration: none;
-    border: none; min-height: 48px;
+    display: inline-flex; align-items: center; gap: 10px; background: var(--signal); color: #1a0a05;
+    padding: 15px 28px; border-radius: 2px; font-family: var(--display); font-size: 15px; font-weight: 600;
+    text-decoration: none; border: none; min-height: 48px; letter-spacing: 0.02em;
   }
-  .cta-note { margin-top: 16px; font-size: 13px; color: rgba(255,255,255,0.65); }
-  .copy-status { font-size: 13px; color: rgba(255,255,255,0.75); margin-top: 10px; min-height: 18px; }
+  .cta-note { margin-top: 14px; font-family: var(--mono); font-size: 12px; color: var(--text-mute); }
+  .copy-status { font-family: var(--mono); font-size: 12px; color: var(--ice); margin-top: 10px; min-height: 18px; }
 
-  footer { text-align: center; padding: 32px 0 48px; color: var(--text-faint); font-size: 13px; }
+  footer {
+    padding: 30px var(--edge) 50px; max-width: var(--max-wide); margin: 0 auto;
+    color: var(--text-mute); font-family: var(--mono); font-size: 12px; border-top: 1px solid var(--hair);
+    display: flex; flex-wrap: wrap; gap: 8px 20px; justify-content: space-between;
+  }
+  footer a { color: var(--text-mute); }
 </style>
 </head>
 <body>
 
-<div id="reading-progress"></div>
+<div class="masthead">
+  <div class="masthead-row">
+    <div class="masthead-brand">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M9 3a6 6 0 0 1 6 6c0 2-.8 3-1.5 4l.5 4h-2l-.5-2h-2l-.5 2H7l.5-4C6.8 12 6 11 6 9a6 6 0 0 1 3-6z"/><path d="M9 9c.8-.8 2-1.2 3-.6"/></svg>
+      SportPsy174
+    </div>
+    <div class="masthead-tag">Дневник психолога · ≈7 мин чтения</div>
+  </div>
+  <div class="pulse-track"><div class="pulse-fill" id="pulse-fill"></div></div>
+</div>
 
 <header class="hero">
-  <div class="wrap hero-inner">
-    <div class="badge-row" aria-hidden="true">
-      <span>🏊</span><span>Ψ</span><span>📖</span><span>🥋</span>
+  <div class="hero-photo">
+    <img src="https://commons.wikimedia.org/wiki/Special:FilePath/Swimmer_Diving_Off_a_Block.jpg" alt="Юный пловец прыгает со стартовой тумбы в момент начала заплыва">
+  </div>
+  <div class="hero-copy wide-w">
+    <span class="kicker">Разбор для родителей · сегмент «мандраж»</span>
+    <h1>На тренировке — лев, на старте — <em>мышь</em></h1>
+    <p class="hero-sub">Почему технически готовый спортсмен «ватнеет» на соревнованиях — и что об этом на самом деле известно, если не сводить всё к «просто соберись».</p>
+    <div class="byline">
+      <div class="byline-avatar">НБ</div>
+      <div>
+        <div class="byline-name">Наталья Бухарина</div>
+        <div class="byline-role">спортивный психолог, автор программы SportPsy174</div>
+      </div>
+      <div class="byline-meta">Для родителей 11–16 лет<br>плавание · фигурное катание · единоборства</div>
     </div>
-    <div class="eyebrow">SportPsy174 · авторская программа</div>
-    <h1>На тренировке — <span class="accent-blue">лев</span>, на старте — <span class="accent-red">мышь</span></h1>
-    <p class="lede">Почему технически готовый спортсмен «ватнеет» на соревнованиях — разбор механизма стартового мандража и что с этим реально делать</p>
-    <span class="hero-tag">Для родителей спортсменов 11–16 лет · плавание, фигурное катание, единоборства</span>
-    <div class="scroll-hint">↓ пролистайте вниз</div>
   </div>
 </header>
+<p class="photo-credit">Фото: Alex Kushell / Sun Sentinel, <a href="https://commons.wikimedia.org/wiki/File:Swimmer_Diving_Off_a_Block.jpg" target="_blank" rel="noopener">Wikimedia Commons</a>, CC BY-SA 4.0</p>
 
 <main>
 
-  <!-- Блок 2 — самопроверка -->
-  <section class="content-block">
-    <div class="wrap">
-      <span class="kicker blue">Проверка</span>
-      <h2>Узнаёте своего ребёнка?</h2>
-      <p class="lead-text">Отметьте, что из этого — про вашу ситуацию. Это не диагностика, а быстрая сверка с типичным сценарием.</p>
-      <div class="card">
-        <div class="checklist" id="selfcheck" data-storage-key="sportpsy174-selfcheck">
-          <p class="checklist-progress"><span class="done-count">0</span> из <span class="total-count">5</span> отмечено</p>
-          <label><input type="checkbox"> Перед стартом бледнеет, «уходит в себя», будто отключается</label>
-          <label><input type="checkbox"> На тренировках результат стабильно лучше, чем на соревнованиях</label>
-          <label><input type="checkbox"> После неудачного старта долго не может отпустить, прокручивает в голове</label>
-          <label><input type="checkbox"> Обычные «соберись», «не переживай», «ты справишься» не помогают, а иногда злят</label>
-          <label><input type="checkbox"> Вы сами боитесь сказать что-то не то, чтобы не сделать хуже</label>
-        </div>
-        <div class="checklist-result" id="selfcheck-result"></div>
+  <section class="lede article-w">
+    <p>Если вы читаете это — скорее всего, вы уже видели этот контраст своими глазами: на тренировке ребёнок показывает лучший результат в группе, а на старте будто подменяют. Это не редкость и не диагноз. Это конкретный, изученный механизм — и в этом тексте мы разберём, что именно происходит с телом в момент старта, почему обычные советы до него не достают, и что делать, если хочется не просто ждать, что «перерастёт».</p>
+  </section>
+
+  <section class="article-w" style="padding-top:8px;">
+    <div class="insert">
+      <div class="insert-label">Быстрая проверка</div>
+      <h3>Узнаёте своего ребёнка?</h3>
+      <p class="insert-lead">Отметьте, что из этого — про вашу ситуацию. Дальше в тексте станет ясно, почему это происходит именно так.</p>
+      <div class="checklist" id="selfcheck" data-storage-key="sportpsy174-selfcheck">
+        <p class="checklist-progress">[ <span class="done-count">0</span> / <span class="total-count">5</span> ]</p>
+        <label><input type="checkbox"> Перед стартом бледнеет, «уходит в себя», будто отключается</label>
+        <label><input type="checkbox"> На тренировках результат стабильно лучше, чем на соревнованиях</label>
+        <label><input type="checkbox"> После неудачного старта долго не может отпустить, прокручивает в голове</label>
+        <label><input type="checkbox"> Обычные «соберись», «не переживай», «ты справишься» не помогают, а иногда злят</label>
+        <label><input type="checkbox"> Вы сами боитесь сказать что-то не то, чтобы не сделать хуже</label>
       </div>
+      <div class="checklist-result" id="selfcheck-result"></div>
     </div>
   </section>
 
-  <!-- Блок 3 — теория -->
-  <section class="content-block">
-    <div class="wrap">
-      <div class="zigzag">
-        <div class="zigzag-media"><div class="ph">🧠</div></div>
-        <div class="zigzag-text">
-          <span class="kicker red">Механизм</span>
-          <h2>Почему «соберись» не работает</h2>
-          <p>Дело не в характере ребёнка и не в том, что вы «что-то делаете не так». На старте тело реагирует не на реальный уровень подготовки, а на воспринятую угрозу — оценку, чужие взгляды, цену ошибки. В этот момент ресурс организма перераспределяется: он уходит от «тонких» навыков (координация, точность движения) к грубым реакциям выживания. Отсюда и «ватность» в теле, которое на тренировке работает идеально.</p>
-          <p>Это физиология, а не слабость воли и не недостаток мотивации. И именно поэтому логичные разговоры «соберись», «ты же можешь» почти не помогают в моменте — они обращаются к той части, которая на старте фактически выключена.</p>
-        </div>
-      </div>
-    </div>
+  <section class="section article-w">
+    <span class="kicker ice">Механизм</span>
+    <h2>Что на самом деле происходит с телом на старте</h2>
+    <p class="drop">Дело не в характере ребёнка и не в том, что вы «где-то передавили». В момент, когда цена ошибки резко растёт — судьи смотрят, соперники рядом, родители на трибуне — нервная система считывает это не как «спортивную ситуацию», а как угрозу. И реагирует на угрозу она у всех одинаково: телу нужно быть готовым драться или бежать, а не выполнять точный гребок или выверенный прыжок.</p>
+    <p>За это отвечает симпатическая нервная система: в кровь выбрасываются адреналин и кортизол, сердце и дыхание ускоряются, кровоток перераспределяется в крупные мышцы — на случай, если придётся резко бежать или защищаться. Это очень старая и очень полезная система, если опасность реальная. Проблема в том, что она не умеет отличать «на меня бежит хищник» от «через тридцать секунд у меня старт, и на меня все смотрят».</p>
+    <blockquote class="pull">Тело в этот момент не отличает старт от реальной опасности — оно готовится драться или бежать, а не показывать идеальный гребок.</blockquote>
+    <p>Здесь и кроется ответ на главный вопрос: почему тренировочный результат не воспроизводится на старте. Техника — гребок, вращение, бросок — это тонкая моторика: она требует спокойной, «включённой» нервной системы, которая может позволить себе точность. А в состоянии «бей или беги» ресурс организма демонстративно уходит в грубую моторику — туда, где не до тонких настроек. Отсюда и «ватность»: тело буквально работает в другом режиме, чем на тренировке, где угрозы никто не считывает.</p>
+    <p>Это не уникальная детская особенность и не слабость воли — тот же механизм стоит за тем, почему взрослый человек, прекрасно знающий текст, вдруг «теряет слова» на важном выступлении. Разница лишь в том, что у взрослого обычно уже есть накопленный опыт публичных ситуаций, а у ребёнка 11–16 лет — часто нет: старт может быть одной из первых по-настоящему «оценочных» ситуаций в его жизни.</p>
   </section>
 
-  <!-- Блок 4 — траектория -->
-  <section class="content-block">
-    <div class="wrap">
-      <span class="kicker blue">Ставки</span>
-      <h2>Что происходит, если оставить как есть</h2>
-      <p class="lead-text">Без нагнетания — просто две траектории, чтобы было понятно, о чём вообще речь.</p>
+  <section class="section article-w">
+    <span class="kicker">Частые ошибки</span>
+    <h2>Что обычно пробуют — и почему это не срабатывает</h2>
+    <p>Раз причина физиологическая, а не «в голове» в бытовом смысле слова, становится понятно, почему стандартный набор родительских реакций почти не помогает:</p>
+    <ul class="plain-list">
+      <li><strong>Уговоры и логика.</strong> «Соберись», «ты же тренировался», «ты справишься» — обращаются к рациональной части мозга. В момент, когда управление уже перехватила система «бей или беги», эта часть просто не главная — слова до неё физически не достают.</li>
+      <li><strong>Давление результатом.</strong> Разговоры о ставках — важности старта, вложенных деньгах, ожиданиях — работают ровно в обратную сторону: они повышают воспринимаемую угрозу, а не снижают её, и подкручивают реакцию сильнее.</li>
+      <li><strong>Полное избегание темы.</strong> Молчать «чтобы не сглазить» тоже не помогает: реакция запускается самой ситуацией старта, а не разговором о ней. Без работы с самим механизмом сценарий просто повторяется от старта к старту.</li>
+      <li><strong>«Закалка» через жёсткость.</strong> Заставлять терпеть, стыдить за волнение, обесценивать («другие же не боятся») рискует не снизить реакцию, а закрепить старт как ситуацию ещё большей угрозы — в следующий раз тело отреагирует так же или сильнее.</li>
+    </ul>
+  </section>
+
+  <figure class="inline-photo article-w">
+    <img src="https://commons.wikimedia.org/wiki/Special:FilePath/2020-01-11_Women%27s_Single_Figure_Skating_Short_Program_%282020_Winter_Youth_Olympics%29_by_Sandro_Halank%E2%80%93300.jpg?width=1100" alt="Юная фигуристка выполняет элемент программы на льду на соревнованиях">
+    <figcaption>Юношеские Олимпийские игры, 2020 год. Разрыв «на тренировке лучше, чем на старте» встречается и на самом высоком уровне — фигуристка, показанная на фото, к этой истории отношения не имеет, снимок иллюстративный.<br>Фото: Sandro Halank, <a href="https://commons.wikimedia.org/wiki/File:2020-01-11_Women%27s_Single_Figure_Skating_Short_Program_(2020_Winter_Youth_Olympics)_by_Sandro_Halank%E2%80%93300.jpg" target="_blank" rel="noopener">Wikimedia Commons</a>, CC BY-SA 4.0</figcaption>
+  </figure>
+
+  <section class="article-w" style="padding-top:0;">
+    <div class="insert">
+      <div class="insert-label">Ставки</div>
+      <h3>Что будет, если оставить как есть</h3>
+      <p class="insert-lead">Без нагнетания — просто две траектории, чтобы было понятно, о чём вообще речь.</p>
       <div class="traj-tabs" role="tablist">
         <button class="active" data-tab="now">Сейчас</button>
         <button data-tab="same">Через полгода без изменений</button>
         <button data-tab="worked">Через полгода с проработкой</button>
       </div>
       <div class="traj-panel active" data-panel="now">
-        <h3>Сейчас</h3>
+        <h4>Сейчас</h4>
         <p>Ребёнок выкладывается на тренировках, но на стартах результат не отражает его реальный уровень. Вы видите разрыв между потенциалом и тем, что происходит на соревнованиях — и не знаете, что с этим делать, кроме как ждать, что «перерастёт».</p>
       </div>
       <div class="traj-panel" data-panel="same">
-        <h3>Через полгода без изменений</h3>
-        <p>Сценарий чаще всего просто повторяется от старта к старту. Разрыв между тренировками и соревнованиями сам по себе не закрывается — потому что то, что его вызывает, остаётся не проработанным. Риск в другом: часть детей в этой точке теряет интерес к спорту не из-за нагрузок, а из-за постоянного разочарования результатом.</p>
+        <h4>Через полгода без изменений</h4>
+        <p>Сценарий чаще всего просто повторяется от старта к старту — потому что то, что его вызывает, остаётся не проработанным. Отдельный риск: часть детей в этой точке теряет интерес к спорту не из-за нагрузок, а из-за постоянного разочарования результатом, которое не связано с их реальным уровнем.</p>
       </div>
       <div class="traj-panel" data-panel="worked">
-        <h3>Через полгода с проработкой</h3>
-        <p>Задача не «убрать волнение полностью» — оно естественно для любого старта. Задача — чтобы тело и голова не блокировали то, что ребёнок реально умеет. Тогда результат на старте начинает приближаться к тренировочному, а вместе с этим возвращается и уверенность — не только в спорте.</p>
+        <h4>Через полгода с проработкой</h4>
+        <p>Задача не «убрать волнение полностью» — оно естественно для любого старта, даже у взрослых профессионалов. Задача — чтобы тело и голова не блокировали то, что ребёнок реально умеет. Тогда результат на старте начинает приближаться к тренировочному, а вместе с этим возвращается и уверенность — не только в спорте.</p>
       </div>
     </div>
   </section>
 
-  <!-- Блок 5 — метод -->
-  <section class="content-block">
-    <div class="wrap">
-      <div class="zigzag reverse">
-        <div class="zigzag-media"><div class="ph">🎯</div></div>
-        <div class="zigzag-text">
-          <span class="kicker red">Метод</span>
-          <h2>Не разговоры, а конкретная работа</h2>
-          <p>Программа построена не на общих советах, а на конкретных техниках и практических инструментах — то, что можно применить перед конкретным стартом, а не абстрактно «стать увереннее». Отдельно — трек для родителей: как самим не усиливать напряжение ребёнка и на что реально можно повлиять со стороны.</p>
-          <p>Ключевая часть — персональный куратор, который еженедельно на связи в Zoom и в чате между сессиями. Его задача — не быть ещё одним «тренером-диктатором», а найти подход, который конкретный ребёнок реально готов слушать. Именно это, по нашим наблюдениям, и определяет, сработает работа или нет.</p>
-        </div>
+  <section class="section article-w">
+    <span class="kicker ice">Метод</span>
+    <h2>Как устроена работа с этим на практике</h2>
+    <p class="drop">Первый шаг — не общие техники дыхания «на всякий случай», а поиск конкретного триггера у конкретного ребёнка. У одних это оценивающий взгляд тренера, у других — память о конкретном провальном старте, у третьих — сам факт, что на трибунах родители. Причина не одна и та же для всех, и работа начинается с того, чтобы понять, какая она в этом случае.</p>
+    <p>Дальше в ход идут не разговоры, а конкретные инструменты — то, что можно натренировать заранее и применить именно в момент старта, а не постфактум обсудить, что пошло не так. Это касается и работы с самим состоянием тела, и того, как ребёнок мысленно проходит последние минуты перед стартом.</p>
+    <p>Отдельно — трек для родителей, параллельно с треком для ребёнка: что именно можно и стоит делать со своей стороны, а что, наоборот, непроизвольно усиливает напряжение — даже из самых добрых побуждений. Часто именно здесь спрятана значительная часть эффекта: ребёнок отрабатывает состояние на тренировках, но приходит на старт в контекст, который сам по себе поднимает тревогу ещё до того, как он вышел к воде или на лёд.</p>
+    <p>Формат — восемь недель, еженедельные сессии с куратором и открытый чат между встречами. Куратор — не «ещё один тренер-диктатор», который говорит, что делать. Его задача — найти подход, который конкретный ребёнок реально готов слушать: по нашим наблюдениям, именно это, а не набор техник сам по себе, определяет, сработает работа или нет.</p>
+  </section>
+
+  <section class="article-w">
+    <div class="insert">
+      <div class="insert-label">Кейс</div>
+      <h3>Как это выглядело на практике</h3>
+      <p class="case-meta">Хоккеист, 14 лет</p>
+      <p class="case-quote">«Волнение перед играми и мандраж — а в итоге лидерство в команде и голы в решающих матчах»</p>
+      <div class="case-body">
+        <p>Отец рассказывает: сын технически был готов, но не мог собраться перед важными играми — терял уверенность в своих силах именно в момент, когда она была нужнее всего. Спустя полтора месяца работы из трёх запланированных устойчивость к стрессу выросла настолько, что он стал забивать решающие голы и взял на себя роль лидера в команде.</p>
+      </div>
+      <button class="case-toggle" data-target="case-1">Показать детали →</button>
+      <div class="case-details" id="case-1">
+        <p>Это отзыв конкретного родителя о конкретном ребёнке — не гарантия одинакового результата для всех, у каждого своя динамика и свой триггер. Мы приводим этот случай как иллюстрацию того, что системная работа с конкретным механизмом даёт видимый эффект не за годы, а за считанные недели — а не как обещание.</p>
       </div>
     </div>
   </section>
 
-  <!-- Блок 6 — кейс -->
-  <section class="content-block">
-    <div class="wrap">
-      <span class="kicker blue">Кейс</span>
-      <h2>Как это выглядит на практике</h2>
-      <div class="case-card">
-        <p class="case-meta">Хоккеист, 14 лет</p>
-        <p class="case-quote">«Волнение перед играми и мандраж — а в итоге лидерство в команде и голы в решающих матчах»</p>
-        <p>Отец рассказывает: сын не мог собраться перед важными играми, не чувствовал уверенности в своих силах, хотя технически был готов. Спустя полтора месяца работы из трёх запланированных — устойчивость к стрессу выросла настолько, что он стал забивать решающие голы и взял на себя роль лидера в команде.</p>
-        <button class="case-toggle" data-target="case-1">Показать детали →</button>
-        <div class="case-details" id="case-1">
-          <p>Это отзыв конкретного родителя о конкретном ребёнке — не гарантия одинакового результата для всех, у каждого своя динамика. Мы приводим его как иллюстрацию, что такая работа даёт видимый эффект не за годы, а за считанные недели системной работы.</p>
-        </div>
+  <section class="section article-w">
+    <span class="kicker">Честно</span>
+    <h2>Про «дорого» — без манипуляций</h2>
+    <p>Это возражение встречается чаще всех остальных. Но по нашему опыту, не всегда за ним стоит именно нехватка денег — и раз уж этот текст задуман как честный разбор, честно разберём и это тоже. Отметьте, что ближе к вашей мысли:</p>
+    <div class="insert" style="margin-top:18px;">
+      <div class="objection-options" id="objection-branch">
+        <button data-answer="money">Реально нет свободного бюджета на это сейчас</button>
+        <button data-answer="doubt">Не уверены, что это сработает именно для нашего ребёнка</button>
+        <button data-answer="ready">Пока просто не готовы принимать решение</button>
+      </div>
+      <div class="objection-answer" data-answer-for="money">
+        <strong>Это тоже нормально.</strong> На программу с куратором доступна беспроцентная рассрочка — без переплат сверх стоимости. Если и рассрочка сейчас не вписывается — честно скажите об этом консультанту, часто вместе можно найти формат, который подойдёт.
+      </div>
+      <div class="objection-answer" data-answer-for="doubt">
+        <strong>Это самое частое, что на деле стоит за словом «дорого».</strong> Страшно не сумма сама по себе, а вложиться и не получить эффект. Поэтому первый шаг — не покупка, а бесплатная диагностика «налегке»: там видно, применим ли метод к конкретной ситуации, ещё до решения о деньгах.
+      </div>
+      <div class="objection-answer" data-answer-for="ready">
+        <strong>Тоже честный вариант.</strong> Диагностика ни к чему не обязывает — это просто разговор, чтобы разложить ситуацию по полочкам. Решение о программе можно принять позже или не принимать вовсе.
       </div>
     </div>
   </section>
 
-  <!-- Блок 7 — возражение "дорого" -->
-  <section class="content-block">
-    <div class="wrap">
-      <span class="kicker red">Честно</span>
-      <h2>Про «дорого» — без манипуляций</h2>
-      <p class="lead-text">Это возражение встречается чаще всех остальных. Но по нашему опыту, не всегда за ним стоит именно нехватка денег. Отметьте, что ближе к вашей мысли:</p>
-      <div class="card">
-        <div class="objection-options" id="objection-branch">
-          <button data-answer="money">Реально нет свободного бюджета на это сейчас</button>
-          <button data-answer="doubt">Не уверены, что это сработает именно для нашего ребёнка</button>
-          <button data-answer="ready">Пока просто не готовы принимать решение</button>
-        </div>
-        <div class="objection-answer" data-answer-for="money">
-          <strong>Это тоже нормально.</strong> На программу с куратором доступна беспроцентная рассрочка — без переплат сверх стоимости. Если и рассрочка сейчас не вписывается — честно скажите об этом консультанту, часто вместе можно найти формат, который подойдёт.
-        </div>
-        <div class="objection-answer" data-answer-for="doubt">
-          <strong>Это самое частое, что стоит за словом «дорого».</strong> Страшно не сумма сама по себе, а вложиться и не получить эффект. Поэтому первый шаг — не покупка, а бесплатная диагностика «налегке»: там видно, применим ли метод к конкретной ситуации, ещё до решения о деньгах.
-        </div>
-        <div class="objection-answer" data-answer-for="ready">
-          <strong>Тоже честный вариант.</strong> Диагностика ни к чему не обязывает — это просто разговор, чтобы разложить ситуацию по полочкам. Решение о программе можно принять позже или не принимать вовсе.
-        </div>
+  <section class="section article-w">
+    <div class="editor-note">
+      <h2>Следующий шаг — просто написать</h2>
+      <p class="lede-note">Не заявка и не покупка — бесплатная диагностика «налегке» с консультантом SportPsy174. Разберётесь, применим ли метод к вашей ситуации, ещё до любых решений о программе.</p>
+      <div class="cta-message">
+        <span class="label">Готовый текст сообщения</span>
+        <span id="cta-text">Здравствуйте! Прочитал(а) материал про стартовый мандраж на sportpsy174.ru — хочу записаться на бесплатную диагностику.</span>
       </div>
-    </div>
-  </section>
-
-  <!-- Блок 8 — финальный CTA -->
-  <section class="content-block">
-    <div class="wrap">
-      <div class="final-cta">
-        <h2>Следующий шаг — просто написать</h2>
-        <p class="subtitle">Не заявка и не покупка — бесплатная диагностика «налегке» с консультантом SportPsy174. Разберётесь, применим ли метод к вашей ситуации.</p>
-        <div class="cta-message">
-          <span class="label">Готовый текст сообщения</span>
-          <span id="cta-text">Здравствуйте! Прочитал(а) материал про стартовый мандраж на sportpsy174.ru — хочу записаться на бесплатную диагностику.</span>
-        </div>
-        <a class="cta-button" id="cta-link" href="https://t.me/natalyabukharina" target="_blank" rel="noopener" data-cta="telegram_dm">
-          Написать в Telegram →
-        </a>
-        <p class="copy-status" id="copy-status"></p>
-        <p class="cta-note">Текст выше скопируется автоматически при клике — останется вставить и отправить</p>
-      </div>
+      <a class="cta-button" id="cta-link" href="https://t.me/natalyabukharina" target="_blank" rel="noopener" data-cta="telegram_dm">
+        Написать в Telegram →
+      </a>
+      <p class="copy-status" id="copy-status"></p>
+      <p class="cta-note">Текст выше скопируется автоматически при клике — останется вставить и отправить</p>
     </div>
   </section>
 
 </main>
 
-<footer>SportPsy174 · Наталья Бухарина · авторская программа психологической подготовки спортсменов</footer>
+<footer>
+  <span>SportPsy174 · Наталья Бухарина</span>
+  <span>Фото: Wikimedia Commons, CC BY-SA 4.0</span>
+</footer>
 
 <script>
 (function () {
   var METRICA_COUNTER_ID = 12345678;
 
-  var bar = document.getElementById('reading-progress');
+  var fill = document.getElementById('pulse-fill');
   window.addEventListener('scroll', function () {
     var h = document.documentElement;
     var scrolled = (h.scrollTop) / (h.scrollHeight - h.clientHeight) * 100;
-    bar.style.width = Math.min(100, Math.max(0, scrolled)) + '%';
+    fill.style.width = Math.min(100, Math.max(0, scrolled)) + '%';
   }, { passive: true });
 
   function reachGoal(name) {
@@ -3978,13 +4072,13 @@ function getLeadMagnet3HTML() {
     function saved() {
       try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { return []; }
     }
-    function texts() {
+    function count() {
       var n = 0;
       boxes.forEach(function (b) { if (b.checked) n++; });
       return n;
     }
     function update(fireGoal) {
-      var n = texts();
+      var n = count();
       doneCount.textContent = n;
       var state = [];
       boxes.forEach(function (b, i) { state[i] = b.checked; });
