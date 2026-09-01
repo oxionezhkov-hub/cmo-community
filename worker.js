@@ -3,6 +3,23 @@ const PAYMENT_LINK = "https://edsofa.ai/sb/JIx";
 const ADMIN_PASSWORD = "12345678";
 const ADMIN_PATH = "/admin";
 
+// ─── NETWORKING EVENT (модерируемый нетворк 02.09) ────────────
+// Ссылка для приглашения: https://t.me/<бот>?start=networking0902
+const NETWORKING_EVENT = {
+  id: 'networking-2026-09-02',
+  startParam: 'networking0902',
+  title: 'Модерируемый нетворк',
+  // 02.09.2026 16:00 МСК = 13:00 UTC
+  startAtUTC: Date.UTC(2026, 8, 2, 13, 0, 0),
+  zoomUrl: 'https://us06web.zoom.us/j/84075252471?pwd=kdLyZkXgbGXEaRNbkSHVemwNzogYWd.1',
+  intro: '🤝 *Нетворкинг «Разборы CMO»*\n\n2 сентября в 16:00 (МСК) — модерируемый нетворк: у каждого 40 секунд на самопрезентацию, дальше — штурм по запросам, если есть. Длительность 1–1,5 часа.\n\nЧтобы попасть — ответь на несколько коротких вопросов для знакомства (займёт пару минут), и сразу после получишь ссылку на Zoom.',
+  questions: [
+    'Имя, фамилия',
+    'Кто ты и чем занимаешься?\nРоль, сфера, компания — в 2-3 предложениях.\nСайт или соцсеть — приложи ссылкой если есть.',
+    'Что ждёшь от Икигай и чем можешь быть полезен сообществу?\nОтветь, пожалуйста, в 2-3 предложениях.'
+  ]
+};
+
 // ─── ROUTING ────────────────────────────────────────────────
 export default {
   async fetch(request, env) {
@@ -108,6 +125,7 @@ if (url.pathname === '/api/admin/coffee/send-now') {
       if (day === 5) await coffeeSendReminder(env); // пятница — напоминание + оценка
     }
     await coffeeSendNewbieReminders(env);
+    await networkingSendReminders(env);
   } catch(err) {
     await notifyAdminError(env, 'scheduled', err);
   }
@@ -364,6 +382,21 @@ async function handleMessage(msg, env) {
     username: msg.from.username || '',
     startedAt: Date.now()
   }));
+
+  if (text.startsWith("/start")) {
+    const payload = text.slice(6).trim();
+    if (payload === NETWORKING_EVENT.startParam) {
+      await handleNetworkingStart(msg, env);
+      return;
+    }
+  }
+
+  // Идёт анкетирование на нетворк — следующее сообщение считаем ответом на вопрос
+  const networkingState = await env.KV.get(`networking:state:${userId}`, "json");
+  if (networkingState && networkingState.eventId === NETWORKING_EVENT.id && text.trim()) {
+    await handleNetworkingAnswer(msg, env, networkingState);
+    return;
+  }
 
   if (text === "/start") {
     const userData = await env.KV.get(`user:${userId}`, "json");
@@ -701,6 +734,125 @@ async function apiTasks(request, env) {
 async function notifyAdmin(env, text) {
   if (!env.ADMIN_ID) return;
   await tgSend(env, env.ADMIN_ID, text);
+}
+
+// ─── NETWORKING: регистрация по спец-ссылке /start networking0902 ─────
+async function handleNetworkingStart(msg, env) {
+  const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  const name = msg.from.first_name || 'участник';
+  const username = msg.from.username || '';
+  const eventId = NETWORKING_EVENT.id;
+  const regKey = `networking:reg:${eventId}:${userId}`;
+
+  let reg = await env.KV.get(regKey, 'json');
+  await logEvent(env, 'networking_start', userId, { eventId });
+
+  if (reg && reg.answeredAt) {
+    // Уже прошёл анкету — просто напоминаем и присылаем зум повторно
+    await tgSend(env, chatId, `Ты уже зарегистрирован(а) на нетворк 2 сентября в 16:00 (МСК) 🤝\n\nСсылка на Zoom:\n${NETWORKING_EVENT.zoomUrl}`);
+    return;
+  }
+
+  if (!reg) {
+    reg = {
+      eventId,
+      tgId: userId,
+      name,
+      lastName: msg.from.last_name || '',
+      username,
+      startedAt: Date.now(),
+      answeredAt: null,
+      answers: []
+    };
+    await env.KV.put(regKey, JSON.stringify(reg));
+
+    const registrants = await env.KV.get(`networking:registrants:${eventId}`, 'json') || [];
+    if (!registrants.includes(userId)) {
+      registrants.push(userId);
+      await env.KV.put(`networking:registrants:${eventId}`, JSON.stringify(registrants));
+    }
+
+    await notifyAdmin(env, `🔔 *Нетворк 02.09* — переход по ссылке регистрации\n\n${name} (@${username || '—'}), TG ID: ${userId}`);
+  }
+
+  // Запускаем анкету заново (даже если начинал раньше и не закончил)
+  await env.KV.put(`networking:state:${userId}`, JSON.stringify({ eventId, step: 0 }));
+  await tgSend(env, chatId, NETWORKING_EVENT.intro);
+  await tgSend(env, chatId, `*Вопрос 1 из ${NETWORKING_EVENT.questions.length}:*\n${NETWORKING_EVENT.questions[0]}`);
+}
+
+async function handleNetworkingAnswer(msg, env, state) {
+  const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  const text = (msg.text || '').trim();
+  const eventId = state.eventId;
+  const questions = NETWORKING_EVENT.questions;
+  const step = state.step || 0;
+
+  const regKey = `networking:reg:${eventId}:${userId}`;
+  const reg = await env.KV.get(regKey, 'json');
+  if (!reg) {
+    await env.KV.delete(`networking:state:${userId}`);
+    return;
+  }
+
+  reg.answers = reg.answers || [];
+  reg.answers[step] = { question: questions[step], answer: text };
+  await env.KV.put(regKey, JSON.stringify(reg));
+
+  const nextStep = step + 1;
+  if (nextStep < questions.length) {
+    await env.KV.put(`networking:state:${userId}`, JSON.stringify({ eventId, step: nextStep }));
+    await tgSend(env, chatId, `*Вопрос ${nextStep + 1} из ${questions.length}:*\n${questions[nextStep]}`);
+    return;
+  }
+
+  // Анкета завершена
+  reg.answeredAt = Date.now();
+  await env.KV.put(regKey, JSON.stringify(reg));
+  await env.KV.delete(`networking:state:${userId}`);
+  await logEvent(env, 'networking_answered', userId, { eventId });
+
+  await tgSend(env, chatId, `Спасибо! Ты зарегистрирован(а) на нетворк 🤝\n\n📅 2 сентября, 16:00 (МСК)\n⏱ 1–1,5 часа, модерируемый формат\n\n🔗 Ссылка на Zoom:\n${NETWORKING_EVENT.zoomUrl}\n\nМы также пришлём напоминание со ссылкой за 3 часа и за 15 минут до начала.`);
+
+  const qaText = reg.answers.map((a, i) => `${i + 1}. ${a.question}\n${a.answer}`).join('\n\n');
+  await notifyAdmin(env, `✅ *Нетворк 02.09* — анкета заполнена\n\n${reg.name} (@${reg.username || '—'}), TG ID: ${userId}\n\n${qaText}`);
+}
+
+// Рассылка зум-ссылки всем зарегистрированным (даже не ответившим на анкету)
+// за 3 часа, за 15 минут и в момент начала. Идемпотентно — каждое окно шлётся один раз.
+async function networkingSendReminders(env) {
+  const eventId = NETWORKING_EVENT.id;
+  const startAt = NETWORKING_EVENT.startAtUTC;
+  const now = Date.now();
+
+  const windows = [
+    { key: '3h', offsetMs: 3 * 60 * 60 * 1000, label: 'Через 3 часа начинается нетворк' },
+    { key: '15m', offsetMs: 15 * 60 * 1000, label: 'Через 15 минут начинается нетворк' },
+    { key: '0m', offsetMs: 0, label: 'Нетворк начинается прямо сейчас' }
+  ];
+
+  for (const w of windows) {
+    const targetTime = startAt - w.offsetMs;
+    // Окно допуска — от targetTime до +20 минут, чтобы не пропустить при редком cron-тике
+    if (now < targetTime || now > targetTime + 20 * 60 * 1000) continue;
+
+    const sentFlagKey = `networking:sent:${eventId}:${w.key}`;
+    const alreadySent = await env.KV.get(sentFlagKey);
+    if (alreadySent) continue;
+    await env.KV.put(sentFlagKey, '1', { expirationTtl: 60 * 60 * 24 * 7 });
+
+    const registrants = await env.KV.get(`networking:registrants:${eventId}`, 'json') || [];
+    let sent = 0;
+    for (const tgId of registrants) {
+      try {
+        await tgSend(env, tgId, `⏰ *${w.label}*\n\n🔗 Ссылка на Zoom:\n${NETWORKING_EVENT.zoomUrl}`);
+        sent++;
+      } catch (e) {}
+    }
+    await notifyAdmin(env, `📤 Нетворк 02.09 — разослана ссылка на Zoom (${w.key}) ${registrants.length ? sent + '/' + registrants.length : '0'} участникам`);
+  }
 }
 
 // ─── API: AUTH ───────────────────────────────────────────────
