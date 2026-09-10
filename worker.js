@@ -14135,6 +14135,7 @@ function showToast(msg){
 
 /* ───── Panel ───── */
 function openNewPerson(){
+  creatingPersonPromise = null;
   CURRENT = { id:null, name:'', telegram:'', tgUsername:'', email:'', ratings:[], requests:[], notes:[], payments:[], statusChanges:[], accessStatus:'', accessNote:'' };
   fillPanel();
   showPanel();
@@ -14143,6 +14144,7 @@ function openNewPerson(){
 }
 
 function openPerson(id){
+  creatingPersonPromise = null;
   CURRENT = PEOPLE.find(p=>p.id===id);
   if(!CURRENT) return;
   fillPanel();
@@ -14384,16 +14386,25 @@ async function scheduleFieldSave(){
   saveFieldTimer = setTimeout(saveFields, 500);
 }
 
+let creatingPersonPromise = null;
 async function ensurePersonCreated(){
   if(CURRENT.id) return CURRENT.id;
-  const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({
-    action:'create', name: document.getElementById('fName').value.trim()
-  })});
-  const d = await r.json();
-  CURRENT.id = d.person.id;
-  CURRENT.createdAt = d.person.createdAt;
-  PEOPLE.push(CURRENT);
-  return CURRENT.id;
+  if(creatingPersonPromise) return creatingPersonPromise;
+  creatingPersonPromise = (async () => {
+    const r = await fetch('/api/community', {method:'POST', headers:authHeaders(), body: JSON.stringify({
+      action:'create', name: document.getElementById('fName').value.trim()
+    })});
+    const d = await r.json();
+    CURRENT.id = d.person.id;
+    CURRENT.createdAt = d.person.createdAt;
+    PEOPLE.push(CURRENT);
+    return CURRENT.id;
+  })();
+  try {
+    return await creatingPersonPromise;
+  } finally {
+    creatingPersonPromise = null;
+  }
 }
 
 async function saveFields(){
