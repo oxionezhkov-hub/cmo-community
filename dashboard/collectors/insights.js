@@ -130,7 +130,49 @@ export function buildRuleInsights(d) {
     });
   }
 
-  // 6. Качество трафика по Метрике
+  // 6. Пропущенные звонки
+  const calls = d.calls;
+  if (calls && calls.total > 50 && calls.missedRate > 15) {
+    const worstDay = [...calls.byWeekday].sort((a, b) => b.missedRate - a.missedRate)[0];
+    const evening = calls.byHour.filter((h) => h.hour >= 19).reduce((a, h) => ({ total: a.total + h.total, missed: a.missed + h.missed }), { total: 0, missed: 0 });
+    const lostRevenue = round(calls.missed * (calls.targetRate / 100) * d.amo.avgCheck * (d.totals.deals / Math.max(d.totals.qualified, 1)));
+    out.push({
+      id: 'missed-calls',
+      severity: 'critical',
+      title: `Пропущено ${calls.missed} звонков из ${calls.total} — ${calls.missedRate}% обращений`,
+      summary: `Хуже всего ${worstDay.day}: ${worstDay.missedRate}% пропусков. После 19:00 не отвечают на ${pct(evening.missed, evening.total)}% звонков. Среднее ожидание ответа — ${calls.avgWait} сек.`,
+      evidence: [
+        { label: 'Звонков', value: calls.total },
+        { label: 'Пропущено', value: `${calls.missed} (${calls.missedRate}%)` },
+        { label: 'Целевых от всех звонков', value: `${calls.targetRate}%` },
+      ],
+      action: `Включить переадресацию на дежурного в вечерние часы и ${worstDay.day}, добавить автоперезвон по пропущенным. Недополученная выручка за период — около ${money(lostRevenue)}.`,
+      impact: lostRevenue,
+      sources: ['Коллтрекинг'],
+    });
+  }
+
+  // 7. Поведение на странице: клики без реакции и низкая прокрутка
+  const badPage = [...(d.pages || [])].filter((p) => p.visits > 200).sort((a, b) => b.rageRate - a.rageRate)[0];
+  if (badPage && badPage.rageRate > 4) {
+    out.push({
+      id: `page-${slug(badPage.url)}`,
+      severity: 'warning',
+      title: `«${badPage.title}»: ${badPage.rageRate}% визитов с кликами по неработающим элементам`,
+      summary: `До середины страницы доходит ${badPage.scrollRate}% посетителей, среднее время — ${badPage.avgTime}. Форму открывают ${badPage.formStarts} раз, отправляют ${badPage.formSubmits}.`,
+      evidence: [
+        { label: 'Визиты', value: badPage.visits },
+        { label: 'Дочитывания', value: `${badPage.readRate}%` },
+        { label: 'Клики впустую', value: badPage.rageClicks },
+        { label: 'Конверсия формы', value: `${badPage.formRate}%` },
+      ],
+      action: 'Посмотреть записи Вебвизора по этой странице: скорее всего, элемент выглядит кликабельным, но им не является, а форма требует лишних полей.',
+      impact: 0,
+      sources: ['Яндекс.Метрика', 'Вебвизор'],
+    });
+  }
+
+  // 8. Качество трафика по Метрике
   const worstSource = [...d.metrika.sources].filter((s) => s.visits > 500).sort((a, b) => b.bounceRate - a.bounceRate)[0];
   if (worstSource && worstSource.bounceRate > 40) {
     out.push({

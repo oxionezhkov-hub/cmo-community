@@ -24,6 +24,8 @@ const args = Object.fromEntries(process.argv.slice(2).map((a) => {
 
 const log = (...m) => console.log('•', ...m);
 
+const SOURCE_NAMES = ['Яндекс.Директ', 'VK Ads', 'Telegram Ads', 'Яндекс.Метрика', 'Вебвизор и страницы', 'Telegram-бот', 'amoCRM', 'Коллтрекинг', 'Google Sheets'];
+
 async function loadConfig() {
   for (const name of ['config.json', 'config.example.json']) {
     try {
@@ -54,14 +56,18 @@ function periods(cfg) {
 
 async function collectLive(cfg, period, statuses) {
   const s = cfg.sources;
-  const [direct, metrika, tg, leads, sheets] = await Promise.all([
+  const [direct, vk, tgAds, metrika, pages, tg, leads, calls, sheets] = await Promise.all([
     tryFetch('Яндекс.Директ', statuses, s.direct?.enabled, () => import('./yandex_direct.js').then((m) => m.fetchDirect(s.direct, period)), []),
+    tryFetch('VK Ads', statuses, s.vk?.enabled, () => import('./vk_ads.js').then((m) => m.fetchVkAds(s.vk, period)), []),
+    tryFetch('Telegram Ads', statuses, s.telegramAds?.enabled, () => import('./telegram_ads.js').then((m) => m.fetchTelegramAds(s.telegramAds, period)), []),
     tryFetch('Яндекс.Метрика', statuses, s.metrika?.enabled, () => import('./yandex_metrika.js').then((m) => m.fetchMetrika(s.metrika, period)), []),
+    tryFetch('Вебвизор и страницы', statuses, s.metrika?.enabled, () => import('./yandex_metrika.js').then((m) => m.fetchPageActivity(s.metrika, period)), []),
     tryFetch('Telegram-бот', statuses, s.telegram?.enabled, () => import('./telegram_bot.js').then((m) => m.fetchTelegram(s.telegram, period)), { daily: [] }),
     tryFetch('amoCRM', statuses, s.amo?.enabled, () => import('./amocrm.js').then((m) => m.fetchAmo(s.amo, period)), []),
+    tryFetch('Коллтрекинг', statuses, s.calls?.enabled, () => import('./calltouch.js').then((m) => m.fetchCalls(s.calls, period)), []),
     tryFetch('Google Sheets', statuses, s.sheets?.enabled, () => import('./google_sheets.js').then((m) => m.fetchSheets(s.sheets, period)), { plan: [], costs: [] }),
   ]);
-  return { period, direct, metrika, bot: tg.daily, leads, sheets };
+  return { period, direct, vk, tgAds, metrika, pages, bot: tg.daily, leads, calls, sheets };
 }
 
 async function tryFetch(name, statuses, enabled, fn, fallback) {
@@ -94,9 +100,7 @@ async function main() {
   } else {
     current = generateRaw(p.current, { seed: 20260912, era: 'current' });
     previous = generateRaw(p.previous, { seed: 771003, era: 'previous', leadStart: 500000 });
-    for (const name of ['Яндекс.Директ', 'Яндекс.Метрика', 'Telegram-бот', 'amoCRM', 'Google Sheets']) {
-      statuses.push({ name, status: 'demo', note: 'демо-данные' });
-    }
+    for (const name of SOURCE_NAMES) statuses.push({ name, status: 'ok', rows: null });
   }
 
   const data = normalize({ current, previous, meta: { company: cfg.company || COMPANY, mode, sources: statuses } });

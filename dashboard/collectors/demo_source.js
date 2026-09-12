@@ -16,6 +16,25 @@ export const CAMPAIGNS = [
   { id: 71100308, name: 'Мастер кампаний / Автотаргет', channel: 'Мастер кампаний',       cpc: 41,  ctr: 0.021, clicks: 150, cr: 0.031, quality: 0.49 },
 ];
 
+// Кабинеты, которые тянутся отдельными коннекторами, но живут в той же модели.
+export const VK_CAMPAIGNS = [
+  { id: 5510041, name: 'VK Ads / Лид-формы',   channel: 'VK Ads',       cpc: 28, ctr: 0.009, clicks: 300, cr: 0.052, quality: 0.42 },
+  { id: 5510042, name: 'VK Ads / Ретаргетинг', channel: 'VK Ads',       cpc: 24, ctr: 0.011, clicks: 180, cr: 0.036, quality: 0.57 },
+  { id: 9900071, name: 'Telegram Ads / Каналы про карьеру', channel: 'Telegram Ads', cpc: 63, ctr: 0.013, clicks: 210, cr: 0.024, quality: 0.66 },
+];
+
+const ALL_PAID = () => [...CAMPAIGNS, ...VK_CAMPAIGNS];
+
+// Страницы сайта: поведение из Метрики и Вебвизора.
+const PAGES = [
+  { url: '/',                     title: 'Главная',                          visits: 1180, time: 96,  s50: .72, s75: .48, s100: .27, cta: .091, formStart: .052, formSend: .031, rage: .012 },
+  { url: '/analyst',              title: 'Профессия «Аналитик данных»',      visits: 940,  time: 174, s50: .78, s75: .61, s100: .38, cta: .128, formStart: .086, formSend: .049, rage: .009 },
+  { url: '/designer',             title: 'Профессия «Продуктовый дизайнер»', visits: 810,  time: 158, s50: .74, s75: .55, s100: .33, cta: .112, formStart: .074, formSend: .041, rage: .011 },
+  { url: '/promo-autumn',         title: 'Осенний набор — лендинг акции',    visits: 690,  time: 41,  s50: .34, s75: .12, s100: .05, cta: .038, formStart: .019, formSend: .006, rage: .078 },
+  { url: '/pricing',              title: 'Стоимость и рассрочка',            visits: 520,  time: 121, s50: .69, s75: .44, s100: .29, cta: .097, formStart: .061, formSend: .038, rage: .014 },
+  { url: '/blog/data-profession', title: 'Блог: как войти в аналитику',      visits: 470,  time: 212, s50: .81, s75: .66, s100: .44, cta: .034, formStart: .017, formSend: .008, rage: .006 },
+];
+
 const ORGANIC = [
   { source: 'Органический поиск', visits: 940, bounce: 0.31, depth: 3.4, cr: 0.021 },
   { source: 'Telegram-канал',     visits: 610, bounce: 0.24, depth: 4.1, cr: 0.020 },
@@ -39,6 +58,9 @@ export function generateRaw(period, opts = {}) {
   const era = opts.era ?? 'current'; // current | previous
 
   const direct = [];
+  const vk = [];
+  const tgAds = [];
+  const calls = [];
   const metrika = [];
   const bot = [];
   const leads = [];
@@ -49,15 +71,18 @@ export function generateRaw(period, opts = {}) {
     const progress = n > 1 ? i / (n - 1) : 0;
     const noise = () => 0.86 + rand() * 0.28;
 
-    // ---- Яндекс.Директ: показы / клики / расход по кампаниям ----
-    for (const c of CAMPAIGNS) {
+    // ---- Рекламные кабинеты: показы / клики / расход по кампаниям ----
+    for (const c of ALL_PAID()) {
       // «Широкий интерес» в текущем периоде разгоняют — это и станет главным инсайтом.
       const driftK = c.drift && era === 'current' ? 1 + (c.drift - 1) * progress : 1;
       const clicks = Math.round(c.clicks * wf * noise() * driftK * (era === 'previous' ? 0.92 : 1));
       const impressions = Math.round((clicks / c.ctr) * noise());
       const cpcToday = round(c.cpc * (era === 'current' ? 1 + 0.09 * progress : 1) * noise(), 2);
       const spend = round(clicks * cpcToday, 2);
-      direct.push({ date, campaignId: c.id, campaign: c.name, impressions, clicks, spend });
+      const row = { date, campaignId: c.id, campaign: c.name, impressions, clicks, spend };
+      if (c.channel === 'VK Ads') vk.push(row);
+      else if (c.channel === 'Telegram Ads') tgAds.push(row);
+      else direct.push(row);
 
       // ---- Заявки из платного трафика (в CRM попадут как сделки) ----
       const crK = c.drift && era === 'current' ? 1 - 0.28 * progress : 1;
@@ -83,6 +108,23 @@ export function generateRaw(period, opts = {}) {
       }
     }
 
+    // ---- Коллтрекинг: звонки по дням и часам ----
+    const weekend = [0, 6].includes(new Date(date).getUTCDay());
+    const callCount = Math.round((weekend ? 26 : 48) * noise());
+    for (let k = 0; k < callCount; k++) {
+      const hour = 9 + Math.floor(rand() * 12);
+      // По выходным и после 19:00 звонки некому брать — это станет отдельным инсайтом.
+      const answered = rand() < (weekend || hour >= 19 ? 0.41 : 0.88);
+      const chan = rand() < 0.52 ? 'Яндекс.Директ — Поиск' : rand() < 0.5 ? 'SEO' : 'VK Ads';
+      calls.push({
+        date, hour, channel: chan,
+        answered,
+        durationSec: answered ? Math.round(40 + rand() * 320) : 0,
+        target: answered && rand() < 0.62,
+        waitSec: Math.round(6 + rand() * 34),
+      });
+    }
+
     // ---- Telegram-бот ----
     // В текущем периоде на 18-й день ломается шаг «квиз» — второй инсайт.
     const broken = era === 'current' && i >= 18;
@@ -105,7 +147,11 @@ export function generateRaw(period, opts = {}) {
   return {
     period,
     direct,
+    vk,
+    tgAds,
+    calls,
     metrika,
+    pages: buildPages(rand, n, era),
     bot,
     leads,
     sheets: buildSheets(period, era),
@@ -136,21 +182,43 @@ function makeLead(rand, id, date, channel, campaign, quality, era, progress) {
   };
 }
 
+// ---- Метрика + Вебвизор: поведение на страницах за период ----
+function buildPages(rand, days, era) {
+  const k = era === 'previous' ? 0.93 : 1;
+  return PAGES.map((p) => {
+    const visits = Math.round(p.visits * days * 0.74 * k * (0.9 + rand() * 0.2));
+    const r = (share) => Math.round(visits * share * (0.92 + rand() * 0.16));
+    return {
+      url: p.url,
+      title: p.title,
+      visits,
+      avgTimeSec: Math.round(p.time * (0.9 + rand() * 0.2)),
+      scroll50: r(p.s50),
+      scroll75: r(p.s75),
+      scroll100: r(p.s100),
+      ctaClicks: r(p.cta),
+      formStarts: r(p.formStart),
+      formSubmits: r(p.formSend),
+      rageClicks: r(p.rage),
+    };
+  });
+}
+
 // ---- Google Sheets: план и офлайн-расходы, которых нет ни в одном API ----
 function buildSheets(period, era) {
   const month = period.to.slice(0, 7);
   const k = era === 'previous' ? 0.95 : 1;
   return {
     plan: [
-      { month, metric: 'Заявки', plan: 3200 },
-      { month, metric: 'Квал. заявки', plan: 1900 },
-      { month, metric: 'Продажи', plan: 210 },
-      { month, metric: 'Выручка', plan: 19500000 },
-      { month, metric: 'CPL', plan: 900 },
+      { month, metric: 'Заявки', plan: 3800 },
+      { month, metric: 'Квал. заявки', plan: 2400 },
+      { month, metric: 'Продажи', plan: 275 },
+      { month, metric: 'Выручка', plan: 26000000 },
+      { month, metric: 'CPL', plan: 850 },
     ],
     costs: [
-      { month, channel: 'Telegram Ads', spend: round(420000 * k) },
       { month, channel: 'Контент и SEO', spend: round(310000 * k) },
+      { month, channel: 'Коллтрекинг', spend: round(24000 * k) },
       { month, channel: 'Email-платформа', spend: round(38000 * k) },
       { month, channel: 'Работа агентства', spend: round(180000 * k) },
     ],

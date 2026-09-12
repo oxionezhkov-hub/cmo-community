@@ -2,9 +2,13 @@
 // к единой модели дашборда. Один вход — один JSON, который рисует index.html.
 import { round, div, pct, delta, sum, dateRange } from './lib/util.js';
 
-const CH_ORDER = ['Яндекс.Директ — Поиск', 'Яндекс.Директ — РСЯ', 'Мастер кампаний', 'Telegram-бот', 'Telegram', 'SEO', 'Email', 'Прочее'];
+const CH_ORDER = ['Яндекс.Директ — Поиск', 'Яндекс.Директ — РСЯ', 'Мастер кампаний', 'VK Ads', 'Telegram Ads', 'Telegram-бот', 'Telegram', 'SEO', 'Email', 'Прочее'];
 
 export function normalize({ current, previous, meta = {} }) {
+  // Директ, VK Ads и Telegram Ads приходят из разных кабинетов, но в модели это
+  // один и тот же тип строки: дата + кампания + показы/клики/расход.
+  current.ads = [...current.direct, ...(current.vk || []), ...(current.tgAds || [])];
+  previous.ads = [...previous.direct, ...(previous.vk || []), ...(previous.tgAds || [])];
   const cur = aggregate(current);
   const prev = aggregate(previous);
 
@@ -155,6 +159,22 @@ export function normalize({ current, previous, meta = {} }) {
     ],
   };
 
+  const channelsDaily = perDay(current, 'channel');
+  const campaignsDaily = perDay(current, 'campaign');
+
+  const pages = (current.pages || []).map((p) => ({
+    ...p,
+    scrollRate: pct(p.scroll75, p.visits),
+    readRate: pct(p.scroll100, p.visits),
+    ctaRate: pct(p.ctaClicks, p.visits),
+    formRate: pct(p.formSubmits, p.formStarts),
+    submitRate: pct(p.formSubmits, p.visits),
+    rageRate: pct(p.rageClicks, p.visits),
+    avgTime: `${Math.floor(p.avgTimeSec / 60)}:${String(p.avgTimeSec % 60).padStart(2, '0')}`,
+  })).sort((a, b) => b.visits - a.visits);
+
+  const calls = callStats(current.calls || [], previous.calls || []);
+
   return {
     meta: {
       company: meta.company || '—',
@@ -174,7 +194,76 @@ export function normalize({ current, previous, meta = {} }) {
     telegram: bot,
     amo,
     sheets,
+    channelsDaily,
+    campaignsDaily,
+    pages,
+    calls,
     totals: { spend: round(totalSpend), leads: cur.leads, qualified: cur.qualified, deals: cur.deals, revenue: cur.revenue },
+  };
+}
+
+/** Разрез «день × канал» или «день × кампания»: нужен, чтобы дашборд умел менять период сам. */
+function perDay(raw, dimension) {
+  const map = new Map();
+  const key = (date, name) => `${date}||${name}`;
+  const touch = (date, name) => {
+    const k = key(date, name);
+    if (!map.has(k)) map.set(k, { date, [dimension]: name, impressions: 0, clicks: 0, spend: 0, leads: 0, qualified: 0, deals: 0, revenue: 0 });
+    return map.get(k);
+  };
+  for (const r of raw.ads) {
+    const name = dimension === 'campaign' ? r.campaign : channelOfCampaign(raw, r.campaign);
+    const t = touch(r.date, name);
+    t.impressions += r.impressions; t.clicks += r.clicks; t.spend += r.spend;
+  }
+  for (const l of raw.leads) {
+    const name = dimension === 'campaign' ? l.campaign : l.channel;
+    if (!name || name === '—') continue;
+    const t = touch(l.createdAt.slice(0, 10), name);
+    t.leads += 1;
+    if (l.qualified) t.qualified += 1;
+    if (l.amount > 0) { t.deals += 1; t.revenue += l.amount; }
+  }
+  return [...map.values()].map((r) => ({ ...r, spend: round(r.spend) })).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Коллтрекинг: сколько звонков теряется и когда именно. */
+function callStats(calls, prevCalls) {
+  const answered = calls.filter((c) => c.answered);
+  const byHour = Array.from({ length: 24 }, (_, hour) => {
+    const rows = calls.filter((c) => c.hour === hour);
+    return { hour, total: rows.length, missed: rows.filter((c) => !c.answered).length };
+  }).filter((h) => h.total);
+  const byWeekday = Array.from({ length: 7 }, (_, day) => {
+    const rows = calls.filter((c) => new Date(c.date).getUTCDay() === day);
+    return {
+      day: ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'][day],
+      total: rows.length,
+      missed: rows.filter((c) => !c.answered).length,
+      missedRate: pct(rows.filter((c) => !c.answered).length, rows.length),
+    };
+  }).filter((d) => d.total);
+  const byChannel = [...new Set(calls.map((c) => c.channel))].map((channel) => {
+    const rows = calls.filter((c) => c.channel === channel);
+    return {
+      channel,
+      total: rows.length,
+      answered: rows.filter((c) => c.answered).length,
+      target: rows.filter((c) => c.target).length,
+      targetRate: pct(rows.filter((c) => c.target).length, rows.length),
+    };
+  }).sort((a, b) => b.total - a.total);
+  return {
+    total: calls.length,
+    answered: answered.length,
+    missed: calls.length - answered.length,
+    missedRate: pct(calls.length - answered.length, calls.length),
+    missedRatePrev: pct(prevCalls.filter((c) => !c.answered).length, prevCalls.length),
+    target: calls.filter((c) => c.target).length,
+    targetRate: pct(calls.filter((c) => c.target).length, calls.length),
+    avgWait: round(answered.reduce((a, c) => a + c.waitSec, 0) / (answered.length || 1), 0),
+    avgTalk: round(answered.reduce((a, c) => a + c.durationSec, 0) / (answered.length || 1), 0),
+    byHour, byWeekday, byChannel,
   };
 }
 
@@ -201,7 +290,7 @@ function aggregate(raw) {
   const byDate = {}, byChannel = {}, byCampaign = {};
   const touch = (obj, key, extra = {}) => (obj[key] ||= { impressions: 0, clicks: 0, spend: 0, visits: 0, leads: 0, qualified: 0, deals: 0, revenue: 0, ...extra });
 
-  for (const r of raw.direct) {
+  for (const r of raw.ads) {
     const d = touch(byDate, r.date);
     const ch = touch(byChannel, channelOfCampaign(raw, r.campaign));
     const cp = touch(byCampaign, r.campaign, { name: r.campaign, channel: channelOfCampaign(raw, r.campaign) });

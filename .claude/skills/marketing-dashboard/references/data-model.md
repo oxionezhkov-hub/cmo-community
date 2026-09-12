@@ -19,6 +19,10 @@
   "telegram": { "joined", "started", "quizCompleted", "bookedCall", "quizRate", "daily", "funnel" },
   "amo":      { "pipeline", "managers", "lostReasons", "avgCycle", "avgCheck" },
   "sheets":   { "costs", "extraCosts", "planFact" },
+  "channelsDaily": [ { "date", "channel", "impressions", "clicks", "spend", "leads", "qualified", "deals", "revenue" } ],
+  "campaignsDaily":[ { "date", "campaign", "impressions", "clicks", "spend", "leads", "qualified", "deals", "revenue" } ],
+  "pages":    [ { "url", "title", "visits", "avgTime", "scrollRate", "readRate", "ctaRate", "formRate", "submitRate", "rageRate" } ],
+  "calls":    { "total", "answered", "missed", "missedRate", "target", "targetRate", "avgWait", "avgTalk", "byHour", "byWeekday", "byChannel" },
   "insights": [ { "id", "severity", "title", "summary", "evidence", "action", "impact", "sources" } ],
   "digest":   "текст для Telegram",
   "totals":   { "spend", "leads", "qualified", "deals", "revenue" }
@@ -37,9 +41,20 @@
 | `telegram_bot` | `{daily: [{date, joined, left, started, quizCompleted, bookedCall}], subscribers}` |
 | `amocrm` | `[{id, createdAt, channel, campaign, manager, qualified, status, amount, cycleDays, lostReason}]` |
 | `google_sheets` | `{plan: [{month, metric, plan}], costs: [{month, channel, spend}]}` |
+| `vk_ads` | те же строки, что у Директа: `[{date, campaignId, campaign, impressions, clicks, spend}]` |
+| `telegram_ads` | то же, но источник — лист выгрузки из кабинета |
+| `calltouch` | `[{date, hour, channel, answered, durationSec, target, waitSec}]` |
+| `yandex_metrika.fetchPageActivity` | `[{url, title, visits, avgTimeSec, scroll50, scroll75, scroll100, ctaClicks, formStarts, formSubmits, rageClicks}]` |
 
 Добавить свой источник = написать файл с такой же подписью `fetch*(config, period)` и дописать строку
 в `collectLive()` внутри `collect.js`. Ни модель, ни дашборд при этом не меняются.
+
+## Разрезы по дням
+
+`channelsDaily` и `campaignsDaily` — это те же каналы и кампании, но с датой. Они нужны, чтобы дашборд
+умел менять период сам, без пересборки: переключатель «7 / 14 / 28 дней» пересчитывает KPI, динамику,
+каналы, кампании и воронку бота прямо в браузере. Блоки без дневной разбивки (поведение на страницах,
+звонки, продажи по менеджерам) всегда показывают весь период и честно подписаны об этом.
 
 ## Где данные склеиваются
 
