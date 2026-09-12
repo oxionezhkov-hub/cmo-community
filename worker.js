@@ -1,3 +1,5 @@
+import { renderDashboardPage, DASHBOARD_APP_JS, DASHBOARD_DATA } from "./dashboard/dist/worker-assets.js";
+
 const WORKER_URL = "https://cmo-razbory.oxion-ezhkov.workers.dev";
 const PAYMENT_LINK = "https://edsofa.ai/sb/JIx";
 const ADMIN_PASSWORD = "12345678";
@@ -59,6 +61,10 @@ export default {
     if (url.pathname === "/quiz3" || url.pathname === "/worker/quiz3") return serveQuiz3();
     if (url.pathname === "/api/quiz3-dialogue") return apiQuiz3Dialogue(request, env);
     if (url.pathname === "/api/quiz3-result") return apiQuiz3Result(request, env);
+    if (url.pathname === "/dashboard") return serveDashboard(env);
+    if (url.pathname === "/dashboard/app.js") return serveDashboardApp();
+    if (url.pathname === "/dashboard/data.json") return apiDashboardData(env);
+    if (url.pathname === "/api/dashboard/ask") return apiDashboardAsk(request, env);
     if (url.pathname === "/leadmagnet1") return serveLeadMagnet1();
     if (url.pathname === "/api/leadmagnet1-submit") return apiLeadMagnet1Submit(request, env);
     if (url.pathname === "/leadmagnet2") return serveLeadMagnet2();
@@ -17376,4 +17382,97 @@ window.Quiz3 = Quiz3;
 </script>
 </body>
 </html>`;
+}
+
+
+// ─── ДАШБОРД ОТДЕЛА МАРКЕТИНГА ────────────────────────────────
+// Страница и данные собираются офлайн (dashboard/collectors + build-worker-assets.mjs).
+// Свежие данные, если они есть, лежат в KV под ключом dashboard:latest — их кладёт
+// либо ночной прогон коллекторов, либо ручной запуск.
+
+async function dashboardData(env) {
+  try {
+    const fresh = await env.KV.get('dashboard:latest', 'json');
+    if (fresh && fresh.kpi) return fresh;
+  } catch (e) { /* нет KV или битый JSON — отдаём собранный при сборке снимок */ }
+  return DASHBOARD_DATA;
+}
+
+async function serveDashboard(env) {
+  const data = await dashboardData(env);
+  return new Response(renderDashboardPage(data), {
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300' }
+  });
+}
+
+function serveDashboardApp() {
+  return new Response(DASHBOARD_APP_JS, {
+    headers: { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=3600' }
+  });
+}
+
+async function apiDashboardData(env) {
+  return new Response(JSON.stringify(await dashboardData(env)), {
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }
+  });
+}
+
+// Вопрос по цифрам дашборда. Модель получает только агрегаты — те же, что видит человек.
+async function apiDashboardAsk(request, env) {
+  if (request.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+  if (!env.CLAUDE_API) return json({ error: 'ИИ-запросы не настроены' }, 503);
+
+  let question = '';
+  try {
+    question = String((await request.json()).question || '').trim().slice(0, 500);
+  } catch (e) {
+    return json({ error: 'Некорректный запрос' }, 400);
+  }
+  if (question.length < 5) return json({ error: 'Слишком короткий вопрос' }, 400);
+
+  const d = await dashboardData(env);
+  const context = {
+    период: d.meta.period,
+    kpi: d.kpi.map(k => ({ id: k.id, label: k.label, value: k.value, delta: k.delta, plan: k.plan, planDone: k.planDone })),
+    каналы: d.channels,
+    кампании: d.campaigns,
+    воронка: d.funnel,
+    бот: d.telegram.funnel,
+    звонки: { всего: d.calls.total, пропущено: d.calls.missed, доля_пропусков: d.calls.missedRate, по_дням: d.calls.byWeekday },
+    страницы: d.pages,
+    продажи: { менеджеры: d.amo.managers, причины_отказов: d.amo.lostReasons, средний_чек: d.amo.avgCheck, цикл: d.amo.avgCycle },
+    план_факт: d.sheets.planFact,
+    найденные_выводы: d.insights.map(i => ({ title: i.title, action: i.action }))
+  };
+
+  const system = 'Ты аналитик отдела маркетинга. Отвечай на русском, 3-6 предложений, по существу. '
+    + 'Используй только числа из переданных данных, ничего не придумывай. Если данных для ответа нет — так и скажи. '
+    + 'Заканчивай конкретной рекомендацией с оценкой эффекта, если её можно посчитать.';
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': env.CLAUDE_API,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: env.DASHBOARD_AI_MODEL || 'claude-haiku-4-5-20251001',
+        max_tokens: 900,
+        system,
+        messages: [{ role: 'user', content: `ДАННЫЕ ДАШБОРДА:\n${JSON.stringify(context)}\n\nВОПРОС: ${question}` }]
+      })
+    });
+    if (!res.ok) return json({ error: `Модель ответила ${res.status}` }, 502);
+    const data = await res.json();
+    const answer = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
+    return json({ answer });
+  } catch (e) {
+    return json({ error: 'Не удалось получить ответ' }, 502);
+  }
+}
+
+function json(body, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
 }

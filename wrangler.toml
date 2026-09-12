@@ -14,3 +14,6 @@ crons = ["0 9 * * 1,5"]
 #   BOT_TOKEN               - Telegram bot token
 #   ADMIN_ID                - Telegram chat id for admin notifications
 #   PAYMENTS_WEBHOOK_SECRET  - shared secret for POST /api/payments/webhook (edsofa.ai reconciliation)
+#   CLAUDE_API                - Claude API key (квизы и вопросы к ИИ на /dashboard)
+# Optional vars:
+#   DASHBOARD_AI_MODEL        - модель для вопросов к дашборду (по умолчанию claude-haiku-4-5-20251001)
