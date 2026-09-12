@@ -1,0 +1,31 @@
+{
+  "company": "Онлайн-школа профессий «Вектор»",
+  "mode": "demo",
+  "periodDays": 28,
+  "ai": { "enabled": false, "model": "claude-sonnet-5" },
+  "notify": {
+    "enabled": false,
+    "botToken": "env:NOTIFY_BOT_TOKEN",
+    "chatId": "env:NOTIFY_CHAT_ID",
+    "onlyIfCritical": true
+  },
+  "sources": {
+    "direct": { "enabled": true, "token": "env:DIRECT_TOKEN", "clientLogin": "" },
+    "metrika": { "enabled": true, "token": "env:METRIKA_TOKEN", "counterId": "00000000", "goalId": "" },
+    "telegram": { "enabled": true, "botToken": "env:BOT_TOKEN", "eventsUrl": "https://your-worker.workers.dev/api/bot-events", "eventsSecret": "env:BOT_EVENTS_SECRET", "channelId": "@your_channel" },
+    "amo": {
+      "enabled": true,
+      "subdomain": "yourcompany",
+      "token": "env:AMO_TOKEN",
+      "wonStatusName": "Успешно реализовано",
+      "lostStatusName": "Закрыто и не реализовано",
+      "fieldMap": { "channel": 0, "campaign": 0, "qualified": 0, "lostReason": 0 }
+    },
+    "sheets": {
+      "enabled": true,
+      "spreadsheetId": "your-spreadsheet-id",
+      "apiKey": "env:SHEETS_API_KEY",
+      "ranges": { "plan": "План!A1:B20", "costs": "Расходы!A1:B20" }
+    }
+  }
+}

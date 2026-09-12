@@ -1,0 +1,1657 @@
+{
+  "meta": {
+    "company": "Онлайн-школа профессий «Вектор»",
+    "period": {
+      "from": "2026-08-15",
+      "to": "2026-09-11"
+    },
+    "comparePeriod": {
+      "from": "2026-07-18",
+      "to": "2026-08-14"
+    },
+    "generatedAt": "2026-09-12T08:24:45.805Z",
+    "mode": "demo",
+    "currency": "₽"
+  },
+  "sources": [
+    {
+      "name": "Яндекс.Директ",
+      "status": "demo",
+      "note": "демо-данные"
+    },
+    {
+      "name": "Яндекс.Метрика",
+      "status": "demo",
+      "note": "демо-данные"
+    },
+    {
+      "name": "Telegram-бот",
+      "status": "demo",
+      "note": "демо-данные"
+    },
+    {
+      "name": "amoCRM",
+      "status": "demo",
+      "note": "демо-данные"
+    },
+    {
+      "name": "Google Sheets",
+      "status": "demo",
+      "note": "демо-данные"
+    }
+  ],
+  "kpi": [
+    {
+      "id": "spend",
+      "label": "Расход, ₽",
+      "value": 3021612,
+      "prev": 2656459.2,
+      "delta": 13.7,
+      "good": "neutral",
+      "unit": "₽",
+      "plan": null,
+      "planDone": null,
+      "spark": [
+        45288,
+        44060,
+        80481,
+        86325,
+        76244,
+        79600,
+        73210,
+        47980,
+        44573,
+        87750,
+        89003,
+        82919,
+        79114,
+        69219,
+        45392,
+        48870,
+        91575,
+        89052,
+        92786,
+        88051,
+        77399,
+        48407,
+        49695,
+        100821,
+        95612,
+        94629,
+        83928,
+        81631
+      ],
+      "source": "Яндекс.Директ + Google Sheets"
+    },
+    {
+      "id": "leads",
+      "label": "Заявки",
+      "value": 2815,
+      "prev": 2708,
+      "delta": 4,
+      "good": "up",
+      "unit": "",
+      "plan": 3200,
+      "planDone": 88,
+      "spark": [
+        67,
+        65,
+        125,
+        127,
+        127,
+        117,
+        106,
+        69,
+        68,
+        130,
+        126,
+        124,
+        110,
+        108,
+        64,
+        75,
+        120,
+        129,
+        109,
+        109,
+        99,
+        62,
+        66,
+        108,
+        107,
+        113,
+        97,
+        88
+      ],
+      "source": "amoCRM"
+    },
+    {
+      "id": "cpl",
+      "label": "CPL, ₽",
+      "value": 1073,
+      "prev": 981,
+      "delta": 9.4,
+      "good": "down",
+      "unit": "₽",
+      "plan": 900,
+      "planDone": 119.2,
+      "spark": [
+        676,
+        678,
+        644,
+        680,
+        600,
+        680,
+        691,
+        695,
+        655,
+        675,
+        706,
+        669,
+        719,
+        641,
+        709,
+        652,
+        763,
+        690,
+        851,
+        808,
+        782,
+        781,
+        753,
+        934,
+        894,
+        837,
+        865,
+        928
+      ],
+      "source": "Директ + amoCRM"
+    },
+    {
+      "id": "qualified",
+      "label": "Квал. заявки",
+      "value": 1764,
+      "prev": 1704,
+      "delta": 3.5,
+      "good": "up",
+      "unit": "",
+      "plan": 1900,
+      "planDone": 92.8,
+      "spark": [
+        47,
+        42,
+        86,
+        69,
+        82,
+        81,
+        72,
+        49,
+        46,
+        87,
+        68,
+        76,
+        70,
+        68,
+        35,
+        46,
+        71,
+        91,
+        73,
+        67,
+        56,
+        41,
+        41,
+        68,
+        68,
+        64,
+        50,
+        50
+      ],
+      "source": "amoCRM"
+    },
+    {
+      "id": "qualRate",
+      "label": "Доля квал., %",
+      "value": 62.7,
+      "prev": 62.9,
+      "delta": -0.3,
+      "good": "up",
+      "unit": "%",
+      "plan": null,
+      "planDone": null,
+      "spark": [
+        70.1,
+        64.6,
+        68.8,
+        54.3,
+        64.6,
+        69.2,
+        67.9,
+        71,
+        67.6,
+        66.9,
+        54,
+        61.3,
+        63.6,
+        63,
+        54.7,
+        61.3,
+        59.2,
+        70.5,
+        67,
+        61.5,
+        56.6,
+        66.1,
+        62.1,
+        63,
+        63.6,
+        56.6,
+        51.5,
+        56.8
+      ],
+      "source": "amoCRM"
+    },
+    {
+      "id": "deals",
+      "label": "Продажи",
+      "value": 125,
+      "prev": 181,
+      "delta": -30.9,
+      "good": "up",
+      "unit": "",
+      "plan": 210,
+      "planDone": 59.5,
+      "spark": [
+        3,
+        5,
+        10,
+        10,
+        8,
+        2,
+        3,
+        3,
+        1,
+        7,
+        6,
+        3,
+        7,
+        3,
+        3,
+        3,
+        2,
+        7,
+        4,
+        6,
+        3,
+        4,
+        4,
+        5,
+        4,
+        5,
+        1,
+        3
+      ],
+      "source": "amoCRM"
+    },
+    {
+      "id": "revenue",
+      "label": "Выручка, ₽",
+      "value": 11320000,
+      "prev": 16914000,
+      "delta": -33.1,
+      "good": "up",
+      "unit": "₽",
+      "plan": 19500000,
+      "planDone": 58.1,
+      "spark": [
+        304000,
+        575000,
+        982000,
+        1008000,
+        723000,
+        129000,
+        292000,
+        311000,
+        86000,
+        543000,
+        533000,
+        286000,
+        771000,
+        269000,
+        217000,
+        253000,
+        139000,
+        687000,
+        386000,
+        515000,
+        190000,
+        285000,
+        374000,
+        357000,
+        344000,
+        441000,
+        126000,
+        194000
+      ],
+      "source": "amoCRM"
+    },
+    {
+      "id": "romi",
+      "label": "ROMI, %",
+      "value": 275,
+      "prev": 536.7,
+      "delta": -48.8,
+      "good": "up",
+      "unit": "%",
+      "plan": null,
+      "planDone": null,
+      "spark": [
+        571.3,
+        1205,
+        1120.2,
+        1067.7,
+        848.3,
+        62.1,
+        298.9,
+        548.2,
+        92.9,
+        518.8,
+        498.9,
+        244.9,
+        874.5,
+        288.6,
+        378.1,
+        417.7,
+        51.8,
+        671.5,
+        316,
+        484.9,
+        145.5,
+        488.8,
+        652.6,
+        254.1,
+        259.8,
+        366,
+        50.1,
+        137.7
+      ],
+      "source": "Расчёт"
+    }
+  ],
+  "daily": [
+    {
+      "date": "2026-08-15",
+      "spend": 45288,
+      "clicks": 1109,
+      "impressions": 192594,
+      "visits": 1425,
+      "leads": 67,
+      "qualified": 47,
+      "deals": 3,
+      "revenue": 304000,
+      "cpl": 676
+    },
+    {
+      "date": "2026-08-16",
+      "spend": 44060,
+      "clicks": 1110,
+      "impressions": 182054,
+      "visits": 1381,
+      "leads": 65,
+      "qualified": 42,
+      "deals": 5,
+      "revenue": 575000,
+      "cpl": 678
+    },
+    {
+      "date": "2026-08-17",
+      "spend": 80481,
+      "clicks": 1964,
+      "impressions": 318227,
+      "visits": 2632,
+      "leads": 125,
+      "qualified": 86,
+      "deals": 10,
+      "revenue": 982000,
+      "cpl": 644
+    },
+    {
+      "date": "2026-08-18",
+      "spend": 86325,
+      "clicks": 2172,
+      "impressions": 357596,
+      "visits": 2595,
+      "leads": 127,
+      "qualified": 69,
+      "deals": 10,
+      "revenue": 1008000,
+      "cpl": 680
+    },
+    {
+      "date": "2026-08-19",
+      "spend": 76244,
+      "clicks": 1930,
+      "impressions": 333230,
+      "visits": 2711,
+      "leads": 127,
+      "qualified": 82,
+      "deals": 8,
+      "revenue": 723000,
+      "cpl": 600
+    },
+    {
+      "date": "2026-08-20",
+      "spend": 79600,
+      "clicks": 1956,
+      "impressions": 355141,
+      "visits": 2443,
+      "leads": 117,
+      "qualified": 81,
+      "deals": 2,
+      "revenue": 129000,
+      "cpl": 680
+    },
+    {
+      "date": "2026-08-21",
+      "spend": 73210,
+      "clicks": 1697,
+      "impressions": 293272,
+      "visits": 2142,
+      "leads": 106,
+      "qualified": 72,
+      "deals": 3,
+      "revenue": 292000,
+      "cpl": 691
+    },
+    {
+      "date": "2026-08-22",
+      "spend": 47980,
+      "clicks": 1098,
+      "impressions": 189256,
+      "visits": 1443,
+      "leads": 69,
+      "qualified": 49,
+      "deals": 3,
+      "revenue": 311000,
+      "cpl": 695
+    },
+    {
+      "date": "2026-08-23",
+      "spend": 44573,
+      "clicks": 1143,
+      "impressions": 212550,
+      "visits": 1395,
+      "leads": 68,
+      "qualified": 46,
+      "deals": 1,
+      "revenue": 86000,
+      "cpl": 655
+    },
+    {
+      "date": "2026-08-24",
+      "spend": 87750,
+      "clicks": 2110,
+      "impressions": 361705,
+      "visits": 2569,
+      "leads": 130,
+      "qualified": 87,
+      "deals": 7,
+      "revenue": 543000,
+      "cpl": 675
+    },
+    {
+      "date": "2026-08-25",
+      "spend": 89003,
+      "clicks": 2069,
+      "impressions": 338801,
+      "visits": 2752,
+      "leads": 126,
+      "qualified": 68,
+      "deals": 6,
+      "revenue": 533000,
+      "cpl": 706
+    },
+    {
+      "date": "2026-08-26",
+      "spend": 82919,
+      "clicks": 2071,
+      "impressions": 327140,
+      "visits": 2587,
+      "leads": 124,
+      "qualified": 76,
+      "deals": 3,
+      "revenue": 286000,
+      "cpl": 669
+    },
+    {
+      "date": "2026-08-27",
+      "spend": 79114,
+      "clicks": 1913,
+      "impressions": 330129,
+      "visits": 2281,
+      "leads": 110,
+      "qualified": 70,
+      "deals": 7,
+      "revenue": 771000,
+      "cpl": 719
+    },
+    {
+      "date": "2026-08-28",
+      "spend": 69219,
+      "clicks": 1748,
+      "impressions": 338543,
+      "visits": 2059,
+      "leads": 108,
+      "qualified": 68,
+      "deals": 3,
+      "revenue": 269000,
+      "cpl": 641
+    },
+    {
+      "date": "2026-08-29",
+      "spend": 45392,
+      "clicks": 1091,
+      "impressions": 173640,
+      "visits": 1307,
+      "leads": 64,
+      "qualified": 35,
+      "deals": 3,
+      "revenue": 217000,
+      "cpl": 709
+    },
+    {
+      "date": "2026-08-30",
+      "spend": 48870,
+      "clicks": 1193,
+      "impressions": 210976,
+      "visits": 1441,
+      "leads": 75,
+      "qualified": 46,
+      "deals": 3,
+      "revenue": 253000,
+      "cpl": 652
+    },
+    {
+      "date": "2026-08-31",
+      "spend": 91575,
+      "clicks": 2224,
+      "impressions": 383161,
+      "visits": 2704,
+      "leads": 120,
+      "qualified": 71,
+      "deals": 2,
+      "revenue": 139000,
+      "cpl": 763
+    },
+    {
+      "date": "2026-09-01",
+      "spend": 89052,
+      "clicks": 2134,
+      "impressions": 385802,
+      "visits": 2606,
+      "leads": 129,
+      "qualified": 91,
+      "deals": 7,
+      "revenue": 687000,
+      "cpl": 690
+    },
+    {
+      "date": "2026-09-02",
+      "spend": 92786,
+      "clicks": 2031,
+      "impressions": 350100,
+      "visits": 2526,
+      "leads": 109,
+      "qualified": 73,
+      "deals": 4,
+      "revenue": 386000,
+      "cpl": 851
+    },
+    {
+      "date": "2026-09-03",
+      "spend": 88051,
+      "clicks": 2112,
+      "impressions": 386747,
+      "visits": 2459,
+      "leads": 109,
+      "qualified": 67,
+      "deals": 6,
+      "revenue": 515000,
+      "cpl": 808
+    },
+    {
+      "date": "2026-09-04",
+      "spend": 77399,
+      "clicks": 1900,
+      "impressions": 381628,
+      "visits": 2229,
+      "leads": 99,
+      "qualified": 56,
+      "deals": 3,
+      "revenue": 190000,
+      "cpl": 782
+    },
+    {
+      "date": "2026-09-05",
+      "spend": 48407,
+      "clicks": 1174,
+      "impressions": 215317,
+      "visits": 1408,
+      "leads": 62,
+      "qualified": 41,
+      "deals": 4,
+      "revenue": 285000,
+      "cpl": 781
+    },
+    {
+      "date": "2026-09-06",
+      "spend": 49695,
+      "clicks": 1244,
+      "impressions": 210474,
+      "visits": 1435,
+      "leads": 66,
+      "qualified": 41,
+      "deals": 4,
+      "revenue": 374000,
+      "cpl": 753
+    },
+    {
+      "date": "2026-09-07",
+      "spend": 100821,
+      "clicks": 2286,
+      "impressions": 433035,
+      "visits": 2550,
+      "leads": 108,
+      "qualified": 68,
+      "deals": 5,
+      "revenue": 357000,
+      "cpl": 934
+    },
+    {
+      "date": "2026-09-08",
+      "spend": 95612,
+      "clicks": 2389,
+      "impressions": 459421,
+      "visits": 2498,
+      "leads": 107,
+      "qualified": 68,
+      "deals": 4,
+      "revenue": 344000,
+      "cpl": 894
+    },
+    {
+      "date": "2026-09-09",
+      "spend": 94629,
+      "clicks": 2274,
+      "impressions": 396869,
+      "visits": 2638,
+      "leads": 113,
+      "qualified": 64,
+      "deals": 5,
+      "revenue": 441000,
+      "cpl": 837
+    },
+    {
+      "date": "2026-09-10",
+      "spend": 83928,
+      "clicks": 2125,
+      "impressions": 400126,
+      "visits": 2358,
+      "leads": 97,
+      "qualified": 50,
+      "deals": 1,
+      "revenue": 126000,
+      "cpl": 865
+    },
+    {
+      "date": "2026-09-11",
+      "spend": 81631,
+      "clicks": 1884,
+      "impressions": 357672,
+      "visits": 2178,
+      "leads": 88,
+      "qualified": 50,
+      "deals": 3,
+      "revenue": 194000,
+      "cpl": 928
+    }
+  ],
+  "channels": [
+    {
+      "name": "Яндекс.Директ — Поиск",
+      "spend": 1284735,
+      "clicks": 14554,
+      "leads": 683,
+      "qualified": 420,
+      "deals": 27,
+      "revenue": 2667000,
+      "cpl": 1881,
+      "cplDelta": 4.6,
+      "qualRate": 61.5,
+      "romi": 107.6,
+      "paid": true
+    },
+    {
+      "name": "Яндекс.Директ — РСЯ",
+      "spend": 620545,
+      "clicks": 31597,
+      "leads": 430,
+      "qualified": 191,
+      "deals": 10,
+      "revenue": 834000,
+      "cpl": 1443,
+      "cplDelta": 17,
+      "qualRate": 44.4,
+      "romi": 34.4,
+      "paid": true
+    },
+    {
+      "name": "Мастер кампаний",
+      "spend": 168333,
+      "clicks": 4000,
+      "leads": 125,
+      "qualified": 57,
+      "deals": 3,
+      "revenue": 243000,
+      "cpl": 1347,
+      "cplDelta": 2.3,
+      "qualRate": 45.6,
+      "romi": 44.4,
+      "paid": true
+    },
+    {
+      "name": "Telegram-бот",
+      "spend": 0,
+      "clicks": 0,
+      "leads": 416,
+      "qualified": 330,
+      "deals": 28,
+      "revenue": 2487000,
+      "cpl": 0,
+      "cplDelta": 0,
+      "qualRate": 79.3,
+      "romi": null,
+      "paid": false
+    },
+    {
+      "name": "Telegram",
+      "spend": 0,
+      "clicks": 0,
+      "leads": 314,
+      "qualified": 216,
+      "deals": 14,
+      "revenue": 1305000,
+      "cpl": 0,
+      "cplDelta": 0,
+      "qualRate": 68.8,
+      "romi": null,
+      "paid": false
+    },
+    {
+      "name": "SEO",
+      "spend": 0,
+      "clicks": 0,
+      "leads": 522,
+      "qualified": 341,
+      "deals": 26,
+      "revenue": 2263000,
+      "cpl": 0,
+      "cplDelta": 0,
+      "qualRate": 65.3,
+      "romi": null,
+      "paid": false
+    },
+    {
+      "name": "Email",
+      "spend": 0,
+      "clicks": 0,
+      "leads": 190,
+      "qualified": 121,
+      "deals": 12,
+      "revenue": 1219000,
+      "cpl": 0,
+      "cplDelta": 0,
+      "qualRate": 63.7,
+      "romi": null,
+      "paid": false
+    },
+    {
+      "name": "Прочее",
+      "spend": 0,
+      "clicks": 0,
+      "leads": 135,
+      "qualified": 88,
+      "deals": 5,
+      "revenue": 302000,
+      "cpl": 0,
+      "cplDelta": 0,
+      "qualRate": 65.2,
+      "romi": null,
+      "paid": false
+    }
+  ],
+  "campaigns": [
+    {
+      "name": "Поиск / Профессия «Аналитик»",
+      "channel": "Яндекс.Директ — Поиск",
+      "spend": 499621,
+      "impressions": 61388,
+      "clicks": 4971,
+      "ctr": 8.1,
+      "cpc": 101,
+      "leads": 206,
+      "cpl": 2425,
+      "cplPrev": 2358,
+      "cplDelta": 2.8,
+      "qualified": 115,
+      "qualRate": 55.8,
+      "deals": 8,
+      "revenue": 787000,
+      "romi": 57.5
+    },
+    {
+      "name": "Поиск / Профессия «Дизайнер»",
+      "channel": "Яндекс.Директ — Поиск",
+      "spend": 416984,
+      "impressions": 60215,
+      "clicks": 4560,
+      "ctr": 7.57,
+      "cpc": 91,
+      "leads": 175,
+      "cpl": 2383,
+      "cplPrev": 2213,
+      "cplDelta": 7.7,
+      "qualified": 95,
+      "qualRate": 54.3,
+      "deals": 4,
+      "revenue": 445000,
+      "romi": 6.7
+    },
+    {
+      "name": "РСЯ / Широкий интерес",
+      "channel": "Яндекс.Директ — РСЯ",
+      "spend": 265325,
+      "impressions": 4880328,
+      "clicks": 14745,
+      "ctr": 0.3,
+      "cpc": 18,
+      "leads": 110,
+      "cpl": 2412,
+      "cplPrev": 1784,
+      "cplDelta": 35.2,
+      "qualified": 16,
+      "qualRate": 14.5,
+      "deals": 1,
+      "revenue": 48000,
+      "romi": -81.9
+    },
+    {
+      "name": "Поиск / Конкуренты",
+      "channel": "Яндекс.Директ — Поиск",
+      "spend": 257197,
+      "impressions": 32041,
+      "clicks": 1850,
+      "ctr": 5.77,
+      "cpc": 139,
+      "leads": 48,
+      "cpl": 5358,
+      "cplPrev": 4862,
+      "cplDelta": 10.2,
+      "qualified": 22,
+      "qualRate": 45.8,
+      "deals": 0,
+      "revenue": 0,
+      "romi": -100
+    },
+    {
+      "name": "РСЯ / Look-alike",
+      "channel": "Яндекс.Директ — РСЯ",
+      "spend": 196465,
+      "impressions": 2489381,
+      "clicks": 10042,
+      "ctr": 0.4,
+      "cpc": 20,
+      "leads": 131,
+      "cpl": 1500,
+      "cplPrev": 1451,
+      "cplDelta": 3.4,
+      "qualified": 61,
+      "qualRate": 46.6,
+      "deals": 2,
+      "revenue": 156000,
+      "romi": -20.6
+    },
+    {
+      "name": "Мастер кампаний / Автотаргет",
+      "channel": "Мастер кампаний",
+      "spend": 168333,
+      "impressions": 187519,
+      "clicks": 4000,
+      "ctr": 2.13,
+      "cpc": 42,
+      "leads": 125,
+      "cpl": 1347,
+      "cplPrev": 1316,
+      "cplDelta": 2.3,
+      "qualified": 57,
+      "qualRate": 45.6,
+      "deals": 3,
+      "revenue": 243000,
+      "romi": 44.4
+    },
+    {
+      "name": "РСЯ / Ретаргетинг",
+      "channel": "Яндекс.Директ — РСЯ",
+      "spend": 158754,
+      "impressions": 1147715,
+      "clicks": 6810,
+      "ctr": 0.59,
+      "cpc": 23,
+      "leads": 189,
+      "cpl": 840,
+      "cplPrev": 796,
+      "cplDelta": 5.5,
+      "qualified": 114,
+      "qualRate": 60.3,
+      "deals": 7,
+      "revenue": 630000,
+      "romi": 296.8
+    },
+    {
+      "name": "Поиск / Бренд",
+      "channel": "Яндекс.Директ — Поиск",
+      "spend": 110933,
+      "impressions": 16619,
+      "clicks": 3173,
+      "ctr": 19.09,
+      "cpc": 35,
+      "leads": 254,
+      "cpl": 437,
+      "cplPrev": 425,
+      "cplDelta": 2.9,
+      "qualified": 188,
+      "qualRate": 74,
+      "deals": 15,
+      "revenue": 1435000,
+      "romi": 1193.6
+    },
+    {
+      "name": "Бот · квиз",
+      "channel": "Telegram-бот",
+      "spend": 0,
+      "impressions": 0,
+      "clicks": 0,
+      "ctr": 0,
+      "cpc": 0,
+      "leads": 416,
+      "cpl": 0,
+      "cplPrev": 0,
+      "cplDelta": 0,
+      "qualified": 330,
+      "qualRate": 79.3,
+      "deals": 28,
+      "revenue": 2487000,
+      "romi": 0
+    }
+  ],
+  "funnel": [
+    {
+      "stage": "Показы",
+      "value": 8875206,
+      "source": "Директ"
+    },
+    {
+      "stage": "Клики",
+      "value": 50151,
+      "source": "Директ"
+    },
+    {
+      "stage": "Визиты на сайт",
+      "value": 110903,
+      "source": "Метрика"
+    },
+    {
+      "stage": "Заявки",
+      "value": 2815,
+      "source": "amoCRM"
+    },
+    {
+      "stage": "Квал. заявки",
+      "value": 1764,
+      "source": "amoCRM"
+    },
+    {
+      "stage": "Продажи",
+      "value": 125,
+      "source": "amoCRM"
+    }
+  ],
+  "metrika": {
+    "sources": [
+      {
+        "source": "Органический поиск",
+        "visits": 25297,
+        "bounceRate": 31,
+        "pageDepth": 3.45,
+        "leads": 522,
+        "cr": 2.06
+      },
+      {
+        "source": "Telegram-канал",
+        "visits": 15942,
+        "bounceRate": 23.8,
+        "pageDepth": 4.2,
+        "leads": 314,
+        "cr": 1.97
+      },
+      {
+        "source": "Прямые заходы",
+        "visits": 8528,
+        "bounceRate": 34.9,
+        "pageDepth": 2.99,
+        "leads": 99,
+        "cr": 1.16
+      },
+      {
+        "source": "Email-рассылка",
+        "visits": 6260,
+        "bounceRate": 28.2,
+        "pageDepth": 3.83,
+        "leads": 190,
+        "cr": 3.04
+      },
+      {
+        "source": "Переходы с сайтов",
+        "visits": 4725,
+        "bounceRate": 43,
+        "pageDepth": 2.18,
+        "leads": 36,
+        "cr": 0.76
+      }
+    ],
+    "visits": 60752
+  },
+  "telegram": {
+    "joined": 2565,
+    "left": 294,
+    "started": 2012,
+    "quizCompleted": 1023,
+    "bookedCall": 416,
+    "joinedDelta": 0.3,
+    "quizRate": 50.8,
+    "quizRatePrev": 63.1,
+    "daily": [
+      {
+        "date": "2026-08-15",
+        "joined": 62,
+        "started": 41,
+        "quizCompleted": 29,
+        "bookedCall": 10,
+        "quizRate": 70.7
+      },
+      {
+        "date": "2026-08-16",
+        "joined": 57,
+        "started": 50,
+        "quizCompleted": 28,
+        "bookedCall": 12,
+        "quizRate": 56
+      },
+      {
+        "date": "2026-08-17",
+        "joined": 117,
+        "started": 76,
+        "quizCompleted": 54,
+        "bookedCall": 24,
+        "quizRate": 71.1
+      },
+      {
+        "date": "2026-08-18",
+        "joined": 101,
+        "started": 95,
+        "quizCompleted": 63,
+        "bookedCall": 23,
+        "quizRate": 66.3
+      },
+      {
+        "date": "2026-08-19",
+        "joined": 100,
+        "started": 95,
+        "quizCompleted": 60,
+        "bookedCall": 24,
+        "quizRate": 63.2
+      },
+      {
+        "date": "2026-08-20",
+        "joined": 114,
+        "started": 77,
+        "quizCompleted": 49,
+        "bookedCall": 21,
+        "quizRate": 63.6
+      },
+      {
+        "date": "2026-08-21",
+        "joined": 94,
+        "started": 70,
+        "quizCompleted": 48,
+        "bookedCall": 22,
+        "quizRate": 68.6
+      },
+      {
+        "date": "2026-08-22",
+        "joined": 64,
+        "started": 41,
+        "quizCompleted": 27,
+        "bookedCall": 12,
+        "quizRate": 65.9
+      },
+      {
+        "date": "2026-08-23",
+        "joined": 64,
+        "started": 51,
+        "quizCompleted": 34,
+        "bookedCall": 14,
+        "quizRate": 66.7
+      },
+      {
+        "date": "2026-08-24",
+        "joined": 118,
+        "started": 93,
+        "quizCompleted": 66,
+        "bookedCall": 24,
+        "quizRate": 71
+      },
+      {
+        "date": "2026-08-25",
+        "joined": 123,
+        "started": 79,
+        "quizCompleted": 53,
+        "bookedCall": 21,
+        "quizRate": 67.1
+      },
+      {
+        "date": "2026-08-26",
+        "joined": 99,
+        "started": 79,
+        "quizCompleted": 56,
+        "bookedCall": 22,
+        "quizRate": 70.9
+      },
+      {
+        "date": "2026-08-27",
+        "joined": 111,
+        "started": 89,
+        "quizCompleted": 48,
+        "bookedCall": 20,
+        "quizRate": 53.9
+      },
+      {
+        "date": "2026-08-28",
+        "joined": 82,
+        "started": 80,
+        "quizCompleted": 56,
+        "bookedCall": 26,
+        "quizRate": 70
+      },
+      {
+        "date": "2026-08-29",
+        "joined": 64,
+        "started": 45,
+        "quizCompleted": 27,
+        "bookedCall": 11,
+        "quizRate": 60
+      },
+      {
+        "date": "2026-08-30",
+        "joined": 54,
+        "started": 55,
+        "quizCompleted": 38,
+        "bookedCall": 17,
+        "quizRate": 69.1
+      },
+      {
+        "date": "2026-08-31",
+        "joined": 120,
+        "started": 85,
+        "quizCompleted": 52,
+        "bookedCall": 19,
+        "quizRate": 61.2
+      },
+      {
+        "date": "2026-09-01",
+        "joined": 114,
+        "started": 89,
+        "quizCompleted": 61,
+        "bookedCall": 23,
+        "quizRate": 68.5
+      },
+      {
+        "date": "2026-09-02",
+        "joined": 99,
+        "started": 78,
+        "quizCompleted": 17,
+        "bookedCall": 8,
+        "quizRate": 21.8
+      },
+      {
+        "date": "2026-09-03",
+        "joined": 90,
+        "started": 83,
+        "quizCompleted": 20,
+        "bookedCall": 9,
+        "quizRate": 24.1
+      },
+      {
+        "date": "2026-09-04",
+        "joined": 98,
+        "started": 72,
+        "quizCompleted": 20,
+        "bookedCall": 9,
+        "quizRate": 27.8
+      },
+      {
+        "date": "2026-09-05",
+        "joined": 63,
+        "started": 47,
+        "quizCompleted": 12,
+        "bookedCall": 5,
+        "quizRate": 25.5
+      },
+      {
+        "date": "2026-09-06",
+        "joined": 52,
+        "started": 48,
+        "quizCompleted": 10,
+        "bookedCall": 4,
+        "quizRate": 20.8
+      },
+      {
+        "date": "2026-09-07",
+        "joined": 114,
+        "started": 88,
+        "quizCompleted": 22,
+        "bookedCall": 8,
+        "quizRate": 25
+      },
+      {
+        "date": "2026-09-08",
+        "joined": 96,
+        "started": 83,
+        "quizCompleted": 18,
+        "bookedCall": 7,
+        "quizRate": 21.7
+      },
+      {
+        "date": "2026-09-09",
+        "joined": 114,
+        "started": 79,
+        "quizCompleted": 16,
+        "bookedCall": 6,
+        "quizRate": 20.3
+      },
+      {
+        "date": "2026-09-10",
+        "joined": 102,
+        "started": 76,
+        "quizCompleted": 21,
+        "bookedCall": 8,
+        "quizRate": 27.6
+      },
+      {
+        "date": "2026-09-11",
+        "joined": 79,
+        "started": 68,
+        "quizCompleted": 18,
+        "bookedCall": 7,
+        "quizRate": 26.5
+      }
+    ],
+    "funnel": [
+      {
+        "stage": "Подписались на бота",
+        "value": 2565
+      },
+      {
+        "stage": "Нажали /start и пошли в квиз",
+        "value": 2012
+      },
+      {
+        "stage": "Прошли квиз до конца",
+        "value": 1023
+      },
+      {
+        "stage": "Записались на консультацию",
+        "value": 416
+      }
+    ]
+  },
+  "amo": {
+    "pipeline": [
+      {
+        "stage": "В работе",
+        "count": 903,
+        "sum": 0
+      },
+      {
+        "stage": "Успешно реализовано",
+        "count": 125,
+        "sum": 11320000
+      },
+      {
+        "stage": "Закрыто и не реализовано",
+        "count": 1787,
+        "sum": 0
+      }
+    ],
+    "managers": [
+      {
+        "name": "Полина С.",
+        "leads": 700,
+        "qualified": 436,
+        "deals": 41,
+        "revenue": 3573000,
+        "convRate": 9.4,
+        "avgCycle": 4,
+        "avgCyclePrev": 3.6,
+        "noAnswer": 97
+      },
+      {
+        "name": "Тимур Р.",
+        "leads": 668,
+        "qualified": 445,
+        "deals": 34,
+        "revenue": 3320000,
+        "convRate": 7.6,
+        "avgCycle": 3.9,
+        "avgCyclePrev": 3.6,
+        "noAnswer": 86
+      },
+      {
+        "name": "Анна К.",
+        "leads": 712,
+        "qualified": 434,
+        "deals": 31,
+        "revenue": 2801000,
+        "convRate": 7.1,
+        "avgCycle": 3.9,
+        "avgCyclePrev": 3.6,
+        "noAnswer": 86
+      },
+      {
+        "name": "Игорь М.",
+        "leads": 735,
+        "qualified": 449,
+        "deals": 19,
+        "revenue": 1626000,
+        "convRate": 4.2,
+        "avgCycle": 7.8,
+        "avgCyclePrev": 3.6,
+        "noAnswer": 285
+      }
+    ],
+    "lostReasons": [
+      {
+        "reason": "Не дозвонились",
+        "count": 554
+      },
+      {
+        "reason": "Дорого",
+        "count": 320
+      },
+      {
+        "reason": "Выбрал конкурента",
+        "count": 319
+      },
+      {
+        "reason": "Не готов сейчас",
+        "count": 314
+      },
+      {
+        "reason": "Нецелевой",
+        "count": 280
+      }
+    ],
+    "avgCycle": 4.9,
+    "avgCyclePrev": 3.6,
+    "avgCheck": 90560,
+    "avgCheckPrev": 93448
+  },
+  "sheets": {
+    "costs": [
+      {
+        "month": "2026-09",
+        "channel": "Telegram Ads",
+        "spend": 420000
+      },
+      {
+        "month": "2026-09",
+        "channel": "Контент и SEO",
+        "spend": 310000
+      },
+      {
+        "month": "2026-09",
+        "channel": "Email-платформа",
+        "spend": 38000
+      },
+      {
+        "month": "2026-09",
+        "channel": "Работа агентства",
+        "spend": 180000
+      }
+    ],
+    "extraCosts": 948000,
+    "planFact": [
+      {
+        "metric": "Заявки",
+        "fact": 2815,
+        "plan": 3200,
+        "done": 88,
+        "good": "up"
+      },
+      {
+        "metric": "Квал. заявки",
+        "fact": 1764,
+        "plan": 1900,
+        "done": 92.8,
+        "good": "up"
+      },
+      {
+        "metric": "Продажи",
+        "fact": 125,
+        "plan": 210,
+        "done": 59.5,
+        "good": "up"
+      },
+      {
+        "metric": "Выручка",
+        "fact": 11320000,
+        "plan": 19500000,
+        "done": 58.1,
+        "good": "up"
+      },
+      {
+        "metric": "CPL",
+        "fact": 1073,
+        "plan": 900,
+        "done": 119.2,
+        "good": "down"
+      }
+    ]
+  },
+  "totals": {
+    "spend": 3021612,
+    "leads": 2815,
+    "qualified": 1764,
+    "deals": 125,
+    "revenue": 11320000
+  },
+  "insights": [
+    {
+      "id": "tg-funnel-drop",
+      "severity": "critical",
+      "title": "Воронка бота просела: до квиза доходит 36% вместо 66%",
+      "summary": "Во второй половине периода конверсия «/start → квиз пройден» упала почти вдвое. Приток подписчиков не менялся (2565 за период), значит дело не в трафике, а в самом сценарии бота.",
+      "evidence": [
+        {
+          "label": "Было",
+          "value": "66%"
+        },
+        {
+          "label": "Стало",
+          "value": "36%"
+        },
+        {
+          "label": "Записей на консультацию",
+          "value": 416
+        }
+      ],
+      "action": "Проверить последний деплой бота и шаг с вопросом квиза: похоже, часть пользователей отваливается на нём. Потенциально теряем ~124 заявок за две недели.",
+      "impact": 498604,
+      "sources": [
+        "Telegram Bot API"
+      ]
+    },
+    {
+      "id": "cpl-поиск-конкуренты",
+      "severity": "critical",
+      "title": "«Поиск / Конкуренты» съедает бюджет: CPL 5 358 ₽ при среднем 1 675 ₽",
+      "summary": "Кампания забирает 12.4% платного бюджета и даёт 3.9% платных заявок. Квалификация 45.8% против 54% в среднем по платному трафику. CPL за период изменился на 10.2%.",
+      "evidence": [
+        {
+          "label": "Расход",
+          "value": "257 197 ₽"
+        },
+        {
+          "label": "Заявки",
+          "value": 48
+        },
+        {
+          "label": "CPL",
+          "value": "5 358 ₽"
+        },
+        {
+          "label": "Доля квал.",
+          "value": "45.8%"
+        }
+      ],
+      "action": "Урезать дневной бюджет в 2 раза, перенести деньги в «Поиск / Бренд». Ожидаемая экономия — 176 797 ₽ за период.",
+      "impact": 176797,
+      "sources": [
+        "Яндекс.Директ",
+        "amoCRM"
+      ]
+    },
+    {
+      "id": "cpl-рся-широкий-интерес",
+      "severity": "critical",
+      "title": "«РСЯ / Широкий интерес» съедает бюджет: CPL 2 412 ₽ при среднем 1 675 ₽",
+      "summary": "Кампания забирает 12.8% платного бюджета и даёт 8.9% платных заявок. Квалификация 14.5% против 54% в среднем по платному трафику. CPL за период изменился на 35.2%.",
+      "evidence": [
+        {
+          "label": "Расход",
+          "value": "265 325 ₽"
+        },
+        {
+          "label": "Заявки",
+          "value": 110
+        },
+        {
+          "label": "CPL",
+          "value": "2 412 ₽"
+        },
+        {
+          "label": "Доля квал.",
+          "value": "14.5%"
+        }
+      ],
+      "action": "Урезать дневной бюджет в 2 раза, перенести деньги в «Поиск / Бренд». Ожидаемая экономия — 81 075 ₽ за период.",
+      "impact": 81075,
+      "sources": [
+        "Яндекс.Директ",
+        "amoCRM"
+      ]
+    },
+    {
+      "id": "sales-cycle",
+      "severity": "warning",
+      "title": "Игорь М. держит заявку 7.8 дн. против 3.9 дн. у Тимур Р.",
+      "summary": "Конверсия квал. заявки в продажу — 4.2% против 7.6%. «Не дозвонились» у него 285 заявок — больше всех в отделе.",
+      "evidence": [
+        {
+          "label": "Заявок",
+          "value": 735
+        },
+        {
+          "label": "Продаж",
+          "value": 19
+        },
+        {
+          "label": "Цикл",
+          "value": "7.8 дн."
+        },
+        {
+          "label": "Не дозвонились",
+          "value": 285
+        }
+      ],
+      "action": "Поставить SLA: первый контакт — 15 минут, автонапоминание в amoCRM. Перераспределить входящие, пока цикл не выровняется.",
+      "impact": 2263094,
+      "sources": [
+        "amoCRM"
+      ]
+    },
+    {
+      "id": "plan-продажи",
+      "severity": "warning",
+      "title": "Продажи: прогноз на месяц — 63.8% плана",
+      "summary": "За 28 дней сделано 125 из 210. Текущий темп даёт 134 к концу месяца.",
+      "evidence": [
+        {
+          "label": "Факт",
+          "value": "125"
+        },
+        {
+          "label": "План",
+          "value": "210"
+        },
+        {
+          "label": "Прогноз",
+          "value": "134"
+        }
+      ],
+      "action": "Обсудить на планёрке: либо добавляем бюджет в каналы с лучшим ROMI, либо честно двигаем план.",
+      "impact": 0,
+      "sources": [
+        "Google Sheets",
+        "amoCRM"
+      ]
+    },
+    {
+      "id": "plan-выручка",
+      "severity": "warning",
+      "title": "Выручка: прогноз на месяц — 62.2% плана",
+      "summary": "За 28 дней сделано 11 320 000 из 19 500 000. Текущий темп даёт 12 128 571 к концу месяца.",
+      "evidence": [
+        {
+          "label": "Факт",
+          "value": "11 320 000"
+        },
+        {
+          "label": "План",
+          "value": "19 500 000"
+        },
+        {
+          "label": "Прогноз",
+          "value": "12 128 571"
+        }
+      ],
+      "action": "Обсудить на планёрке: либо добавляем бюджет в каналы с лучшим ROMI, либо честно двигаем план.",
+      "impact": 0,
+      "sources": [
+        "Google Sheets",
+        "amoCRM"
+      ]
+    }
+  ],
+  "digest": "📊 *Маркетинг · 15 авг. — 11 сент.*\n\nРасход: 3 021 612 ₽ (▲ 13.7%)\nЗаявки: 2 815 (▲ 4%) · CPL 1 073 ₽ (▲ 9.4%)\nПродажи: 125 · Выручка 11 320 000 ₽ · ROMI 275%\n\n*Что требует решения:*\n1. Воронка бота просела: до квиза доходит 36% вместо 66%\n   → Проверить последний деплой бота и шаг с вопросом квиза: похоже, часть пользователей отваливается на нём. Потенциально теряем ~124 заявок за две недели.\n2. «Поиск / Конкуренты» съедает бюджет: CPL 5 358 ₽ при среднем 1 675 ₽\n   → Урезать дневной бюджет в 2 раза, перенести деньги в «Поиск / Бренд». Ожидаемая экономия — 176 797 ₽ за период.\n3. «РСЯ / Широкий интерес» съедает бюджет: CPL 2 412 ₽ при среднем 1 675 ₽\n   → Урезать дневной бюджет в 2 раза, перенести деньги в «Поиск / Бренд». Ожидаемая экономия — 81 075 ₽ за период."
+}
