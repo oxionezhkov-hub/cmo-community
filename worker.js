@@ -5,22 +5,39 @@ const PAYMENT_LINK = "https://edsofa.ai/sb/JIx";
 const ADMIN_PASSWORD = "12345678";
 const ADMIN_PATH = "/admin";
 
-// ─── NETWORKING EVENT (модерируемый нетворк 02.09) ────────────
+// ─── NETWORKING EVENT (модерируемый нетворк CMO) ────────────
 // Ссылка для приглашения: https://t.me/<бот>?start=networking0902
+// Ссылка одна и та же для всех нетворков — при смене даты меняем этот конфиг,
+// старые заявки остаются в KV под своим eventId и не мешают новому раунду регистрации.
 const NETWORKING_EVENT = {
-  id: 'networking-2026-09-02',
+  id: 'networking-2026-10-07',
   startParam: 'networking0902',
   title: 'Онлайн-нетворкинг CMO',
-  // 02.09.2026 16:00 МСК = 13:00 UTC
-  startAtUTC: Date.UTC(2026, 8, 2, 13, 0, 0),
-  zoomUrl: 'https://us06web.zoom.us/j/84075252471?pwd=kdLyZkXgbGXEaRNbkSHVemwNzogYWd.1',
-  intro: '👑 *Онлайн-нетворкинг CMO завтра в 16:00*\n\nЕсли хочется расширить круг общения, познакомиться с предпринимателями, фаундерами и специалистами из IT/AI-среды — присоединяйтесь к нам.\n\nЭто встреча для тех, кто хочет выйти из привычного круга, рассказать о себе, своих задачах и найти новые контакты.\n\n*Что будет на встрече:*\n— новые знакомства с участниками из разных сфер, проектов и городов\n— возможность рассказать о себе, своём деле и текущих задачах\n— пространство, где можно не только познакомиться, но и увидеть точки пересечения уже в процессе общения\n\nОнлайн-нетворкинг CMO — это хороший способ оказаться среди людей, которые тоже создают, запускают, развивают и ищут новые возможности.\n\n🗓 2 сентября (среда), 16:00 (по МСК)\nМодерируемый формат: 40 секунд на самопрезентацию, дальше — штурм по запросам, если есть. Длительность 1–1,5 часа.\n\nЧтобы попасть — ответь на несколько коротких вопросов для знакомства (займёт пару минут), и сразу после получишь ссылку на Zoom.',
+  dateLabel: '7 октября, 16:00 (по МСК)',
+  // 07.10.2026 16:00 МСК = 13:00 UTC
+  startAtUTC: Date.UTC(2026, 9, 7, 13, 0, 0),
+  // Ссылка на Zoom пока не известна — появится ближе к мероприятию (её пришлют отдельно)
+  zoomUrl: null,
+  intro: '👑 *Онлайн-нетворкинг CMO — 7 октября, 16:00*\n\nЕсли хочется расширить круг общения, познакомиться с предпринимателями, фаундерами и специалистами из IT/AI-среды — присоединяйтесь к нам.\n\nЭто встреча для тех, кто хочет выйти из привычного круга, рассказать о себе, своих задачах и найти новые контакты.\n\n*Что будет на встрече:*\n— новые знакомства с участниками из разных сфер, проектов и городов\n— возможность рассказать о себе, своём деле и текущих задачах\n— пространство, где можно не только познакомиться, но и увидеть точки пересечения уже в процессе общения\n\nОнлайн-нетворкинг CMO — это хороший способ оказаться среди людей, которые тоже создают, запускают, развивают и ищут новые возможности.\n\n🗓 7 октября (среда), 16:00 (по МСК)\nМодерируемый формат: 40 секунд на самопрезентацию, дальше — штурм по запросам, если есть. Длительность 1–1,5 часа.\n\nЧтобы попасть — ответь на несколько коротких вопросов для знакомства (займёт пару минут). Ссылку на Zoom пришлём ближе к мероприятию.',
   questions: [
     'Имя, фамилия',
     'Кто ты и чем занимаешься?\nРоль, сфера, компания — в 2-3 предложениях.\nСайт или соцсеть — приложи ссылкой если есть.',
     'Что ждёшь от нетворкинга CMO и чем можешь быть полезен другим участникам?\nОтветь, пожалуйста, в 2-3 предложениях.'
   ]
 };
+
+function networkingFormatAnswers(reg) {
+  return (reg.answers || [])
+    .map((a, i) => a ? `${i + 1}. ${a.question}\n${a.answer}` : null)
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+function networkingZoomLine(prefix) {
+  return NETWORKING_EVENT.zoomUrl
+    ? `${prefix}🔗 Ссылка на Zoom:\n${NETWORKING_EVENT.zoomUrl}`
+    : `${prefix}Ссылку на Zoom пришлём ближе к мероприятию.`;
+}
 
 // ─── ROUTING ────────────────────────────────────────────────
 export default {
@@ -557,6 +574,8 @@ if (data.startsWith('approve_')) {
     await env.KV.put(`coffee:user:${tgId}`, JSON.stringify(profile));
     await tgSend(env, tgId, '✅ Ты снова в подборе! В следующий понедельник получишь нового партнёра ☕');
   }
+} else if (data === 'networking_edit') {
+  await handleNetworkingEdit(cq, env);
 }
 
 if (data.startsWith('reject_')) {
@@ -755,8 +774,10 @@ async function handleNetworkingStart(msg, env) {
   await logEvent(env, 'networking_start', userId, { eventId });
 
   if (reg && reg.answeredAt) {
-    // Уже прошёл анкету — просто напоминаем и присылаем зум повторно
-    await tgSend(env, chatId, `Ты уже зарегистрирован(а) на нетворк 2 сентября в 16:00 (МСК) 🤝\n\nСсылка на Zoom:\n${NETWORKING_EVENT.zoomUrl}`);
+    // Уже зарегистрирован и прошёл анкету — сообщаем об этом и даём скорректировать ответы
+    await notifyAdmin(env, `🔁 *${NETWORKING_EVENT.title}* (${NETWORKING_EVENT.dateLabel}) — повторный переход по ссылке (уже зарегистрирован)\n\n${reg.name} (@${reg.username || '—'}), TG ID: ${userId}`);
+    const keyboard = { inline_keyboard: [[{ text: '✏️ Скорректировать анкету', callback_data: 'networking_edit' }]] };
+    await tgSend(env, chatId, `Ты уже зарегистрирован(а) на нетворк 🤝\n\n📅 ${NETWORKING_EVENT.dateLabel}\n${networkingZoomLine('\n')}\n\nТвои ответы:\n\n${networkingFormatAnswers(reg)}`, keyboard);
     return;
   }
 
@@ -779,13 +800,27 @@ async function handleNetworkingStart(msg, env) {
       await env.KV.put(`networking:registrants:${eventId}`, JSON.stringify(registrants));
     }
 
-    await notifyAdmin(env, `🔔 *Нетворк 02.09* — переход по ссылке регистрации\n\n${name} (@${username || '—'}), TG ID: ${userId}`);
+    await notifyAdmin(env, `🔔 *${NETWORKING_EVENT.title}* (${NETWORKING_EVENT.dateLabel}) — переход по ссылке регистрации\n\n${name} (@${username || '—'}), TG ID: ${userId}`);
   }
 
   // Запускаем анкету заново (даже если начинал раньше и не закончил)
   await env.KV.put(`networking:state:${userId}`, JSON.stringify({ eventId, step: 0 }));
   await tgSend(env, chatId, NETWORKING_EVENT.intro);
   await tgSend(env, chatId, `*Вопрос 1 из ${NETWORKING_EVENT.questions.length}:*\n${NETWORKING_EVENT.questions[0]}`);
+}
+
+async function handleNetworkingEdit(cq, env) {
+  const chatId = cq.message.chat.id;
+  const userId = cq.from.id;
+  const eventId = NETWORKING_EVENT.id;
+  const regKey = `networking:reg:${eventId}:${userId}`;
+  const reg = await env.KV.get(regKey, 'json');
+  if (!reg) {
+    await tgSend(env, chatId, 'Анкета не найдена — похоже, регистрация ещё не начата. Перейди по ссылке регистрации ещё раз.');
+    return;
+  }
+  await env.KV.put(`networking:state:${userId}`, JSON.stringify({ eventId, step: 0, editing: true }));
+  await tgSend(env, chatId, `Давай обновим анкету на нетворк 🤝\n\n*Вопрос 1 из ${NETWORKING_EVENT.questions.length}:*\n${NETWORKING_EVENT.questions[0]}`);
 }
 
 async function handleNetworkingAnswer(msg, env, state) {
@@ -809,26 +844,32 @@ async function handleNetworkingAnswer(msg, env, state) {
 
   const nextStep = step + 1;
   if (nextStep < questions.length) {
-    await env.KV.put(`networking:state:${userId}`, JSON.stringify({ eventId, step: nextStep }));
+    await env.KV.put(`networking:state:${userId}`, JSON.stringify({ eventId, step: nextStep, editing: state.editing || false }));
     await tgSend(env, chatId, `*Вопрос ${nextStep + 1} из ${questions.length}:*\n${questions[nextStep]}`);
     return;
   }
 
-  // Анкета завершена
+  // Анкета завершена (или скорректирована)
+  const wasEditing = !!(reg.answeredAt && state.editing);
   reg.answeredAt = Date.now();
   await env.KV.put(regKey, JSON.stringify(reg));
   await env.KV.delete(`networking:state:${userId}`);
-  await logEvent(env, 'networking_answered', userId, { eventId });
+  await logEvent(env, wasEditing ? 'networking_edited' : 'networking_answered', userId, { eventId });
 
-  await tgSend(env, chatId, `Спасибо! Ты зарегистрирован(а) на нетворк 🤝\n\n📅 2 сентября, 16:00 (МСК)\n⏱ 1–1,5 часа, модерируемый формат\n\n🔗 Ссылка на Zoom:\n${NETWORKING_EVENT.zoomUrl}\n\nМы также пришлём напоминание со ссылкой за 3 часа и за 15 минут до начала.`);
+  if (wasEditing) {
+    await tgSend(env, chatId, `Готово, ответы обновлены ✅\n\n📅 ${NETWORKING_EVENT.dateLabel}${networkingZoomLine('\n')}`);
+  } else {
+    await tgSend(env, chatId, `Спасибо! Ты зарегистрирован(а) на нетворк 🤝\n\n📅 ${NETWORKING_EVENT.dateLabel}\n⏱ 1–1,5 часа, модерируемый формат\n${networkingZoomLine('\n')}`);
+  }
 
-  const qaText = reg.answers.map((a, i) => `${i + 1}. ${a.question}\n${a.answer}`).join('\n\n');
-  await notifyAdmin(env, `✅ *Нетворк 02.09* — анкета заполнена\n\n${reg.name} (@${reg.username || '—'}), TG ID: ${userId}\n\n${qaText}`);
+  const qaText = networkingFormatAnswers(reg);
+  await notifyAdmin(env, `${wasEditing ? '✏️ *Анкета обновлена*' : '✅ *Анкета заполнена*'} — ${NETWORKING_EVENT.title} (${NETWORKING_EVENT.dateLabel})\n\n${reg.name} (@${reg.username || '—'}), TG ID: ${userId}\n\n${qaText}`);
 }
 
 // Рассылка зум-ссылки всем зарегистрированным (даже не ответившим на анкету)
 // за 3 часа, за 15 минут и в момент начала. Идемпотентно — каждое окно шлётся один раз.
 async function networkingSendReminders(env) {
+  if (!NETWORKING_EVENT.zoomUrl) return; // ссылка на Zoom ещё не известна
   const eventId = NETWORKING_EVENT.id;
   const startAt = NETWORKING_EVENT.startAtUTC;
   const now = Date.now();
