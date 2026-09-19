@@ -1,4 +1,5 @@
 import { renderDashboardPage, DASHBOARD_APP_JS, DASHBOARD_DATA } from "./dashboard/dist/worker-assets.js";
+import { AI_NOTIFY_HTML } from "./ai-notify/dist/worker-assets.js";
 
 const WORKER_URL = "https://cmo-razbory.oxion-ezhkov.workers.dev";
 const PAYMENT_LINK = "https://edsofa.ai/sb/JIx";
@@ -78,6 +79,7 @@ export default {
     if (url.pathname === "/quiz3" || url.pathname === "/worker/quiz3") return serveQuiz3();
     if (url.pathname === "/api/quiz3-dialogue") return apiQuiz3Dialogue(request, env);
     if (url.pathname === "/api/quiz3-result") return apiQuiz3Result(request, env);
+    if (url.pathname === "/ai-notify") return serveAiNotify();
     if (url.pathname === "/dashboard") return serveDashboard(env);
     if (url.pathname === "/dashboard/app.js") return serveDashboardApp();
     if (url.pathname === "/dashboard/data.json") return apiDashboardData(env);
@@ -17437,6 +17439,10 @@ async function dashboardData(env) {
     if (fresh && fresh.kpi) return fresh;
   } catch (e) { /* нет KV или битый JSON — отдаём собранный при сборке снимок */ }
   return DASHBOARD_DATA;
+}
+
+function serveAiNotify() {
+  return new Response(AI_NOTIFY_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
 }
 
 async function serveDashboard(env) {
