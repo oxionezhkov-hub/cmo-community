@@ -1,5 +1,6 @@
 import { renderDashboardPage, DASHBOARD_APP_JS, DASHBOARD_DATA } from "./dashboard/dist/worker-assets.js";
 import { AI_NOTIFY_HTML } from "./ai-notify/dist/worker-assets.js";
+import { BOARD_OG_IMAGE_B64 } from "./board/dist/worker-assets.js";
 
 const WORKER_URL = "https://cmo-razbory.oxion-ezhkov.workers.dev";
 const PAYMENT_LINK = "https://edsofa.ai/sb/JIx";
@@ -80,6 +81,8 @@ export default {
     if (url.pathname === "/api/quiz3-dialogue") return apiQuiz3Dialogue(request, env);
     if (url.pathname === "/api/quiz3-result") return apiQuiz3Result(request, env);
     if (url.pathname === "/ai-notify") return serveAiNotify();
+    if (url.pathname === "/board" || url.pathname === "/board/") return serveBoardPreview(url);
+    if (url.pathname === "/board/og.jpg") return serveBoardOgImage();
     if (url.pathname === "/dashboard") return serveDashboard(env);
     if (url.pathname === "/dashboard/app.js") return serveDashboardApp();
     if (url.pathname === "/dashboard/data.json") return apiDashboardData(env);
@@ -17439,6 +17442,60 @@ async function dashboardData(env) {
     if (fresh && fresh.kpi) return fresh;
   } catch (e) { /* нет KV или битый JSON — отдаём собранный при сборке снимок */ }
   return DASHBOARD_DATA;
+}
+
+// ─── /board: пустая страница с OG-превью для Telegram и редиректом на cmo.pro/board ───
+const BOARD_REDIRECT_URL = "https://cmo.pro/board";
+const BOARD_OG_TITLE = "Подборка вакансий CMO — 23 сентября";
+const BOARD_OG_DESCRIPTION = "Свежие вакансии для маркетинг-директоров и руководителей маркетинга от комьюнити CMO.";
+// Меняйте при замене картинки — Telegram кэширует превью по URL.
+const BOARD_OG_VERSION = "2026-09-23";
+
+function serveBoardPreview(url) {
+  const pageUrl = `${url.origin}/board`;
+  const imageUrl = `${url.origin}/board/og.jpg?v=${BOARD_OG_VERSION}`;
+  const html = `<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${BOARD_OG_TITLE}</title>
+<meta name="description" content="${BOARD_OG_DESCRIPTION}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CMO">
+<meta property="og:title" content="${BOARD_OG_TITLE}">
+<meta property="og:description" content="${BOARD_OG_DESCRIPTION}">
+<meta property="og:url" content="${pageUrl}">
+<meta property="og:image" content="${imageUrl}">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1254">
+<meta property="og:image:height" content="1254">
+<meta property="og:image:alt" content="Подборка вакансий CMO, 23 сентября">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${BOARD_OG_TITLE}">
+<meta name="twitter:description" content="${BOARD_OG_DESCRIPTION}">
+<meta name="twitter:image" content="${imageUrl}">
+<meta http-equiv="refresh" content="0; url=${BOARD_REDIRECT_URL}">
+<link rel="canonical" href="${BOARD_REDIRECT_URL}">
+<script>location.replace(${JSON.stringify(BOARD_REDIRECT_URL)});</script>
+</head>
+<body></body>
+</html>`;
+  return new Response(html, {
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300" }
+  });
+}
+
+let boardOgImageBytes = null;
+function serveBoardOgImage() {
+  if (!boardOgImageBytes) {
+    const bin = atob(BOARD_OG_IMAGE_B64);
+    boardOgImageBytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) boardOgImageBytes[i] = bin.charCodeAt(i);
+  }
+  return new Response(boardOgImageBytes, {
+    headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400" }
+  });
 }
 
 function serveAiNotify() {
