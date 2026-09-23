@@ -81,7 +81,7 @@ export default {
     if (url.pathname === "/api/quiz3-dialogue") return apiQuiz3Dialogue(request, env);
     if (url.pathname === "/api/quiz3-result") return apiQuiz3Result(request, env);
     if (url.pathname === "/ai-notify") return serveAiNotify();
-    if (url.pathname === "/board" || url.pathname === "/board/") return serveBoardPreview(url);
+    if (url.pathname === "/board" || url.pathname === "/board/") return serveBoardPreview(url, request);
     if (url.pathname === "/board/og.jpg") return serveBoardOgImage();
     if (url.pathname === "/dashboard") return serveDashboard(env);
     if (url.pathname === "/dashboard/app.js") return serveDashboardApp();
@@ -17451,7 +17451,15 @@ const BOARD_OG_DESCRIPTION = "Свежие вакансии для маркет�
 // Меняйте при замене картинки — Telegram кэширует превью по URL.
 const BOARD_OG_VERSION = "2026-09-23";
 
-function serveBoardPreview(url) {
+// Боты мессенджеров и соцсетей получают страницу с OG-тегами, люди — сразу HTTP-редирект.
+// В самой странице редиректа нет: иначе Telegram уходит по нему и не строит превью.
+const PREVIEW_BOT_RE = /bot|crawler|spider|preview|facebookexternalhit|vkshare|whatsapp|skype|slack|discord|embedly|yandex|google/i;
+
+function serveBoardPreview(url, request) {
+  const ua = request.headers.get("User-Agent") || "";
+  if (!PREVIEW_BOT_RE.test(ua)) {
+    return new Response(null, { status: 302, headers: { Location: BOARD_REDIRECT_URL, "Cache-Control": "no-store" } });
+  }
   const pageUrl = `${url.origin}/board`;
   const imageUrl = `${url.origin}/board/og.jpg?v=${BOARD_OG_VERSION}`;
   const html = `<!doctype html>
@@ -17475,14 +17483,11 @@ function serveBoardPreview(url) {
 <meta name="twitter:title" content="${BOARD_OG_TITLE}">
 <meta name="twitter:description" content="${BOARD_OG_DESCRIPTION}">
 <meta name="twitter:image" content="${imageUrl}">
-<meta http-equiv="refresh" content="0; url=${BOARD_REDIRECT_URL}">
-<link rel="canonical" href="${BOARD_REDIRECT_URL}">
-<script>location.replace(${JSON.stringify(BOARD_REDIRECT_URL)});</script>
 </head>
 <body></body>
 </html>`;
   return new Response(html, {
-    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=300" }
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Vary": "User-Agent" }
   });
 }
 
