@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>План воронки</title>
+<meta name="description" content="Рабочее пространство для плана воронки «3 дня эфиров»: документы как в Notion и доски как в Miro.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232383e2'/%3E%3Cpath d='M18 20h28M18 32h20M18 44h12' stroke='white' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E">
+<!--INLINE:css--><link rel="stylesheet" href="plan.css"><!--/INLINE-->
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar" aria-label="Страницы">
+    <div class="side-head">
+      <div class="side-brand">План воронки<small>документы и доски</small></div>
+      <button class="tb-btn" id="side-close" title="Скрыть панель (Ctrl+\)" aria-label="Скрыть панель"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 5l-5 5 5 5"/></svg></button>
+    </div>
+    <div class="side-section">Страницы</div>
+    <div class="side-pages" id="pages"></div>
+    <button class="side-add" id="add-page"><span class="pg-icon">＋</span>Новая страница</button>
+    <div class="side-foot">
+      <button class="side-btn" id="sync-btn"><span class="sync-dot" id="sync-dot"></span><span class="sync-text" id="sync-text">Сохраняется в этом браузере</span></button>
+      <button class="side-btn" id="help-btn"><span class="pg-icon">⌨</span>Горячие клавиши</button>
+    </div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+  <main id="main">
+    <header id="topbar">
+      <button class="tb-btn" id="side-open" title="Панель страниц (Ctrl+\)" aria-label="Панель страниц"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3.5 5.5h13M3.5 10h13M3.5 14.5h13"/></svg></button>
+      <div class="crumb" id="crumb" title="Переименовать"><span id="crumb-icon"></span><span id="crumb-title"></span></div>
+      <div class="tb-spacer"></div>
+      <span class="save-state" id="save-state"></span>
+      <button class="tb-btn" id="undo-btn" title="Отменить (Ctrl+Z)" aria-label="Отменить"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 7.5H13a3.5 3.5 0 010 7H9"/><path d="M10 4.5l-3 3 3 3"/></svg></button>
+      <button class="tb-btn" id="redo-btn" title="Повторить (Ctrl+Shift+Z)" aria-label="Повторить"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 7.5H7a3.5 3.5 0 000 7h4"/><path d="M10 4.5l3 3-3 3"/></svg></button>
+      <button class="tb-btn" id="more-btn" title="Ещё" aria-label="Ещё"><svg viewBox="0 0 20 20" fill="currentColor"><circle cx="4.5" cy="10" r="1.5"/><circle cx="10" cy="10" r="1.5"/><circle cx="15.5" cy="10" r="1.5"/></svg></button>
+    </header>
+    <div id="view"></div>
+  </main>
+</div>
+<div id="toasts"></div>
+<!--INLINE:seed--><script src="seed.js"></script><!--/INLINE-->
+<!--INLINE:js--><script src="plan.js"></script><!--/INLINE-->
+</body>
+</html>

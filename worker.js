@@ -1,6 +1,7 @@
 import { renderDashboardPage, DASHBOARD_APP_JS, DASHBOARD_DATA } from "./dashboard/dist/worker-assets.js";
 import { AI_NOTIFY_HTML } from "./ai-notify/dist/worker-assets.js";
 import { BOARD_OG_IMAGE_B64 } from "./board/dist/worker-assets.js";
+import { PLAN_HTML } from "./plan/dist/worker-assets.js";
 
 const WORKER_URL = "https://cmo-razbory.oxion-ezhkov.workers.dev";
 const PAYMENT_LINK = "https://edsofa.ai/sb/JIx";
@@ -81,6 +82,8 @@ export default {
     if (url.pathname === "/api/quiz3-dialogue") return apiQuiz3Dialogue(request, env);
     if (url.pathname === "/api/quiz3-result") return apiQuiz3Result(request, env);
     if (url.pathname === "/ai-notify") return serveAiNotify();
+    if (url.pathname === "/plan" || url.pathname === "/plan/") return servePlan();
+    if (url.pathname === "/api/plan") return apiPlan(request, env);
     if (url.pathname === "/board" || url.pathname === "/board/") return serveBoardPreview(url, request);
     if (url.pathname === "/board/og.jpg") return serveBoardOgImage();
     if (url.pathname === "/dashboard") return serveDashboard(env);
@@ -17505,6 +17508,47 @@ function serveBoardOgImage() {
 
 function serveAiNotify() {
   return new Response(AI_NOTIFY_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+// ─── /plan: рабочее пространство «План воронки» (документы + доски) ───
+// Страница собирается из plan/ (node plan/build-worker-assets.mjs). Без входа всё хранится в браузере;
+// после ввода пароля админки план синхронизируется через /api/plan и общий для команды.
+const PLAN_KV_KEY = "plan:workspace:v1";
+const PLAN_MAX_BYTES = 5 * 1024 * 1024;
+
+function servePlan() {
+  return new Response(PLAN_HTML, {
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache", "X-Robots-Tag": "noindex" }
+  });
+}
+
+async function apiPlan(request, env) {
+  const auth = request.headers.get("Authorization") || "";
+  if (auth !== "admin_session_" + ADMIN_PASSWORD) return planResp({ ok: false, error: "Unauthorized" }, 401);
+  const rec = await env.KV.get(PLAN_KV_KEY, "json");
+  const curRev = (rec && rec.rev) || 0;
+  if (request.method === "GET") {
+    return planResp({ ok: true, rev: curRev, doc: rec ? rec.doc : null, updatedAt: rec ? rec.updatedAt : null });
+  }
+  if (request.method !== "PUT") return planResp({ ok: false, error: "Method" }, 405);
+  const raw = await request.text();
+  if (raw.length > PLAN_MAX_BYTES) return planResp({ ok: false, error: "Слишком большой план" }, 413);
+  let body;
+  try { body = JSON.parse(raw); } catch (e) { return planResp({ ok: false, error: "Bad JSON" }, 400); }
+  const doc = body && body.doc;
+  if (!doc || !Array.isArray(doc.pages)) return planResp({ ok: false, error: "Нет страниц" }, 400);
+  // Кто-то сохранил раньше — отдаём свежую версию, клиент сольёт правки сам
+  if (Number(body.baseRev) !== curRev) return planResp({ ok: false, conflict: true, rev: curRev, doc: rec ? rec.doc : null }, 409);
+  const next = { rev: curRev + 1, doc: { pages: doc.pages }, updatedAt: new Date().toISOString() };
+  await env.KV.put(PLAN_KV_KEY, JSON.stringify(next));
+  return planResp({ ok: true, rev: next.rev });
+}
+
+function planResp(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }
+  });
 }
 
 async function serveDashboard(env) {
