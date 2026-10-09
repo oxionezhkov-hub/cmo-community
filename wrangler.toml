@@ -6,6 +6,12 @@ compatibility_date = "2024-01-01"
 binding = "KV"
 id = "1d4173c9a3d54841a6a1b5bc4ee44729"
 
+# CRM лички (/crm) читает и отправляет сообщения через инбокс воркера tasktracker
+# (репозиторий mybrand-smm). Service binding — прямой вызов без публичного workers.dev.
+[[services]]
+binding = "INBOX"
+service = "tasktracker"
+
 [triggers]
 # 9:00 UTC = 12:00 МСК, каждый час пн и пт (scheduled() сам проверяет час === 9)
 crons = ["0 9 * * 1,5"]
@@ -14,6 +20,9 @@ crons = ["0 9 * * 1,5"]
 #   BOT_TOKEN               - Telegram bot token
 #   ADMIN_ID                - Telegram chat id for admin notifications
 #   PAYMENTS_WEBHOOK_SECRET  - shared secret for POST /api/payments/webhook (edsofa.ai reconciliation)
-#   CLAUDE_API                - Claude API key (квизы и вопросы к ИИ на /dashboard)
+#   CLAUDE_API                - Claude API key (квизы, вопросы к ИИ на /dashboard, ИИ-разбор работы на /crm)
+#   INBOX_API_TOKEN           - токен к API инбокса tasktracker для /crm — то же значение, что секрет
+#                               INBOX_CMO_TOKEN на воркере tasktracker (mybrand-smm)
 # Optional vars:
 #   DASHBOARD_AI_MODEL        - модель для вопросов к дашборду (по умолчанию claude-haiku-4-5-20251001)
+#   TGCRM_AI_MODEL            - модель для ИИ-разбора работы сотрудников на /crm (по умолчанию claude-sonnet-5-5)

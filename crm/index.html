@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>CRM лички</title>
+<meta name="description" content="Переписка с лидами из личного Telegram: диалоги, задачи, база знаний, журнал работы команды.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232383e2'/%3E%3Cpath d='M16 22a6 6 0 0 1 6-6h20a6 6 0 0 1 6 6v14a6 6 0 0 1-6 6H30l-9 7v-7h1a6 6 0 0 1-6-6z' fill='white'/%3E%3C/svg%3E">
+<!--INLINE:css--><link rel="stylesheet" href="crm.css"><!--/INLINE-->
+</head>
+<body>
+
+<!-- ── Вход ── -->
+<div id="login" class="login" hidden>
+  <form class="login-card" id="login-form" autocomplete="on">
+    <div class="login-logo">💬</div>
+    <h1>CRM лички</h1>
+    <p class="muted">Диалоги с лидами из Telegram</p>
+    <label>Логин<input name="login" id="login-name" autocomplete="username" required autocapitalize="off" spellcheck="false"></label>
+    <label>Пароль<input name="password" id="login-pass" type="password" autocomplete="current-password" required></label>
+    <div class="login-err" id="login-err" hidden></div>
+    <button class="btn btn-primary btn-wide" type="submit">Войти</button>
+  </form>
+</div>
+
+<!-- ── Приложение ── -->
+<div id="app" class="app" hidden>
+  <header class="topbar">
+    <div class="brand">💬 <span>CRM лички</span></div>
+    <nav class="tabs" id="tabs">
+      <button data-tab="chats" class="tab active">Диалоги <span class="badge" id="b-unread" hidden></span></button>
+      <button data-tab="tasks" class="tab">Задачи <span class="badge badge-red" id="b-tasks" hidden></span></button>
+      <button data-tab="triage" class="tab admin-only">Разбор <span class="badge badge-gray" id="b-triage" hidden></span></button>
+      <button data-tab="activity" class="tab admin-only">Журнал</button>
+      <button data-tab="team" class="tab admin-only">Команда</button>
+    </nav>
+    <div class="top-right">
+      <div class="seg" id="view-toggle" title="Вид списка диалогов">
+        <button data-view="split" class="active" title="Список слева, диалог справа">▥ Чаты</button>
+        <button data-view="table" title="Таблица, диалог открывается на весь экран">☰ Таблица</button>
+      </div>
+      <button class="btn btn-kb" id="kb-open" title="База знаний и скрипты">📚 <span>База знаний</span></button>
+      <button class="icon-btn" id="notif-btn" title="Уведомления в браузере">🔔</button>
+      <div class="me" id="me-menu">
+        <button class="me-btn" id="me-btn"><span class="avatar sm" id="me-avatar"></span><span id="me-name"></span></button>
+        <div class="menu" id="me-pop" hidden>
+          <div class="menu-head" id="me-role"></div>
+          <button id="theme-btn">🌓 Сменить тему</button>
+          <button id="logout-btn">↩︎ Выйти</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="conn-warn" id="conn-warn" hidden></div>
+
+  <!-- Диалоги: вид «чаты» и вид «таблица» -->
+  <main class="view" id="view-chats">
+    <div class="split" id="split">
+      <aside class="list-pane">
+        <div class="list-tools">
+          <input class="search" id="chat-search" type="search" placeholder="Поиск по имени и сообщениям">
+          <div class="filters">
+            <select id="stage-filter"><option value="">Все этапы</option></select>
+            <label class="chk"><input type="checkbox" id="unread-only"> Непрочитанные</label>
+          </div>
+        </div>
+        <div class="chat-list" id="chat-list"></div>
+      </aside>
+      <section class="chat-pane" id="chat-pane">
+        <div class="empty-state" id="chat-empty">
+          <div class="empty-ico">💬</div>
+          <p>Выберите диалог слева</p>
+          <p class="muted small" id="empty-hint"></p>
+        </div>
+      </section>
+    </div>
+
+    <div class="table-wrap" id="table-wrap" hidden>
+      <div class="table-tools">
+        <input class="search" id="table-search" type="search" placeholder="Поиск">
+        <select id="table-stage"><option value="">Все этапы</option></select>
+        <span class="spacer"></span>
+        <span class="muted small" id="sel-count"></span>
+        <button class="btn" id="broadcast-btn" disabled>📣 Рассылка выбранным</button>
+      </div>
+      <div class="table-scroll">
+        <table class="grid">
+          <thead><tr>
+            <th class="c-chk"><input type="checkbox" id="sel-all"></th>
+            <th data-sort="name">Контакт</th>
+            <th data-sort="stage">Этап</th>
+            <th data-sort="last">Последнее сообщение</th>
+            <th data-sort="lastAt">Когда</th>
+            <th data-sort="task">Ближайшая задача</th>
+            <th data-sort="assignee">Ответственный</th>
+          </tr></thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <!-- Задачи -->
+  <main class="view" id="view-tasks" hidden>
+    <div class="page">
+      <div class="page-head">
+        <h2>Задачи</h2>
+        <div class="seg" id="task-scope">
+          <button data-scope="mine" class="active">Мои</button>
+          <button data-scope="all">Все</button>
+        </div>
+      </div>
+      <div id="task-groups"></div>
+    </div>
+  </main>
+
+  <!-- Разбор новых диалогов (только админ) -->
+  <main class="view" id="view-triage" hidden>
+    <div class="page triage-page">
+      <div class="page-head">
+        <h2>Разбор диалогов</h2>
+        <div class="seg" id="triage-mode">
+          <button data-mode="cards" class="active">Карточки</button>
+          <button data-mode="list">Все списком</button>
+        </div>
+      </div>
+      <p class="muted" id="triage-progress"></p>
+      <div id="triage-cards" class="triage-cards"></div>
+      <div id="triage-list" hidden></div>
+    </div>
+  </main>
+
+  <!-- Журнал работы (только админ) -->
+  <main class="view" id="view-activity" hidden>
+    <div class="page">
+      <div class="page-head">
+        <h2>Журнал работы</h2>
+        <div class="act-filters">
+          <select id="act-user"></select>
+          <input type="date" id="act-from">
+          <span class="muted">—</span>
+          <input type="date" id="act-to">
+          <button class="btn" id="act-load">Показать</button>
+          <button class="btn btn-primary" id="act-summary">✨ ИИ-разбор</button>
+        </div>
+      </div>
+      <div id="act-summaries"></div>
+      <div id="act-days"></div>
+    </div>
+  </main>
+
+  <!-- Команда (только админ) -->
+  <main class="view" id="view-team" hidden>
+    <div class="page">
+      <div class="page-head"><h2>Команда</h2></div>
+      <div id="team-list"></div>
+      <form class="card team-add" id="team-add">
+        <h3>Добавить сотрудника</h3>
+        <div class="row">
+          <input name="name" placeholder="Имя" required>
+          <input name="login" placeholder="Логин (латиницей)" required autocapitalize="off">
+          <input name="password" placeholder="Пароль" required>
+          <select name="role"><option value="manager">Менеджер</option><option value="admin">Админ</option></select>
+          <button class="btn btn-primary" type="submit">Добавить</button>
+        </div>
+      </form>
+    </div>
+  </main>
+</div>
+
+<!-- Диалог на весь экран (из таблицы и задач) -->
+<div class="modal full" id="chat-modal" hidden>
+  <div class="modal-box full-box" id="chat-modal-box"></div>
+</div>
+
+<!-- База знаний -->
+<div class="kb" id="kb" hidden>
+  <aside class="kb-side">
+    <div class="kb-side-head">
+      <strong>📚 База знаний</strong>
+      <button class="icon-btn" id="kb-close" title="Закрыть (Esc)">✕</button>
+    </div>
+    <input class="search" id="kb-search" type="search" placeholder="Поиск по базе">
+    <div class="kb-tree" id="kb-tree"></div>
+    <button class="kb-add" id="kb-add">＋ Новая страница</button>
+  </aside>
+  <section class="kb-main" id="kb-main"></section>
+</div>
+
+<!-- Модалки -->
+<div class="modal" id="modal" hidden>
+  <div class="modal-box" id="modal-box"></div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<!--INLINE:js--><script src="crm.js"></script><!--/INLINE-->
+</body>
+</html>

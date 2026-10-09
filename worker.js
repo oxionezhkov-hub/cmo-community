@@ -2,6 +2,7 @@ import { renderDashboardPage, DASHBOARD_APP_JS, DASHBOARD_DATA } from "./dashboa
 import { AI_NOTIFY_HTML } from "./ai-notify/dist/worker-assets.js";
 import { BOARD_OG_IMAGE_B64 } from "./board/dist/worker-assets.js";
 import { PLAN_HTML } from "./plan/dist/worker-assets.js";
+import { serveCrm, handleCrmApi } from "./crm/api.js";
 
 const WORKER_URL = "https://cmo-razbory.oxion-ezhkov.workers.dev";
 const PAYMENT_LINK = "https://edsofa.ai/sb/JIx";
@@ -48,6 +49,8 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/webhook") return handleWebhook(request, env);
+    if (url.pathname === "/crm" || url.pathname === "/crm/") return serveCrm();
+    if (url.pathname.startsWith("/api/tgcrm/")) return handleCrmApi(request, env, url);
     if (url.pathname === "/setup-webhook") return setupWebhook(env);
     if (url.pathname === "/api/export-modules") return apiExportModules(request, env);
     if (url.pathname.startsWith(ADMIN_PATH)) return handleAdmin(request, env, url);
