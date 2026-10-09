@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 const DIR = path.dirname(fileURLToPath(import.meta.url));
 const read = f => fs.readFile(path.join(DIR, f), 'utf8');
 
-const ICONS = { scripts: '📞', guide: '🧭' };
+const ICONS = { scripts: '📞', guide: '🧭', 'project-cmo': '🚀' };
 const SECTION_ICONS = ['📊', '💬', '🛡️', '🛠️', '⚠️', '✅', '❓', '📌'];
 let seq = 0;
 const pid = name => `seed-${name}-${++seq}`;
