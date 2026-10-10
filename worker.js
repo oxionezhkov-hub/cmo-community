@@ -1,5 +1,6 @@
 import { renderDashboardPage, DASHBOARD_APP_JS, DASHBOARD_DATA } from "./dashboard/dist/worker-assets.js";
 import { AI_NOTIFY_HTML } from "./ai-notify/dist/worker-assets.js";
+import { AI_ASSISTANT_HTML } from "./ai-assistant/dist/worker-assets.js";
 import { BOARD_OG_IMAGE_B64 } from "./board/dist/worker-assets.js";
 import { PLAN_HTML } from "./plan/dist/worker-assets.js";
 import { serveCrm, handleCrmApi } from "./crm/api.js";
@@ -85,6 +86,7 @@ export default {
     if (url.pathname === "/api/quiz3-dialogue") return apiQuiz3Dialogue(request, env);
     if (url.pathname === "/api/quiz3-result") return apiQuiz3Result(request, env);
     if (url.pathname === "/ai-notify") return serveAiNotify();
+    if (url.pathname === "/ai-assistant" || url.pathname === "/ai-assistant/") return serveAiAssistant();
     if (url.pathname === "/plan" || url.pathname === "/plan/") return servePlan();
     if (url.pathname === "/api/plan") return apiPlan(request, env);
     if (url.pathname === "/board" || url.pathname === "/board/") return serveBoardPreview(url, request);
@@ -17511,6 +17513,11 @@ function serveBoardOgImage() {
 
 function serveAiNotify() {
   return new Response(AI_NOTIFY_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+}
+
+// ─── /ai-assistant: интерактивная страница воркшопа «ИИ-ассистент задач» (ai-assistant/, node ai-assistant/build-worker-assets.mjs) ───
+function serveAiAssistant() {
+  return new Response(AI_ASSISTANT_HTML, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" } });
 }
 
 // ─── /plan: рабочее пространство «План воронки» (документы + доски) ───
