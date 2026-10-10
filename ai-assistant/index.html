@@ -20,7 +20,7 @@
   --warn:#B7791F; --warn-soft:#FBF1DF;
   --alt:#5B4BD6; --alt-soft:#EDEBFB;
   --teal:#0E7C86; --teal-soft:#E2F1F2;
-  --chat:#E4EAF1; --out:#DDF3D1; --nav:rgba(243,244,247,.86);
+  --chat:#E4EAF1; --out:#DDF3D1;
   --shadow:0 1px 2px rgba(16,24,40,.05);
   --shadow-pop:0 18px 48px rgba(16,24,40,.16);
   --r-lg:12px; --r:9px; --r-sm:6px;
@@ -34,7 +34,7 @@
     --brand:#7F96F6; --brand-soft:#1D2646; --brand-ink:#AEBCFA; --on-brand:#0D111C;
     --good:#4CC59A; --good-soft:#132D26; --bad:#F2777C; --bad-soft:#38191E;
     --warn:#E5AE58; --warn-soft:#33281A; --alt:#A79AF6; --alt-soft:#252145;
-    --teal:#52C3CC; --teal-soft:#122C34; --chat:#0F1524; --out:#1F3A2C; --nav:rgba(13,17,28,.86);
+    --teal:#52C3CC; --teal-soft:#122C34; --chat:#0F1524; --out:#1F3A2C;
     --shadow:0 1px 2px rgba(0,0,0,.3); --shadow-pop:0 18px 48px rgba(0,0,0,.5);
     color-scheme:dark;
   }
@@ -45,7 +45,7 @@
   --brand:#7F96F6; --brand-soft:#1D2646; --brand-ink:#AEBCFA; --on-brand:#0D111C;
   --good:#4CC59A; --good-soft:#132D26; --bad:#F2777C; --bad-soft:#38191E;
   --warn:#E5AE58; --warn-soft:#33281A; --alt:#A79AF6; --alt-soft:#252145;
-  --teal:#52C3CC; --teal-soft:#122C34; --chat:#0F1524; --out:#1F3A2C; --nav:rgba(13,17,28,.86);
+  --teal:#52C3CC; --teal-soft:#122C34; --chat:#0F1524; --out:#1F3A2C;
   --shadow:0 1px 2px rgba(0,0,0,.3); --shadow-pop:0 18px 48px rgba(0,0,0,.5);
   color-scheme:dark;
 }
@@ -64,47 +64,10 @@ a{color:var(--brand)}
 .muted{color:var(--ink-2)}
 .small{font-size:12.5px}
 
-/* nav */
-.nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:30;background:var(--nav);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-.nav .wrap{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;padding-block:8px}
-.nav .wrap::-webkit-scrollbar{display:none}
-.nav a{flex:none;text-decoration:none;color:var(--ink-2);font-size:13px;font-weight:500;padding:6px 10px;border-radius:999px;white-space:nowrap}
-.nav a:hover{background:var(--card);color:var(--ink)}
-.nav a.on{background:var(--brand-soft);color:var(--brand-ink)}
-
-/* hero */
-.hero{padding-block:40px 8px;display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:36px;align-items:center}
-@media(max-width:900px){.hero{grid-template-columns:1fr;gap:24px}}
-.kicker{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--brand);background:var(--brand-soft);padding:5px 11px;border-radius:999px;margin-bottom:16px}
-.kicker i{width:7px;height:7px;border-radius:50%;background:var(--brand);animation:pulse 1.6s ease-in-out infinite}
-@keyframes pulse{50%{opacity:.25}}
-.hero h1{font-size:clamp(28px,4.2vw,40px);letter-spacing:-.025em;line-height:1.12}
-.hero h1 em{font-style:normal;color:var(--brand)}
-.hero .lead{margin-top:14px;max-width:560px;color:var(--ink-2);font-size:15.5px}
-.hero .stats{display:flex;gap:26px;margin-top:24px;flex-wrap:wrap}
-.hero .stats span{display:block;color:var(--ink-3);font-size:12px}
-.hero .stats b{font-family:var(--mono);font-size:22px;font-weight:600}
-.hero .ctas{display:flex;gap:8px;margin-top:22px;flex-wrap:wrap}
-.conveyor{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:14px;box-shadow:var(--shadow)}
-.conveyor .head{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--ink-3);padding:2px 4px 10px}
-.conveyor .head b{color:var(--ink);font-weight:600;font-size:13px}
-.conv-list{display:flex;flex-direction:column;gap:8px;min-height:300px}
-.conv-row{display:grid;grid-template-columns:minmax(0,1fr) 22px minmax(0,.9fr);gap:6px;align-items:center;animation:slideIn .5s ease both}
-@keyframes slideIn{from{opacity:0;transform:translateY(-8px)}}
-.conv-msg{background:var(--sunk);border:1px solid var(--line-soft);border-radius:10px;padding:8px 10px;font-size:12.5px;min-width:0}
-.conv-msg .from{display:flex;gap:6px;align-items:center;font-size:11px;color:var(--ink-3);margin-bottom:3px}
-.conv-arrow{color:var(--ink-3);text-align:center;font-family:var(--mono)}
-.conv-task{border:1px solid var(--brand);background:var(--brand-soft);border-radius:10px;padding:8px 10px;font-size:12.5px;min-width:0}
-.conv-task b{display:block;font-weight:600;color:var(--brand-ink);line-height:1.3}
-.conv-task span{font-size:11px;color:var(--ink-2)}
-.conv-row.skip .conv-task{border-color:var(--line);background:var(--sunk)}
-.conv-row.skip .conv-task b{color:var(--ink-3)}
-@media(max-width:480px){.conv-row{grid-template-columns:1fr}.conv-arrow{display:none}}
-
 /* sections */
-section{padding-top:56px;scroll-margin-top:52px}
+section{padding-top:56px;scroll-margin-top:16px}
+main > section:first-child{padding-top:36px}
 .sec-head{margin-bottom:18px;max-width:780px}
-.sec-head .eyebrow{font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px}
 .sec-head h2{font-size:24px;letter-spacing:-.02em}
 .sec-head p{margin-top:8px;color:var(--ink-2);font-size:14.5px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow)}
@@ -426,59 +389,19 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 </head>
 <body>
 
-<nav class="nav" aria-label="Разделы">
-  <div class="wrap">
-    <a href="#top">Идея</a>
-    <a href="#map">Схема</a>
-    <a href="#parse">Сообщение → задача</a>
-    <a href="#chats">Бот в чатах</a>
-    <a href="#board">Доска и сроки</a>
-    <a href="#remind">Напоминания</a>
-    <a href="#memory">Память</a>
-    <a href="#ask">Вопросы к ИИ</a>
-    <a href="#triggers">Связка с дашбордом</a>
-    <a href="#ideas">Ещё идеи</a>
-    <a href="#build">Собрать свою</a>
-    <a href="#stack">Как устроено</a>
-  </div>
-</nav>
-
 <main class="wrap">
-
-<!-- HERO -->
-<header class="hero" id="top">
-  <div>
-    <div class="kicker"><i></i>Воркшоп · ИИ-ассистент</div>
-    <h1>Ассистент, у которого <em>не теряется</em> ни одна задача</h1>
-    <p class="lead">Он сидит в рабочих чатах, видит вашу личку, почту, календарь и CRM. Сам превращает договорённости в задачи, следит за сроками, пинает исполнителей и отвечает на любой вопрос по работе, потому что у него весь контекст.</p>
-    <div class="stats">
-      <div><span>источников задач</span><b class="num">7</b></div>
-      <div><span>место, где всё видно</span><b class="num">1</b></div>
-      <div><span>забытых обещаний</span><b class="num" id="heroZero">0</b></div>
-    </div>
-    <div class="ctas">
-      <a class="btn primary" href="#map">Посмотреть, как устроено</a>
-      <a class="btn" href="#board">Сразу к доске задач</a>
-    </div>
-  </div>
-  <div class="conveyor" aria-label="Пример потока: сообщения превращаются в задачи">
-    <div class="head"><b>Поток прямо сейчас</b><span id="convCount" class="mono">0 сообщений разобрано</span></div>
-    <div class="conv-list" id="convList"></div>
-  </div>
-</header>
 
 <!-- MAP -->
 <section id="map">
   <div class="sec-head">
-    <div class="eyebrow">1 · Схема системы</div>
-    <h2>Всё стекается в одно ядро, а оттуда расходится по людям</h2>
+    <h2>Всё стекается в одну ОС, а оттуда расходится по людям</h2>
     <p>Нажмите на любой блок, чтобы увидеть, что он делает и что нужно для подключения. Переключателями слева отключайте источники и смотрите, сколько задач система перестаёт видеть.</p>
   </div>
   <div class="card pad">
     <div class="map">
       <div class="col" id="mapSources"><h4>Откуда приходят задачи</h4></div>
       <div class="pipes" id="pipesL"></div>
-      <div class="col"><h4>Ядро</h4><div class="core" id="mapCore"><div class="ttl"><i></i>ИИ-ассистент</div></div></div>
+      <div class="col"><h4>ИИ-ОС</h4><div class="core" id="mapCore"><div class="ttl"><i></i>ИИ-ассистент</div></div></div>
       <div class="pipes" id="pipesR"></div>
       <div class="col" id="mapOutputs"><h4>Что получаете</h4></div>
     </div>
@@ -498,7 +421,6 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 <!-- PARSER -->
 <section id="parse">
   <div class="sec-head">
-    <div class="eyebrow">2 · Как сообщение становится задачей</div>
     <h2>Пишете как обычно, ассистент вытаскивает кто, что и когда</h2>
     <p>Выберите пример или напишите своё сообщение, как в рабочем чате. Ассистент решит, задача это или просто болтовня, и разложит её на поля.</p>
   </div>
@@ -526,7 +448,6 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 <!-- CHATS -->
 <section id="chats">
   <div class="sec-head">
-    <div class="eyebrow">3 · Бот в чатах, личке, почте</div>
     <h2>Пять сцен из жизни ассистента</h2>
     <p>Нажмите «Запустить» и посмотрите, как это выглядит в Telegram. Кнопки в карточках задач кликабельны.</p>
   </div>
@@ -543,7 +464,6 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 <!-- BOARD -->
 <section id="board">
   <div class="sec-head">
-    <div class="eyebrow">4 · Дашборд задач и машина времени</div>
     <h2>Все задачи команды в одном месте, со сроками и источником</h2>
     <p>Двигайте время ползунком или нажмите «Пустить время». Исполнители что-то закрывают вовремя, что-то срывают, а ассистент шлёт напоминания и эскалации в ленту справа. Клик по карточке меняет статус.</p>
   </div>
@@ -577,7 +497,6 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 <!-- REMIND -->
 <section id="remind">
   <div class="sec-head">
-    <div class="eyebrow">5 · Лестница напоминаний</div>
     <h2>Кому, когда и каким тоном напоминать</h2>
     <p>Настройки сразу влияют на ленту в доске выше. Попробуйте режим «жёстко» и включите публичный пинг в общий чат.</p>
   </div>
@@ -596,7 +515,6 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 <!-- MEMORY -->
 <section id="memory">
   <div class="sec-head">
-    <div class="eyebrow">6 · База знаний и память</div>
     <h2>Ассистент запоминает факты о вас, проекте и команде</h2>
     <p>Из переписки он вытаскивает не только задачи, но и знания: кто в отпуске, какой бюджет согласовали, как вы любите получать отчёты. Нажимайте на факты слева, они попадут в память, а ассистент поменяет поведение.</p>
   </div>
@@ -615,7 +533,6 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 <!-- ASK -->
 <section id="ask">
   <div class="sec-head">
-    <div class="eyebrow">7 · Вопросы к ИИ и отчёты</div>
     <h2>Спросите что угодно о работе</h2>
     <p>Ответы считаются по живой доске выше: подвиньте время, закройте пару задач и спросите снова.</p>
   </div>
@@ -632,7 +549,6 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 <!-- TRIGGERS -->
 <section id="triggers">
   <div class="sec-head">
-    <div class="eyebrow">8 · Связка с дашбордом маркетинга и CRM</div>
     <h2>Цифры сами создают задачи</h2>
     <p>Ассистент читает <a href="https://cmo-razbory.oxion-ezhkov.workers.dev/dashboard" target="_blank" rel="noopener">дашборд с прошлого воркшопа</a> и CRM. Когда метрика уходит за порог, задача появляется у ответственного без вашего участия. Нажмите «Сымитировать» и проверьте доску.</p>
   </div>
@@ -642,7 +558,6 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 <!-- IDEAS -->
 <section id="ideas">
   <div class="sec-head">
-    <div class="eyebrow">9 · Что ещё можно навесить</div>
     <h2>Идеи сверху: выберите, что хотите себе</h2>
     <p>Отмеченные идеи попадут в конструктор ниже и в промпт для сборки.</p>
   </div>
@@ -652,7 +567,6 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 <!-- BUILD -->
 <section id="build">
   <div class="sec-head">
-    <div class="eyebrow">10 · Конструктор</div>
     <h2>Соберите свою систему и заберите промпт</h2>
     <p>Отметьте модули. Справа появится план сборки по этапам, список доступов и готовый промпт для Claude Code.</p>
   </div>
@@ -665,7 +579,6 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 <!-- STACK -->
 <section id="stack">
   <div class="sec-head">
-    <div class="eyebrow">11 · Как это устроено внутри</div>
     <h2>Шесть деталей, из которых собирается система</h2>
     <p>Тот же стек, что у дашборда и CRM лички: Cloudflare Worker, хранилище KV или D1, Claude API и Telegram.</p>
   </div>
@@ -675,7 +588,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
     <div class="card st"><h3>Claude разбирает</h3><p>Каждое сообщение уходит в Claude с контекстом: команда, проекты, база знаний. В ответ JSON: задача или нет, исполнитель, срок, приоритет, проект.</p></div>
     <div class="card st"><h3>Хранилище</h3><p>Задачи, история, база знаний и настройки лежат в KV или D1 на вашем аккаунте. Ничего не уходит в чужие сервисы, кроме запроса к модели.</p></div>
     <div class="card st"><h3>Cron по расписанию</h3><p>Каждые 15 минут воркер проверяет сроки и шлёт напоминания и эскалации. В 9:00 утренний брифинг, в пятницу итоги недели.</p></div>
-    <div class="card st"><h3>Веб-страница</h3><p>Дашборд задач с фильтрами и окном «Спросить ИИ»: в промпт уходят все задачи и база знаний, поэтому ответ по делу.</p></div>
+    <div class="card st"><h3>Таск-трекер</h3><p>Веб-страница с задачами, фильтрами и окном «Спросить ИИ»: у ИИ под рукой все задачи и база знаний, поэтому ответ по делу.</p></div>
   </div>
   <div class="two">
     <div class="card pad">
@@ -761,46 +674,20 @@ function relDue(due, h){
   return {t:fmt(due), c:''};
 }
 
-/* ───────── HERO: конвейер ───────── */
-var CONV = [
-  {s:'tg', from:'Чат «Маркетинг»', text:'Маша, запусти ретаргет до четверга', task:'Запустить ретаргет', meta:'Маша · чт 18:00'},
-  {s:'biz', from:'Личка · Иван, ООО «Ромашка»', text:'Пришлите КП до пятницы, пожалуйста', task:'КП для «Ромашки»', meta:'Вы · пт 12:00'},
-  {s:'tg', from:'Чат «Маркетинг»', text:'Окей, спасибо!', task:'Не задача', meta:'пропущено', skip:true},
-  {s:'mail', from:'Почта · бухгалтерия', text:'Нужно подписать акты до 25-го', task:'Подписать акты', meta:'Вы · 25-го'},
-  {s:'voice', from:'Голосовое · 0:24', text:'Аня готовит посты к понедельнику, Костя обзванивает лидов', task:'2 задачи', meta:'Аня, Костя'},
-  {s:'crm', from:'amoCRM', text:'Сделка «Альфа-Строй» 7 дней без движения', task:'Связаться с клиентом', meta:'Костя · сегодня'},
-  {s:'dash', from:'Дашборд', text:'CPL в Директе +38% за 3 дня', task:'Проверить кампании', meta:'Маша · сегодня 18:00'},
-  {s:'cal', from:'Календарь', text:'Встреча с подрядчиком в 15:00', task:'Брифинг к встрече', meta:'Вы · 14:45'},
-  {s:'biz', from:'Личка · вы пишете', text:'Скину вам презентацию завтра утром', task:'Обещание: презентация', meta:'Вы · завтра 11:00'},
-  {s:'tg', from:'Чат «Дизайн»', text:'Дима, баннер к 15:00 сможешь? Горит', task:'Баннер на лендинг', meta:'Дима · сегодня 15:00 · срочно'}
-];
-var convI = 0, convN = 0;
-function convPush(){
-  var it = CONV[convI % CONV.length]; convI++; convN++;
-  var row = document.createElement('div');
-  row.className = 'conv-row' + (it.skip?' skip':'');
-  row.innerHTML = '<div class="conv-msg"><div class="from">'+srcBadge(it.s)+esc(it.from)+'</div>'+esc(it.text)+'</div><div class="conv-arrow">→</div><div class="conv-task"><b>'+esc(it.task)+'</b><span>'+esc(it.meta)+'</span></div>';
-  var list = $('#convList'); list.insertBefore(row, list.firstChild);
-  while (list.children.length > 5) list.removeChild(list.lastChild);
-  $('#convCount').textContent = convN + ' ' + plural(convN,'сообщение','сообщения','сообщений') + ' разобрано';
-}
-for (var i=0;i<5;i++) convPush();
-if (!reduce) setInterval(convPush, 2600);
-
 /* ───────── 1. Схема ───────── */
 var NODES = {
   tg:{side:'src', w:30, t:'Бот в рабочих чатах', s:'Telegram-группы команды', what:'Сидит во всех рабочих чатах, читает переписку и замечает договорённости: «Маша, сделай к четвергу». Присылает карточку задачи с кнопками «Принять» и «Другой срок».', how:'Бот из BotFather, добавлен в группы, privacy mode выключен. Вебхук на воркер.', ex:'«Дима, баннер к 15:00» → задача Диме, срок сегодня 15:00, приоритет высокий.'},
-  biz:{side:'src', w:20, t:'Business-бот в личке', s:'Ваши переписки с клиентами', what:'Видит вашу личку с клиентами и подрядчиками. Ловит запросы («пришлите КП») и ваши обещания («скину завтра»), ставит задачи вам, обновляет карточку клиента.', how:'Telegram Premium → Telegram для бизнеса → Чат-боты. Выбираете, какие чаты видит бот.', ex:'Клиент: «Пришлите кейсы до пятницы». Вы: «Конечно». → вам задача на пт 12:00.'},
+  biz:{side:'src', w:20, t:'ТГ Business-бот в личке', s:'Ваши переписки в Telegram с клиентами', what:'Видит вашу личку с клиентами и подрядчиками. Ловит запросы («пришлите КП») и ваши обещания («скину завтра»), ставит задачи вам, обновляет карточку клиента.', how:'Telegram Premium → Telegram для бизнеса → Чат-боты. Выбираете, какие чаты видит бот.', ex:'Клиент: «Пришлите кейсы до пятницы». Вы: «Конечно». → вам задача на пт 12:00.'},
   mail:{side:'src', w:15, t:'Почта', s:'Gmail, Яндекс', what:'Читает входящие, находит письма с просьбами и дедлайнами: акты, согласования, запросы клиентов. Рассылки и уведомления пропускает.', how:'Gmail API через OAuth или пересылка писем на адрес воркера.', ex:'«Подпишите акты до 25-го» → задача вам на 25-е, проект «Финансы».'},
   cal:{side:'src', w:10, t:'Календарь', s:'Встречи и созвоны', what:'Знает, когда вы заняты. Перед встречей присылает справку: кто это, какие открыты задачи, о чём договаривались. Не ставит дедлайны на время встреч.', how:'Google Calendar API, чтение событий и свободных слотов.', ex:'За 15 минут до встречи с «Кадром»: «2 открытые задачи, последний разговор был про сценарий».'},
   crm:{side:'src', w:15, t:'CRM', s:'amoCRM, Bitrix24 и др.', what:'Следит за сделками: лид без ответа, сделка без движения, обещанный созвон. Создаёт задачи менеджерам и видит, по какому клиенту что открыто.', how:'Вебхуки CRM на воркер плюс API для чтения сделок.', ex:'Сделка 7 дней без движения → Косте задача «связаться», срок сегодня.'},
-  voice:{side:'src', w:5, t:'Голосовые и созвоны', s:'Расшифровка речи', what:'Расшифровывает голосовые в чатах и записи созвонов, собирает итоги и раскладывает договорённости по исполнителям.', how:'Транскрипция (Whisper или аналог) → тот же разбор в Claude.', ex:'Голосовое на 40 секунд → 3 задачи трём людям с разными сроками.'},
+  voice:{side:'src', w:5, t:'Голосовые и созвоны в Zoom', s:'Расшифровка речи', what:'Расшифровывает голосовые в чатах и записи созвонов в Zoom, собирает итоги и раскладывает договорённости по исполнителям.', how:'Записи и транскрипты Zoom через его API, голосовые через сервис расшифровки → тот же разбор в Claude.', ex:'Голосовое на 40 секунд → 3 задачи трём людям с разными сроками.'},
   dash:{side:'src', w:5, t:'Дашборд маркетинга', s:'Метрики с прошлого воркшопа', what:'Смотрит на цифры: CPL, конверсии, расход. Когда метрика уходит за порог, ставит задачу ответственному и пишет вам почему.', how:'Тот же воркер читает data.json дашборда, правила задаются в настройках.', ex:'CPL в Директе +38% за 3 дня → Маше «проверить кампании», срок сегодня 18:00.'},
-  parse:{side:'core', t:'Разбор в задачи', s:'Кто, что, когда, приоритет', what:'Каждое сообщение проходит через Claude: задача это или нет, кто исполнитель, какой срок, к какому проекту относится. Если не уверен, уточняет.', how:'Claude API с промптом, в котором команда, проекты и выдержка из базы знаний.', ex:'«Скину завтра утром» → обещание, исполнитель вы, срок завтра 11:00.'},
+  parse:{side:'core', t:'Разбор в задачи', s:'Кто, что, когда, приоритет', what:'Каждое сообщение проходит через Claude: задача это или нет, кто исполнитель, какой срок, к какому проекту относится. Если не уверен, уточняет.', how:'Claude API получает вместе с сообщением команду, проекты и выдержку из базы знаний.', ex:'«Скину завтра утром» → обещание, исполнитель вы, срок завтра 11:00.'},
   dl:{side:'core', t:'Сроки и напоминания', s:'Cron каждые 15 минут', what:'Помнит все сроки. Пишет исполнителю заранее, в день срока и после просрочки, эскалирует руководителю. Уважает тихие часы.', how:'Cron-триггер воркера, лестница напоминаний в настройках.', ex:'За сутки, за 2 часа, через час после срока, через 4 часа руководителю.'},
   kb:{side:'core', t:'База знаний', s:'Скилл о вас, проекте, команде', what:'Копит факты из переписки: отпуска, бюджеты, договорённости, предпочтения. Это контекст для всех ответов и решений.', how:'Markdown-файлы в KV, которые обновляет сам ассистент. По сути скилл Claude.', ex:'«Маша в отпуске 20–27» → задачи Маши на эти даты предлагает передать.'},
-  ctx:{side:'core', t:'Общий контекст', s:'Всё в одном промпте', what:'Задачи, история, база знаний и цифры собираются вместе, поэтому ИИ отвечает по делу, а не общими словами.', how:'Перед запросом воркер собирает выжимку из KV.', ex:'«Что я обещал клиентам и не сделал?» → список с датами и ссылками на переписку.'},
-  board:{side:'out', t:'Дашборд задач', s:'Веб-страница с фильтрами', what:'Все задачи команды: статусы, сроки, источник, история. Можно создать задачу текстом, как в чате.', how:'Страница на том же воркере, вход по паролю.', ex:'Фильтр «просрочено у Кости» → 2 задачи и история напоминаний.'},
+  ctx:{side:'core', t:'Общий контекст', s:'Задачи, переписка и память в одном месте', what:'Задачи, история, база знаний и цифры собираются вместе, поэтому ИИ отвечает по делу, а не общими словами.', how:'Перед запросом воркер собирает выжимку из KV.', ex:'«Что я обещал клиентам и не сделал?» → список с датами и ссылками на переписку.'},
+  board:{side:'out', t:'Таск-трекер', s:'Веб-страница с задачами и фильтрами', what:'Все задачи команды: статусы, сроки, источник, история. Можно создать задачу текстом, как в чате.', how:'Страница на том же воркере, вход по паролю.', ex:'Фильтр «просрочено у Кости» → 2 задачи и история напоминаний.'},
   nexec:{side:'out', t:'Уведомления исполнителям', s:'В личку от бота', what:'Каждый получает свои задачи и напоминания в личку от бота, с кнопками «Готово», «Перенести», «Нужна помощь».', how:'Сотрудник один раз пишет боту /start.', ex:'«Маша, завтра в 18:00 срок по ретаргету. Всё по плану?»'},
   nme:{side:'out', t:'Уведомления вам', s:'Брифинг и эскалации', what:'Утром сводка дня, днём только важное: эскалации, ответы клиентам, горящие сроки. Вечером итог.', how:'Отдельный режим для руководителя.', ex:'9:00: «Сегодня 4 срока, 1 просрочка у Кости, встреча в 15:00».'},
   rep:{side:'out', t:'Отчёты', s:'Неделя, человек, проект', what:'Отчёт собственнику, итоги недели, разбор работы сотрудника. В вашем формате, который ассистент запомнил.', how:'Claude по данным задач, по расписанию или по кнопке.', ex:'Понедельник 10:00: три цифры и выводы, как вы любите.'},
@@ -831,9 +718,8 @@ function renderMap(){
   var lost = Math.round(120*(100-cov)/100);
   $('#covLost').textContent = lost;
   $('#covLostNote').textContent = lost===0 ? 'задач. Всё на виду.' : plural(lost,'задача','задачи','задач')+' будут жить только в чьей-то голове.';
-  $('#heroZero').textContent = lost===0 ? '0' : String(lost);
   var n = NODES[mapSel];
-  var tag = n.side==='src' ? 'Источник' : n.side==='core' ? 'Ядро' : 'Результат';
+  var tag = n.side==='src' ? 'Источник' : n.side==='core' ? 'ИИ-ОС' : 'Результат';
   $('#mapDetail').innerHTML = '<div class="small muted">'+tag+'</div><h3>'+esc(n.t)+'</h3>'+
     '<div class="row"><b>Что делает</b><div>'+esc(n.what)+'</div></div>'+
     '<div class="row"><b>Как подключить</b><div>'+esc(n.how)+'</div></div>'+
@@ -1557,20 +1443,20 @@ renderIdeas();
 var MODS = [
   {g:'Источники', items:[
     {id:'tg', t:'Бот в рабочих чатах', d:1, need:['Токен бота из BotFather'], on:true},
-    {id:'biz', t:'Business-бот в личке', d:1, need:['Telegram Premium','Подключение бота в Telegram для бизнеса']},
+    {id:'biz', t:'ТГ Business-бот в личке', d:1, need:['Telegram Premium','Подключение бота в Telegram для бизнеса']},
     {id:'mail', t:'Почта', d:1, need:['Google OAuth (Gmail API)']},
     {id:'cal', t:'Календарь', d:.5, need:['Google OAuth (Calendar API)']},
     {id:'crm', t:'CRM', d:1, need:['API-ключ и вебхуки CRM']},
-    {id:'voice', t:'Голосовые и созвоны', d:1, need:['Сервис расшифровки речи']},
+    {id:'voice', t:'Голосовые и созвоны в Zoom', d:1, need:['Zoom API (записи созвонов)','Сервис расшифровки речи']},
     {id:'dash', t:'Дашборд маркетинга', d:.5, need:['Доступ к data.json дашборда']}
   ]},
-  {g:'Ядро', items:[
+  {g:'ИИ-ОС', items:[
     {id:'tasks', t:'Задачи и сроки', d:2, need:['Ключ Claude API','Аккаунт Cloudflare (Worker + KV)'], on:true, lock:true},
     {id:'remind', t:'Напоминания и эскалации', d:1, need:[], on:true},
     {id:'kb', t:'База знаний и память', d:1, need:[]}
   ]},
   {g:'Интерфейсы', items:[
-    {id:'web', t:'Веб-дашборд задач', d:2, need:['Пароль для входа'], on:true},
+    {id:'web', t:'Таск-трекер (веб)', d:2, need:['Пароль для входа'], on:true},
     {id:'ask', t:'Вопросы к ИИ', d:1, need:[]},
     {id:'reports', t:'Отчёты', d:.5, need:[]},
     {id:'brief', t:'Утренний брифинг', d:.5, need:[], on:true}
@@ -1597,12 +1483,12 @@ function renderBuild(){
   phases.push({t:'Этап 1 · MVP', d:'Задачи и сроки'+(has('tg')?', бот в рабочих чатах':'')+(has('remind')?', напоминания':'')+'. Цель: одна команда неделю живёт с ботом.'});
   var p2 = srcs.filter(function(s){ return s!=='tg'; }).map(function(s){ return NODES[s].t.toLowerCase(); });
   if (p2.length || has('kb')) phases.push({t:'Этап 2 · Больше источников', d:(p2.length ? 'Подключаем: '+p2.join(', ')+'. ' : '')+(has('kb') ? 'Включаем базу знаний, чтобы ассистент копил факты.' : '')});
-  var ui = ['web','ask','reports','brief'].filter(has).map(function(id){ return {web:'веб-дашборд',ask:'вопросы к ИИ',reports:'отчёты',brief:'утренний брифинг'}[id]; });
+  var ui = ['web','ask','reports','brief'].filter(has).map(function(id){ return {web:'таск-трекер',ask:'вопросы к ИИ',reports:'отчёты',brief:'утренний брифинг'}[id]; });
   if (ui.length) phases.push({t:'Этап 3 · Интерфейсы', d:'Делаем '+ui.join(', ')+'.'});
   if (ideas.length) phases.push({t:'Этап 4 · Фишки', d:ideas.map(function(i){ return i.t; }).join(', ')+'.'});
   var prompt = 'Собери ИИ-ассистента для задач команды на Cloudflare Worker + KV.\n\n'+
     'Источники: '+(srcs.length ? srcs.map(function(s){ return NODES[s].t; }).join(', ') : 'только ручной ввод')+'.\n'+
-    'Ядро: разбор сообщений в задачи через Claude API (задача или нет, исполнитель, срок, приоритет, проект; если не уверен — уточнить кнопками)'+(has('remind')?'; напоминания по cron каждые 15 минут: за сутки, за 2 часа, через час после срока, эскалация руководителю через 4 часа, тихие часы 21:00–9:00':'')+(has('kb')?'; база знаний в markdown (обо мне, проект, команда), которую ассистент сам обновляет фактами из переписки':'')+'.\n'+
+    'ИИ-ОС: разбор сообщений в задачи через Claude API (задача или нет, исполнитель, срок, приоритет, проект; если не уверен — уточнить кнопками)'+(has('remind')?'; напоминания по cron каждые 15 минут: за сутки, за 2 часа, через час после срока, эскалация руководителю через 4 часа, тихие часы 21:00–9:00':'')+(has('kb')?'; база знаний в markdown (обо мне, проект, команда), которую ассистент сам обновляет фактами из переписки':'')+'.\n'+
     'Интерфейсы: '+(ui.length ? ui.join(', ') : 'только Telegram')+'.\n'+
     (ideas.length ? 'Дополнительно: '+ideas.map(function(i){ return i.t+' ('+i.d.replace(/\.$/,'').toLowerCase()+')'; }).join('; ')+'.\n' : '')+
     '\nНачни с этапа 1, остальное по очереди. Секреты храни в wrangler secret. Перед кодом спроси: состав команды и их Telegram, часовой пояс, какие чаты подключать, как называются проекты.';
@@ -1623,14 +1509,6 @@ renderMods(); renderBuild();
 /* ───────── старт ───────── */
 renderBoard(); runParse();
 
-/* подсветка пункта меню */
-var navLinks = $$('.nav a');
-if ('IntersectionObserver' in window){
-  var io = new IntersectionObserver(function(entries){
-    entries.forEach(function(en){ if (en.isIntersecting){ var id = en.target.id; navLinks.forEach(function(a){ var on = a.getAttribute('href')==='#'+id; a.classList.toggle('on', on); if (on && a.scrollIntoView && window.innerWidth<900) a.parentNode.scrollLeft = a.offsetLeft - 16; }); } });
-  }, {rootMargin:'-45% 0px -50% 0px'});
-  $$('#top, main section').forEach(function(s){ io.observe(s); });
-}
 })();
 </script>
 </body>
