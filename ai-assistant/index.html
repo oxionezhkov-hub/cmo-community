@@ -110,7 +110,6 @@ main > section:first-child{padding-top:36px}
 .node{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 11px;transition:border-color .15s,background .15s,opacity .2s}
 .node:hover{border-color:var(--ink-3)}
 .node.sel{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
-.node.off{opacity:.45}
 .node .t{flex:1;min-width:0}
 .node .t b{display:block;font-size:13.5px;font-weight:600;line-height:1.25}
 .node .t span{font-size:11.5px;color:var(--ink-3)}
@@ -126,18 +125,39 @@ main > section:first-child{padding-top:36px}
 .switch span::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--card);box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .2s}
 .switch input:checked+span{background:var(--good)}
 .switch input:checked+span::after{transform:translateX(14px)}
-.map-foot{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;margin-top:16px}
 .detail h3{font-size:17px}
 .detail .row{display:grid;grid-template-columns:120px minmax(0,1fr);gap:10px;padding-top:10px;margin-top:10px;border-top:1px solid var(--line-soft);font-size:13.5px}
 .detail .row b{font-size:12px;color:var(--ink-3);font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding-top:1px}
-.meter{height:10px;border-radius:999px;background:var(--sunk);border:1px solid var(--line);overflow:hidden;margin-top:10px}
-.meter i{display:block;height:100%;background:var(--good);border-radius:999px;transition:width .4s,background .4s}
-.big{font-family:var(--mono);font-size:34px;font-weight:600;letter-spacing:-.03em;line-height:1}
+/* connect */
+.conn{display:grid;grid-template-columns:270px minmax(0,1fr);gap:16px;align-items:start}
+.conn-list{padding:10px;display:flex;flex-direction:column;gap:2px}
+.conn-list h4{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600;margin:10px 8px 4px}
+.conn-list h4:first-child{margin-top:4px}
+.conn-list button{display:flex;justify-content:space-between;gap:8px;width:100%;text-align:left;border:0;background:transparent;border-radius:8px;padding:7px 9px;font-size:13.5px;color:var(--ink-2)}
+.conn-list button:hover{background:var(--sunk);color:var(--ink)}
+.conn-list button.on{background:var(--brand-soft);color:var(--brand-ink);font-weight:600}
+.conn-list button span{font-family:var(--mono);font-size:11px;color:var(--ink-3);white-space:nowrap;padding-top:2px}
+.conn-body h3{font-size:19px}
+.conn-body .meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.conn-body h4{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3);font-weight:600;margin:18px 0 8px}
+.conn-body ol{margin:0;padding:0;list-style:none;counter-reset:c;display:flex;flex-direction:column;gap:8px}
+.conn-body ol li{counter-increment:c;display:grid;grid-template-columns:26px minmax(0,1fr);gap:10px;font-size:14px;line-height:1.5}
+.conn-body ol li::before{content:counter(c);display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--brand-soft);color:var(--brand-ink);font-family:var(--mono);font-size:12px;font-weight:600}
+.conn-body code{font-family:var(--mono);font-size:12px;background:var(--sunk);border:1px solid var(--line-soft);padding:0 4px;border-radius:4px;overflow-wrap:anywhere}
+.conn-body .tip{margin-top:16px;padding:12px 14px;border-radius:var(--r);background:var(--warn-soft);color:var(--ink);font-size:13.5px}
+.conn-body .tip b{color:var(--warn)}
+.detail .go{margin-top:14px}
+@media(max-width:900px){
+  .conn{grid-template-columns:1fr}
+  .conn-list{flex-direction:row;flex-wrap:wrap;gap:6px}
+  .conn-list h4{width:100%;margin:6px 4px 0}
+  .conn-list button{width:auto;border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:12.5px}
+  .conn-list button span{display:none}
+}
 @media(max-width:900px){
   .map{grid-template-columns:1fr}
   .pipes{flex-direction:row;justify-content:center;gap:28px;padding:4px 0;height:36px}
   .pipe{width:2px;height:auto;margin:0;background:repeating-linear-gradient(180deg,var(--brand) 0 6px,transparent 6px 13px);background-size:2px 13px;animation:flowv .8s linear infinite}
-  .map-foot{grid-template-columns:1fr}
   .detail .row{grid-template-columns:1fr;gap:2px}
 }
 @keyframes flowv{to{background-position:0 13px}}
@@ -395,7 +415,7 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 <section id="map">
   <div class="sec-head">
     <h2>Всё стекается в одну ОС, а оттуда расходится по людям</h2>
-    <p>Нажмите на любой блок, чтобы увидеть, что он делает и что нужно для подключения. Переключателями слева отключайте источники и смотрите, сколько задач система перестаёт видеть.</p>
+    <p>Нажмите на любой блок, чтобы увидеть, что он делает. Пошаговая инструкция по подключению каждого блока ниже, в разделе «Как подключить».</p>
   </div>
   <div class="card pad">
     <div class="map">
@@ -406,15 +426,18 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
       <div class="col" id="mapOutputs"><h4>Что получаете</h4></div>
     </div>
   </div>
-  <div class="map-foot">
-    <div class="card pad detail" id="mapDetail"></div>
-    <div class="card pad">
-      <div class="small muted">Система видит</div>
-      <div style="display:flex;align-items:baseline;gap:10px;margin-top:6px"><div class="big" id="covPct">100%</div><div class="small muted">ваших задач и договорённостей</div></div>
-      <div class="meter"><i id="covBar" style="width:100%"></i></div>
-      <div style="margin-top:16px" class="small muted">Если в месяц у команды ~120 договорённостей, мимо системы пройдёт</div>
-      <div style="display:flex;align-items:baseline;gap:10px;margin-top:6px"><div class="big" id="covLost">0</div><div class="small muted" id="covLostNote">задач. Всё на виду.</div></div>
-    </div>
+  <div class="card pad detail" id="mapDetail" style="margin-top:16px"></div>
+</section>
+
+<!-- CONNECT -->
+<section id="connect">
+  <div class="sec-head">
+    <h2>Как подключить каждый блок</h2>
+    <p>Выберите блок слева: что понадобится, шаги по порядку и на чём обычно спотыкаются. Время указано для сборки вместе с Claude Code.</p>
+  </div>
+  <div class="conn">
+    <div class="card conn-list" id="connList"></div>
+    <div class="card pad conn-body" id="connBody"></div>
   </div>
 </section>
 
@@ -440,7 +463,6 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
         <button class="btn primary" id="parseAdd">Добавить на доску</button>
         <a class="btn" href="#board">Открыть доску</a>
       </div>
-      <p class="note">В демо работают простые правила прямо в браузере. В настоящей системе разбирает Claude: он понимает контекст переписки, сленг, ответы на сообщения и уточняет у вас, если не уверен.</p>
     </div>
   </div>
 </section>
@@ -508,7 +530,6 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
       <label class="tg"><span class="switch"><input type="checkbox" id="optChat"><span></span></span>Пинг в общий чат через сутки</label>
     </div>
     <div class="ladder" id="ladder"></div>
-    <p class="note" id="ladderNote"></p>
   </div>
 </section>
 
@@ -619,7 +640,6 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 <footer>
   <div class="wrap">
     <div>Материал для воркшопа CMO-сообщества · страница /ai-assistant</div>
-    <div>Данные на странице примерные: команда, задачи и цифры придуманы для демо</div>
   </div>
 </footer>
 
@@ -701,42 +721,159 @@ function renderMap(){
   Object.keys(NODES).forEach(function(k){
     var n = NODES[k];
     if (n.side==='src') {
-      srcH += '<div class="node'+(mapSel===k?' sel':'')+(srcOn[k]?'':' off')+'" data-node="'+k+'" role="button" tabindex="0"><span class="t"><b>'+esc(n.t)+'</b><span>'+esc(n.s)+'</span></span><label class="switch" title="Подключить или отключить"><input type="checkbox" data-src="'+k+'" aria-label="'+esc(n.t)+'"'+(srcOn[k]?' checked':'')+'><span></span></label></div>';
+      srcH += '<button class="node'+(mapSel===k?' sel':'')+'" data-node="'+k+'"><span class="t"><b>'+esc(n.t)+'</b><span>'+esc(n.s)+'</span></span></button>';
     } else {
       var h = '<button class="node'+(mapSel===k?' sel':'')+'" data-node="'+k+'"><span class="t"><b>'+esc(n.t)+'</b><span>'+esc(n.s)+'</span></span></button>';
       if (n.side==='core') coreH += h; else outH += h;
     }
   });
   $('#mapSources').innerHTML = srcH; $('#mapCore').innerHTML = coreH; $('#mapOutputs').innerHTML = outH;
-  var on = Object.keys(srcOn).filter(function(k){ return srcOn[k]; });
-  var cov = on.reduce(function(a,k){ return a+NODES[k].w; }, 0);
-  var pl = ''; Object.keys(srcOn).forEach(function(k){ pl += '<div class="pipe" style="opacity:'+(srcOn[k]?1:.12)+'"></div>'; });
+  var pl = ''; Object.keys(srcOn).forEach(function(){ pl += '<div class="pipe"></div>'; });
   $('#pipesL').innerHTML = pl;
   $('#pipesR').innerHTML = '<div class="pipe"></div><div class="pipe"></div><div class="pipe"></div><div class="pipe"></div><div class="pipe"></div><div class="pipe"></div>';
-  $('#covPct').textContent = cov+'%';
-  var bar = $('#covBar'); bar.style.width = cov+'%'; bar.style.background = cov>=80?'var(--good)':cov>=50?'var(--warn)':'var(--bad)';
-  var lost = Math.round(120*(100-cov)/100);
-  $('#covLost').textContent = lost;
-  $('#covLostNote').textContent = lost===0 ? 'задач. Всё на виду.' : plural(lost,'задача','задачи','задач')+' будут жить только в чьей-то голове.';
   var n = NODES[mapSel];
   var tag = n.side==='src' ? 'Источник' : n.side==='core' ? 'ИИ-ОС' : 'Результат';
   $('#mapDetail').innerHTML = '<div class="small muted">'+tag+'</div><h3>'+esc(n.t)+'</h3>'+
     '<div class="row"><b>Что делает</b><div>'+esc(n.what)+'</div></div>'+
-    '<div class="row"><b>Как подключить</b><div>'+esc(n.how)+'</div></div>'+
-    '<div class="row"><b>Пример</b><div>'+esc(n.ex)+'</div></div>';
+    '<div class="row"><b>Пример</b><div>'+esc(n.ex)+'</div></div>'+
+    '<div class="go"><a class="btn sm" href="#connect" data-conn-go="'+mapSel+'">Как подключить: '+esc(CONNECT[mapSel].time)+', '+CONNECT[mapSel].steps.length+' '+plural(CONNECT[mapSel].steps.length,'шаг','шага','шагов')+'</a></div>';
 }
 document.addEventListener('click', function(e){
-  var sw = e.target.closest('[data-src]');
-  if (sw) { e.stopPropagation(); srcOn[sw.getAttribute('data-src')] = sw.checked; mapSel = sw.getAttribute('data-src'); renderMap(); return; }
-  if (e.target.closest('.switch')) return;
+  var go = e.target.closest('[data-conn-go]');
+  if (go) { connSel = go.getAttribute('data-conn-go'); renderConnect(); return; }
   var nd = e.target.closest('[data-node]');
-  if (nd) { mapSel = nd.getAttribute('data-node'); renderMap(); }
+  if (nd) { mapSel = nd.getAttribute('data-node'); connSel = mapSel; renderMap(); renderConnect(); }
 });
-document.addEventListener('keydown', function(e){
-  var nd = e.target.closest && e.target.closest('div[data-node]');
-  if (nd && (e.key==='Enter'||e.key===' ')) { e.preventDefault(); mapSel = nd.getAttribute('data-node'); renderMap(); }
-});
-renderMap();
+/* ───────── Как подключить ───────── */
+var CONNECT = {
+  tg:{time:'30 минут', need:['Аккаунт Telegram','Cloudflare Worker'], steps:[
+    'В @BotFather отправьте <code>/newbot</code>, задайте имя и username. Получите токен бота.',
+    'Там же <code>/setprivacy</code> → выберите бота → <b>Disable</b>. Без этого в группах бот видит только команды и упоминания.',
+    'Сохраните токен в секрет воркера: <code>wrangler secret put BOT_TOKEN</code>.',
+    'Поставьте вебхук на воркер: <code>https://api.telegram.org/bot&lt;ТОКЕН&gt;/setWebhook?url=https://&lt;воркер&gt;/webhook</code>.',
+    'Добавьте бота во все рабочие чаты. Можно сделать админом, тогда он точно видит всё.',
+    'Попросите каждого сотрудника один раз написать боту <code>/start</code>, иначе бот не сможет писать им в личку.',
+    'Предупредите команду в чате, что бот записывает задачи и сроки.'
+  ], tip:'Если privacy mode выключили, когда бот уже был в группе, удалите его и добавьте заново, иначе настройка не применится. Старую переписку до добавления бот не видит.'},
+  biz:{time:'20 минут', need:['Telegram Premium','Бот из BotFather','Тот же воркер'], steps:[
+    'В @BotFather: Bot Settings → <b>Business Mode</b> → включить.',
+    'В Telegram на своём аккаунте: Настройки → Telegram для бизнеса → Чат-боты → введите username бота.',
+    'Выберите, какие чаты видит бот: «все, кроме» исключённых или только выбранные. Личные переписки исключите.',
+    'Решите, давать ли боту право отвечать от вашего имени. Для задач и черновиков достаточно чтения.',
+    'В вебхуке добавьте типы обновлений <code>business_connection</code> и <code>business_message</code> в <code>allowed_updates</code>.',
+    'Проверьте: напишите себе с другого аккаунта «пришлите КП до пятницы» и ответьте «пришлю». У вас должна появиться задача.'
+  ], tip:'Без Premium пункта «Чат-боты» в настройках не будет. Бот видит только чаты, выбранные в настройке, и только с момента подключения.'},
+  mail:{time:'1–2 часа', need:['Google-аккаунт с почтой','Проект в Google Cloud'], steps:[
+    'В Google Cloud Console создайте проект и включите <b>Gmail API</b>.',
+    'Настройте экран согласия OAuth и создайте OAuth-клиент типа Web application, redirect URI на воркер.',
+    'Один раз войдите через Google. Воркер сохраняет refresh token в KV, client secret лежит в секрете воркера.',
+    'Cron раз в 10–15 минут забирает новые письма из «Входящих».',
+    'Рассылки, чеки и уведомления сервисов отсеиваются по категориям Gmail и отправителям, остальное идёт в разбор Claude.',
+    'Задачи из писем приходят вам в личку с кнопками «Принять» и «Уже сделал».'
+  ], tip:'Для Яндекс.Почты проще настроить правило пересылки нужных писем на адрес, который Cloudflare Email Routing передаёт воркеру. Для этого домен должен быть на Cloudflare.'},
+  cal:{time:'30 минут после почты', need:['Тот же проект в Google Cloud'], steps:[
+    'Включите <b>Google Calendar API</b> в том же проекте.',
+    'Добавьте в OAuth доступ <code>calendar.readonly</code>. Если ассистент будет сам ставить встречи, нужен доступ к событиям.',
+    'Войдите через Google ещё раз, чтобы выдать новый доступ.',
+    'Cron утром читает события на сегодня и завтра. За 15 минут до встречи бот присылает справку: кто это и что по нему открыто.',
+    'Сроки задач ассистент не ставит на время, когда вы на встречах.'
+  ], tip:'Если календарей несколько (рабочий, личный), выберите, какие читать. Личный лучше не подключать.'},
+  crm:{time:'1 час', need:['Доступ администратора в CRM'], steps:[
+    '<b>amoCRM:</b> Настройки → Интеграции → создать интеграцию, получить ключи или долгосрочный токен.',
+    'Там же настройте вебхуки на адрес воркера: новая сделка, смена этапа, новое примечание.',
+    '<b>Bitrix24:</b> Приложения → Разработчикам → Другое → входящий вебхук с правами на CRM и исходящий на нужные события.',
+    'Положите токен в секрет воркера.',
+    'Опишите правила: лид без ответа больше 2 часов, сделка без движения 7 дней, обещанный созвон. Cron проверяет их через API.',
+    'Задачи по сделкам уходят ответственному менеджеру, эскалации вам.'
+  ], tip:'Начните с одного-двух правил. Если сразу включить всё, менеджеры утонут в напоминаниях и перестанут их читать.'},
+  voice:{time:'1–2 часа', need:['Zoom с облачной записью (платный тариф)','Сервис расшифровки для голосовых'], steps:[
+    'В Zoom App Marketplace: Develop → Build App → приложение с <b>Server-to-Server OAuth</b>.',
+    'Выдайте доступ к облачным записям (cloud recording, чтение).',
+    'Подпишитесь на событие <code>recording.completed</code> с адресом воркера. Zoom сначала проверит адрес запросом <code>endpoint.url_validation</code>, воркер должен на него ответить.',
+    'В настройках Zoom включите облачную запись и аудио-транскрипт.',
+    'Когда запись готова, воркер забирает транскрипт, Claude делает итоги, решения и задачи по исполнителям.',
+    '<b>Голосовые в Telegram:</b> бот получает voice, скачивает файл через <code>getFile</code>, отправляет в расшифровку (Whisper или SpeechKit), текст идёт в тот же разбор.'
+  ], tip:'Предупреждайте участников, что созвон записывается и расшифровывается. Итоги показывайте человеку на подтверждение, прежде чем раздавать задачи.'},
+  dash:{time:'30 минут', need:['Дашборд с прошлого воркшопа'], steps:[
+    'Дашборд уже живёт на этом воркере, данные лежат в <code>/dashboard/data.json</code>.',
+    'Опишите правила: метрика, период, порог, ответственный. Например: CPL Директа вырос больше чем на 30% за 3 дня → Маше.',
+    'После каждого обновления дашборда cron сравнивает цифры с правилами.',
+    'Если порог пройден, создаётся задача ответственному и сообщение вам с причиной.'
+  ], tip:'Ставьте пороги по скользящему среднему за несколько дней, иначе будут ложные тревоги на выходных.'},
+  parse:{time:'полдня', need:['Ключ Claude API'], steps:[
+    'Создайте ключ в консоли Anthropic и положите в секрет воркера: <code>wrangler secret put CLAUDE_API</code>.',
+    'Опишите команду, проекты и правила: кто за что отвечает, какой срок по умолчанию.',
+    'Каждое сообщение уходит в Claude вместе с этим описанием. В ответ JSON: задача или нет, исполнитель, срок, приоритет, проект.',
+    'Если Claude не уверен, бот спрашивает кнопками: «Это задача? Кому? Какой срок?»',
+    'Неделю проверяйте карточки руками и правьте описание команды, пока разбор не станет точным.'
+  ], tip:'Не разбирайте каждое «ок» и «спасибо»: короткие ответы отсекайте ещё до запроса к модели, это экономит деньги.'},
+  dl:{time:'2 часа', need:['Cron-триггер воркера'], steps:[
+    'В <code>wrangler.toml</code> добавьте расписание: <code>crons = ["*/15 * * * *"]</code>.',
+    'Каждые 15 минут воркер смотрит сроки и решает, кому что отправить по лестнице напоминаний.',
+    'Настройте тон, тихие часы и эскалацию, как в разделе «Лестница напоминаний».',
+    'Отправленные напоминания записываются в историю задачи, чтобы не дублировать.'
+  ], tip:'Ставьте лимит: не больше трёх напоминаний по одной задаче. Дальше только эскалация руководителю.'},
+  kb:{time:'2 часа', need:['KV воркера'], steps:[
+    'Заведите три файла в KV: о вас, о проекте, о команде. Заполните стартовые факты сами.',
+    'При разборе сообщений Claude отмечает новые факты: отпуск, бюджет, договорённость, предпочтение.',
+    'Ассистент дописывает факт в нужный файл и пишет вам, что запомнил. Ошибку можно отменить кнопкой.',
+    'Выдержка из базы уходит в каждый запрос к Claude, поэтому ассистент учитывает её в ответах и решениях.'
+  ], tip:'Раз в месяц пролистайте файлы и удалите устаревшее. Старый бюджет или уволившийся сотрудник будут сбивать ассистента.'},
+  ctx:{time:'1 час', need:['Задачи и база знаний в KV'], steps:[
+    'Перед каждым вопросом воркер собирает выжимку: открытые задачи, недавние события, база знаний, цифры дашборда.',
+    'Выжимка и вопрос уходят в Claude, ответ возвращается в бот или на страницу.',
+    'Старые закрытые задачи сворачиваются в короткие итоги, чтобы контекст не разрастался.'
+  ], tip:'Если ответы стали общими, проверьте, что в выжимку попадает база знаний и последние задачи.'},
+  board:{time:'1 день', need:['Воркер','Пароль для входа'], steps:[
+    'Попросите Claude Code сделать страницу <code>/tasks</code> на том же воркере.',
+    'Задачи читаются из KV: колонки по статусам, фильтры по людям, проектам и источникам, история каждой задачи.',
+    'Поле «добавить задачу текстом» использует тот же разбор, что и бот.',
+    'Вход по паролю из секрета воркера, как у админки.'
+  ], tip:'Сделайте трекер главным местом правды: всё, что меняется в боте, сразу видно на странице, и наоборот.'},
+  nexec:{time:'2 часа', need:['Бот','Сотрудники нажали /start'], steps:[
+    'Для лички: после <code>/start</code> бот запоминает chat_id сотрудника и пишет ему напрямую.',
+    'Для рабочего чата: бот пишет в группу с упоминанием исполнителя.',
+    'Канал выбирается в настройках: по человеку, по проекту или по типу напоминания.',
+    'Кнопки «Готово», «Перенести», «Нужна помощь» приходят как inline-кнопки и сразу меняют задачу.'
+  ], tip:'Публичные пинги в общий чат используйте только для серьёзных просрочек, иначе они будут раздражать.'},
+  nme:{time:'1 час', need:['Ваш chat_id'], steps:[
+    'Ваш chat_id кладётся в секрет <code>ADMIN_ID</code>.',
+    'Для вас отдельный режим: утренний брифинг, эскалации, ответы клиентам. Мелкие напоминания команде вам не дублируются.',
+    'Брифинг в 9:00 и итог дня в 19:00 по расписанию cron.'
+  ], tip:'Если сообщений от бота стало слишком много, ужесточите фильтр: только эскалации и брифинг.'},
+  rep:{time:'2 часа', need:['Задачи в KV','Claude API'], steps:[
+    'Cron каждый день в 19:00 собирает, что закрыто, что сорвано и что в работе.',
+    'Отчёт делится по каждому сотруднику и по каждому проекту.',
+    'Claude пишет отчёт в вашем формате из базы знаний. Отправка в личку, в рабочий чат или на почту.',
+    'По понедельникам добавляются итоги недели и отчёт собственнику.'
+  ], tip:'Попросите ассистента начинать отчёт с проблем, а не с успехов: так его читают до конца.'},
+  askn:{time:'2 часа', need:['Claude API','Таск-трекер'], steps:[
+    'На странице трекера окно «Спросить ИИ», в боте команда <code>/ask</code>.',
+    'Вопрос уходит в Claude вместе с выжимкой контекста.',
+    'Ответ ссылается на конкретные задачи, чтобы можно было сразу открыть карточку.'
+  ], tip:'Сохраните частые вопросы как кнопки: «что горит», «кто перегружен», «что я обещал».'},
+  mdash:{time:'1 час', need:['Дашборд маркетинга на том же воркере'], steps:[
+    'Дашборд читает задачи из того же KV.',
+    'Рядом с метрикой показывается, кто уже разбирается и какой срок.',
+    'Задачу по метрике можно создать прямо с дашборда кнопкой.'
+  ], tip:'Закрывайте задачу по метрике только когда цифра вернулась в норму, а не когда «посмотрели».'}
+};
+var connSel = 'tg';
+function renderConnect(){
+  var groups = [['Откуда приходят задачи','src'],['ИИ-ОС','core'],['Что получаете','out']];
+  $('#connList').innerHTML = groups.map(function(g){
+    return '<h4>'+g[0]+'</h4>'+Object.keys(NODES).filter(function(k){ return NODES[k].side===g[1]; }).map(function(k){
+      return '<button data-conn="'+k+'" class="'+(k===connSel?'on':'')+'">'+esc(NODES[k].t)+'<span>'+esc(CONNECT[k].time)+'</span></button>';
+    }).join('');
+  }).join('');
+  var n = NODES[connSel], c = CONNECT[connSel];
+  $('#connBody').innerHTML = '<h3>'+esc(n.t)+'</h3><p class="muted" style="margin-top:4px">'+esc(n.what)+'</p>'+
+    '<div class="meta"><span class="tag g">'+esc(c.time)+'</span>'+c.need.map(function(x){ return '<span class="tag">'+esc(x)+'</span>'; }).join('')+'</div>'+
+    '<h4>Шаги</h4><ol>'+c.steps.map(function(x){ return '<li><span>'+x+'</span></li>'; }).join('')+'</ol>'+
+    '<div class="tip"><b>Подводный камень.</b> '+esc(c.tip)+'</div>';
+}
+$('#connList').addEventListener('click', function(e){ var b = e.target.closest('[data-conn]'); if (!b) return; connSel = b.getAttribute('data-conn'); renderConnect(); });
+renderMap(); renderConnect();
 
 /* ───────── 2. Разбор сообщения ───────── */
 var L = '(?<![а-яёa-z0-9])', R = '(?![а-яёa-z0-9])';
@@ -1096,7 +1233,6 @@ $('#optEsc').addEventListener('change', function(){ settings.escalate = this.che
 $('#optChat').addEventListener('change', function(){ settings.chat = this.checked; if (this.checked && settings.tone!=='hard'){ settings.tone='hard'; $$('#toneTabs button').forEach(function(x){ x.classList.toggle('on', x.getAttribute('data-tone')==='hard'); }); toast('Публичный пинг работает только в режиме «Жёстко», включил его'); } renderLadder(); renderBoard(); });
 function renderLadder(){
   var ex = {title:'Запустить ретаргет на брошенные корзины', who:'masha', due:D(nextDow(0,4),18)};
-  $('#ladderNote').textContent = 'Пример для задачи «'+ex.title+'», исполнитель Маша, срок '+fmt(ex.due)+'.';
   var steps = [
     {when:'Сразу', to:'Маше в личку', k:'new'},
     {when:'За сутки', to:'Маше в личку', k:'d24'},
