@@ -117,6 +117,8 @@ main > section:first-child{padding-top:36px}
 .node .t span{font-size:11.5px;color:var(--ink-3)}
 .core{background:var(--brand);color:var(--on-brand);border-radius:var(--r-lg);padding:14px;display:flex;flex-direction:column;gap:8px;flex:1;justify-content:center}
 .core .ttl{font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px}
+.core .ttl{flex-wrap:wrap}
+.core .ttl-sub{flex-basis:100%;font-size:12px;font-weight:500;opacity:.8}
 .core .ttl i{width:9px;height:9px;border-radius:50%;background:var(--on-brand);animation:pulse 1.2s infinite}
 .core .node{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.22);color:var(--on-brand)}
 .core .node .t span{color:inherit;opacity:.75}
@@ -460,7 +462,7 @@ pre.file{margin:0;font-family:var(--mono);font-size:12px;line-height:1.55;white-
     <div class="map">
       <div class="col" id="mapSources"><h4>Откуда приходят задачи</h4></div>
       <div class="pipes" id="pipesL"></div>
-      <div class="col"><h4>OS</h4><div class="core" id="mapCore"><div class="ttl"><i></i>ИИ-ассистент</div></div></div>
+      <div class="col"><h4>OS</h4><div class="core" id="mapCore"><div class="ttl"><i></i>🐱 ИИ-котёнок<span class="ttl-sub">мурчит над задачами, ничего не теряет</span></div></div></div>
       <div class="pipes" id="pipesR"></div>
       <div class="col" id="mapOutputs"><h4>Что получаете</h4></div>
     </div>
@@ -733,7 +735,7 @@ function alignPipes(){
 }
 window.addEventListener('resize', function(){ requestAnimationFrame(alignPipes); });
 function renderMap(){
-  var srcH = '<h4>Откуда приходят задачи</h4>', coreH = '<div class="ttl"><i></i>ИИ-ассистент</div>', outH = '<h4>Что получаете</h4>';
+  var srcH = '<h4>Откуда приходят задачи</h4>', coreH = '<div class="ttl"><i></i>🐱 ИИ-котёнок<span class="ttl-sub">мурчит над задачами, ничего не теряет</span></div>', outH = '<h4>Что получаете</h4>';
   Object.keys(NODES).forEach(function(k){
     var n = NODES[k];
     if (n.side==='src') {
