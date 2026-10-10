@@ -679,7 +679,7 @@ var DAYS_FULL = ['воскресенье','понедельник','вторни
 var BASE = (function(){ var d=new Date(); d.setHours(10,0,0,0); return d; })();
 function at(h){ return new Date(BASE.getTime()+h*3600e3); }
 function clock(h){ var d=at(h); return pad(d.getHours())+':'+pad(d.getMinutes()); }
-function fmt(h){ var d=at(h); return DAYS[d.getDay()]+' '+clock(h); }
+function fmt(h){ var d=at(h); return DAYS[d.getDay()]+', '+pad(d.getDate())+'.'+pad(d.getMonth()+1)+' '+clock(h); }
 function dayIdx(h){ return Math.floor((h+10)/24); }
 function D(day, hour){ return day*24 + hour - 10; }
 function dowOf(day){ return at(D(day,12)).getDay(); }
@@ -687,11 +687,8 @@ function hrs(n){ n=Math.round(n); if(n<24) return n+' ч'; var d=Math.round(n/24
 function plural(n,a,b,c){ n=Math.abs(n)%100; var n1=n%10; if(n>10&&n<20) return c; if(n1>1&&n1<5) return b; if(n1===1) return a; return c; }
 function relDue(due, h){
   var diff = due - h;
-  if (diff < 0) return {t:'просрочено '+hrs(-diff), c:'over'};
-  var dd = dayIdx(due) - dayIdx(h);
-  if (dd===0) return {t:'сегодня '+clock(due), c:'today'};
-  if (dd===1) return {t:'завтра '+clock(due), c:''};
-  return {t:fmt(due), c:''};
+  if (diff < 0) return {t:fmt(due), c:'over'};
+  return {t:fmt(due), c: dayIdx(due)===dayIdx(h) ? 'today' : ''};
 }
 
 /* ───────── 1. Схема ───────── */
@@ -1162,7 +1159,7 @@ function renderBoard(){
     var list = cols[c].sort(function(a,b){ return c==='done' ? b.doneAt-a.doneAt : a.due-b.due; });
     return '<div class="kcol"><h4>'+names[c]+'<span>'+list.length+'</span></h4><div class="kcards">'+
       (list.length ? list.map(function(t){
-        var st = statusAt(t,h), r = st==='done' ? {t: t.doneAt<=t.due ? 'в срок' : 'опоздание '+hrs(t.doneAt-t.due), c: t.doneAt<=t.due ? 'ok' : 'over'} : relDue(t.due,h);
+        var st = statusAt(t,h), r = st==='done' ? {t: fmt(t.doneAt), c: t.doneAt<=t.due ? 'ok' : 'over'} : relDue(t.due,h);
         var overC = st!=='done' && t.due<h;
         return '<button class="tk'+(overC?' over':'')+(freshIds[t.id]?' fresh':'')+'" data-task="'+t.id+'" title="Нажмите, чтобы сменить статус"><div class="tt">'+esc(t.title)+'</div><div class="mt"><span class="who-dot">'+esc(TEAM[t.who].name)+'</span><span class="due '+r.c+'">'+esc(r.t)+'</span></div></button>';
       }).join('') : '<div class="empty">Пусто</div>')+'</div></div>';
@@ -1234,36 +1231,39 @@ $('#optChat').addEventListener('change', function(){ settings.chat = this.checke
 function renderLadder(){
   var ex = {title:'Запустить ретаргет на брошенные корзины', who:'masha', due:D(nextDow(0,4),18)};
   var steps = [
-    {when:'Сразу', to:'Маше в личку', k:'new'},
-    {when:'За сутки', to:'Маше в личку', k:'d24'},
-    {when:'За 2 часа', to:'Маше в личку', k:'d2'},
-    {when:'+1 час после срока', to:'Маше в личку', k:'over'},
-    {when:'+4 часа', to:'Вам', k:'esc', cls:'esc', off:!settings.escalate},
-    {when:'+1 сутки', to:'В общий чат', k:'chat', cls:'chat', off:!(settings.chat && settings.tone==='hard')}
+    {t:0, to:'Маше в личку', k:'new'},
+    {t:ex.due-24, to:'Маше в личку', k:'d24'},
+    {t:ex.due-2, to:'Маше в личку', k:'d2'},
+    {t:quietShift(ex.due+1), to:'Маше в личку', k:'over'},
+    {t:quietShift(ex.due+4), to:'Вам', k:'esc', cls:'esc', off:!settings.escalate},
+    {t:quietShift(ex.due+24), to:'В общий чат', k:'chat', cls:'chat', off:!(settings.chat && settings.tone==='hard')}
   ];
+  steps.forEach(function(s){ s.when = fmt(s.t); });
   $('#ladder').innerHTML = steps.map(function(s){
     var txt = s.k==='chat' ? (msgText('chat', ex) || 'Только в режиме «Жёстко»') : msgText(s.k, ex);
     var qn = '';
-    if (settings.quiet && s.k==='esc') qn = '<div class="to" style="margin-top:6px">Вышло бы на 22:00, тихие часы переносят на 9:00</div>';
+    if (settings.quiet && s.k==='esc') qn = '<div class="to" style="margin-top:6px">Без тихих часов ушло бы '+fmt(ex.due+4)+'</div>';
     return '<div class="step '+(s.cls||'')+(s.off?' off':'')+'"><div class="when">'+s.when+'</div><div class="to">'+s.to+'</div><div class="bubble">'+esc(txt)+'</div>'+qn+'</div>';
   }).join('');
 }
 renderLadder();
 
 /* ───────── 3. Сцены в чатах ───────── */
+function W(dow, hour){ return fmt(D(nextDow(0,dow),hour)); }
+var DAY25 = (function(){ var d = new Date(BASE); d.setDate(25); d.setHours(18,0,0,0); if (d < BASE) d.setMonth(d.getMonth()+1); return (d-BASE)/3600e3; })();
 var SCENES = {
   team:{tab:'Рабочий чат', title:'Маркетинг', sub:'5 участников, ассистент', ava:'М', color:'#0E7C86',
     side:'<h3>Бот в рабочем чате</h3><p>Ассистент сидит в группе как обычный участник. Пишет только когда видит задачу, срок или проблему, остальное время молчит.</p><ul><li>Сам находит исполнителя и срок в обычной фразе.</li><li>Замечает зависимости: креативы нужны раньше запуска.</li><li>Переносит срок по одной фразе и проверяет, что запуск не сдвигается.</li></ul>',
     s:[
       {who:'me', text:'Маша, запусти до четверга ретаргет на тех, кто дошёл до корзины'},
-      {who:'bot', text:'Записал задачу', card:{t:'Запустить ретаргет на брошенные корзины', m:['Маша','чт 18:00','Реклама']}, btns:['Принять','Другой срок']},
+      {who:'bot', text:'Записал задачу', card:{t:'Запустить ретаргет на брошенные корзины', m:['Маша',W(4,18),'Реклама']}, btns:['Принять','Другой срок']},
       {who:'masha', text:'ок, но мне нужны креативы от Димы'},
-      {who:'bot', text:'Создал связанную задачу. Креативы нужны за день до запуска, поэтому срок среда.', card:{t:'Креативы для ретаргета, 3 формата', m:['Дима','ср 15:00','Креативы']}, btns:['Принять','Другой срок']},
-      {div:'среда, 10:00'},
+      {who:'bot', text:'Создал связанную задачу. Креативы нужны за день до запуска, поэтому срок среда.', card:{t:'Креативы для ретаргета, 3 формата', m:['Дима',W(3,15),'Креативы']}, btns:['Принять','Другой срок']},
+      {div:W(3,10)},
       {who:'bot', text:'Дима, сегодня в 15:00 срок по креативам для ретаргета. Успеваешь?'},
       {who:'dima', text:'скину к 17, доделываю видео'},
-      {who:'bot', text:'Перенёс срок на ср 17:00. Маша, запуск в четверг не сдвигается, креативы будут вечером.'},
-      {div:'четверг, 16:40'},
+      {who:'bot', text:'Перенёс срок на '+W(3,17)+'. Маша, запуск в четверг не сдвигается, креативы будут вечером.'},
+      {div:W(4,16+40/60)},
       {who:'masha', text:'Запустила, бюджет 5к в день'},
       {who:'bot', text:'Закрыл задачу «Запустить ретаргет». Записал в базу знаний: бюджет ретаргета 5 000 ₽ в день.'}
     ]},
@@ -1272,22 +1272,22 @@ var SCENES = {
     s:[
       {who:'client', text:'Добрый день! Пришлите, пожалуйста, КП и пару кейсов до пятницы. Покажу директору.'},
       {who:'me', text:'Добрый! Да, конечно, пришлю'},
-      {sys:'Ассистент поймал обещание → задача вам: «КП и кейсы для ООО «Ромашка»», срок пт 12:00. Карточка клиента в CRM обновлена.'},
+      {sys:'Ассистент поймал обещание → задача вам: «КП и кейсы для ООО «Ромашка»», срок '+W(5,12)+'. Карточка клиента в CRM обновлена.'},
       {who:'client', text:'И ещё: созвониться нам удобно только после 15:00'},
       {sys:'Записал в базу знаний: «Ромашка», созвоны только после 15:00. Не предложу слоты раньше.'},
-      {div:'четверг, 19:00'},
+      {div:W(4,19)},
       {sys:'Завтра до 12:00 обещали Ивану КП. Черновик по шаблону и 2 кейса из похожей ниши готовы.', btns:['Открыть черновик','Перенести на понедельник']},
-      {div:'пятница, 11:20'},
+      {div:W(5,11+20/60)},
       {who:'me', text:'Иван, отправляю КП и кейсы. Удобно обсудить сегодня в 16:00?'},
       {sys:'Задача закрыта вовремя. Предложил время после 15:00, как просил клиент.'}
     ]},
   mail:{tab:'Почта и календарь', title:'Ассистент', sub:'бот · личные сообщения', ava:'ИИ', color:'#2B4ACB',
     side:'<h3>Почта и календарь</h3><p>Ассистент читает входящие и календарь и пишет вам в личку только то, что требует действия. Рассылки и уведомления сервисов отсеивает.</p><ul><li>Письмо с дедлайном становится задачей.</li><li>Перед встречей приходит справка по контрагенту.</li><li>Конфликты сроков со встречами видны заранее.</li></ul>',
     s:[
-      {who:'bot', text:'Новое письмо от бухгалтерии: «Нужно подписать акты за сентябрь до 25-го».', card:{t:'Подписать акты за сентябрь', m:['Вы','25-го','Финансы']}, btns:['Принять','Уже сделал']},
+      {who:'bot', text:'Новое письмо от бухгалтерии: «Нужно подписать акты за сентябрь до 25-го».', card:{t:'Подписать акты за сентябрь', m:['Вы',fmt(DAY25),'Финансы']}, btns:['Принять','Уже сделал']},
       {who:'bot', text:'Ещё 14 писем разобрал: рассылки, уведомления сервисов, чеки. Задач в них нет.'},
-      {div:'сегодня, 14:45'},
-      {who:'bot', text:'Через 15 минут встреча со студией «Кадр». По ним открыто: «Согласовать сценарий ролика» (Аня, срок ср 12:00). В прошлый раз договорились о двух вариантах финала.'},
+      {div:fmt(D(0,14.75))},
+      {who:'bot', text:'Через 15 минут встреча со студией «Кадр». По ним открыто: «Согласовать сценарий ролика» (Аня, срок '+W(3,12)+'). В прошлый раз договорились о двух вариантах финала.'},
       {who:'me', text:'Спасибо. Что ещё у меня сегодня горит?'},
       {who:'bot', text:'До вечера: ответить блогеру по интеграции (просрочено на 1 ч) и проверить отчёт Маши по CTR. Остальное терпит до завтра.'}
     ]},
@@ -1296,9 +1296,9 @@ var SCENES = {
     s:[
       {who:'me', voice:'0:41'},
       {who:'bot', text:'Расшифровка: «Короче, по запуску. Аня готовит посты на неделю к понедельнику, Костя до среды обзванивает тёплых лидов с вебинара, а я договорюсь с блогером про интеграцию».'},
-      {who:'bot', text:'Создал 3 задачи:', card:{t:'Посты на неделю запуска', m:['Аня','пн 18:00','Контент']}},
-      {who:'bot', card:{t:'Обзвонить тёплых лидов с вебинара', m:['Костя','ср 18:00','Продажи']}},
-      {who:'bot', card:{t:'Договориться с блогером об интеграции', m:['Вы','пт 18:00','Контент']}, btns:['Всё верно','Поправить']},
+      {who:'bot', text:'Создал 3 задачи:', card:{t:'Посты на неделю запуска', m:['Аня',W(1,18),'Контент']}},
+      {who:'bot', card:{t:'Обзвонить тёплых лидов с вебинара', m:['Костя',W(3,18),'Продажи']}},
+      {who:'bot', card:{t:'Договориться с блогером об интеграции', m:['Вы',W(5,18),'Контент']}, btns:['Всё верно','Поправить']},
       {who:'anya', text:'Принято'},
       {who:'kostya', text:'там 23 контакта, до среды норм'}
     ]},
