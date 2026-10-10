@@ -391,6 +391,18 @@ pre.file{margin:0;font-family:var(--mono);font-size:12px;line-height:1.55;white-
 .phase b{font-size:13px}
 .phase p{font-size:13px;color:var(--ink-2);margin-top:2px}
 .need{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.accs{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.acc{border:1px solid var(--line);border-radius:var(--r);background:var(--card)}
+.acc summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;font-size:13.5px;font-weight:500}
+.acc summary::-webkit-details-marker{display:none}
+.acc summary::after{content:"+";font-family:var(--mono);color:var(--ink-3);font-size:15px}
+.acc[open] summary::after{content:"−"}
+.acc[open]{border-color:var(--brand)}
+.acc[open] summary{color:var(--brand-ink)}
+.acc ol{margin:0;padding:2px 14px 12px 32px;font-size:13px;color:var(--ink-2);display:flex;flex-direction:column;gap:5px}
+.acc code{font-family:var(--mono);font-size:11.5px;background:var(--sunk);border:1px solid var(--line-soft);padding:0 4px;border-radius:4px;overflow-wrap:anywhere}
+.acc b{color:var(--ink)}
+.acc.plain{padding:9px 12px;font-size:13.5px}
 .prompt{margin-top:14px;background:var(--sunk);border:1px solid var(--line);border-radius:var(--r);padding:12px}
 .prompt .ph{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:12.5px;color:var(--ink-3);font-weight:600}
 
@@ -1636,6 +1648,82 @@ var MODS = [
     {id:'brief', t:'Утренний брифинг', d:.5, need:[], on:true}
   ]}
 ];
+var ACCESS = {
+  'Токен бота из BotFather':[
+    'В Telegram откройте <b>@BotFather</b> и отправьте <code>/newbot</code>.',
+    'Задайте имя бота и username, он должен заканчиваться на <code>bot</code>.',
+    'BotFather пришлёт токен вида <code>123456789:AA…</code>. Это пароль от бота, никому его не пересылайте.',
+    'Положите токен в секрет воркера: <code>wrangler secret put BOT_TOKEN</code>.',
+    'Чтобы бот видел все сообщения в группах: <code>/setprivacy</code> → ваш бот → <b>Disable</b>.',
+    'Если токен утёк: <code>/revoke</code> в BotFather выдаст новый.'
+  ],
+  'Telegram Premium':[
+    'Нужен на <b>вашем</b> аккаунте, где идёт переписка с клиентами, а не на боте.',
+    'Telegram → Настройки → Telegram Premium → оформить подписку.',
+    'После оплаты в настройках появится раздел «Telegram для бизнеса».'
+  ],
+  'Подключение бота в Telegram для бизнеса':[
+    '<b>@BotFather</b> → <code>/mybots</code> → ваш бот → Bot Settings → <b>Business Mode</b> → Turn on.',
+    'В Telegram: Настройки → Telegram для бизнеса → <b>Чат-боты</b>.',
+    'Введите username бота и подтвердите.',
+    'Выберите доступ: «Все чаты, кроме…» или «Только выбранные». Личные переписки исключите.',
+    'Галочку «Отвечать на сообщения» ставьте, только если хотите, чтобы бот мог писать от вашего имени.'
+  ],
+  'Google OAuth (Gmail API)':[
+    'Откройте <b>console.cloud.google.com</b> и создайте проект, например «Ассистент».',
+    'APIs &amp; Services → Library → <b>Gmail API</b> → Enable.',
+    'OAuth consent screen: тип External (или Internal для Google Workspace), добавьте свой email в тестовые пользователи.',
+    'Credentials → Create credentials → <b>OAuth client ID</b> → Web application. В Authorized redirect URIs укажите <code>https://&lt;ваш воркер&gt;/oauth/google</code>.',
+    'Client ID и Client secret в секреты: <code>wrangler secret put GOOGLE_CLIENT_ID</code> и <code>GOOGLE_CLIENT_SECRET</code>.',
+    'Откройте <code>/oauth/google</code> на воркере, войдите и разрешите доступ к почте. Воркер сохранит доступ и дальше будет читать письма сам.'
+  ],
+  'Google OAuth (Calendar API)':[
+    'В том же проекте Google Cloud: Library → <b>Google Calendar API</b> → Enable.',
+    'На экране согласия добавьте доступ <code>calendar.readonly</code> (или к событиям, если ассистент будет сам ставить встречи).',
+    'Ещё раз откройте <code>/oauth/google</code> на воркере и подтвердите новый доступ.'
+  ],
+  'API-ключ и вебхуки CRM':[
+    '<b>amoCRM:</b> Настройки → Интеграции → Создать интеграцию → Внешняя интеграция. После установки на вкладке «Ключи и доступы» сгенерируйте долгосрочный токен.',
+    'amoCRM, вебхуки: Настройки → Интеграции → Web hooks → адрес <code>https://&lt;воркер&gt;/crm-hook</code>, события: сделка добавлена, смена этапа, примечание.',
+    '<b>Bitrix24:</b> Приложения → Разработчикам → Другое → <b>Входящий вебхук</b>, права «CRM». Скопируйте адрес с ключом. Для событий там же создайте исходящий вебхук.',
+    'Токен или адрес вебхука в секрет: <code>wrangler secret put CRM_TOKEN</code>.',
+    'Нужны права администратора CRM.'
+  ],
+  'Zoom API (записи созвонов)':[
+    'Нужен платный тариф Zoom с облачной записью и права администратора аккаунта.',
+    '<b>marketplace.zoom.us</b> → Develop → Build App → <b>Server-to-Server OAuth</b>.',
+    'Скопируйте Account ID, Client ID и Client Secret в секреты воркера.',
+    'Scopes: добавьте чтение облачных записей (раздел Recording).',
+    'Feature → Event Subscriptions → адрес воркера и событие «All Recordings have completed». Secret Token тоже в секрет, по нему воркер проверяет запросы.',
+    'Нажмите Activate. В настройках Zoom включите облачную запись и Audio transcript.'
+  ],
+  'Сервис расшифровки речи':[
+    '<b>Проще всего — Workers AI на том же Cloudflare:</b> в <code>wrangler.toml</code> добавьте <code>[ai] binding = "AI"</code> и вызывайте модель Whisper. Отдельный ключ не нужен.',
+    '<b>Или Yandex SpeechKit:</b> Yandex Cloud → сервисный аккаунт с ролью для распознавания речи → API-ключ → <code>wrangler secret put STT_KEY</code>.',
+    'Голосовые из Telegram бот скачивает через <code>getFile</code> и отправляет в выбранный сервис.'
+  ],
+  'Доступ к data.json дашборда':[
+    'Если дашборд на этом же воркере, отдельный доступ не нужен: данные лежат в <code>/dashboard/data.json</code>.',
+    'Если дашборд на другом воркере: подключите его через service binding в <code>wrangler.toml</code> или откройте адрес с токеном в секрете.'
+  ],
+  'Ключ Claude API':[
+    'Откройте <b>console.anthropic.com</b> и войдите.',
+    'Billing: пополните баланс. В Limits поставьте месячный лимит расходов.',
+    'API Keys → <b>Create Key</b>, назовите «Ассистент» и скопируйте ключ: он показывается один раз.',
+    'Положите в секрет воркера: <code>wrangler secret put CLAUDE_API</code>.'
+  ],
+  'Аккаунт Cloudflare (Worker + KV)':[
+    'Зарегистрируйтесь на <b>dash.cloudflare.com</b>. Для старта хватает бесплатного плана, cron-триггеры в нём тоже есть.',
+    'Установите wrangler: <code>npm i -g wrangler</code>, затем <code>wrangler login</code>.',
+    'Создайте хранилище: <code>wrangler kv namespace create TASKS</code> и впишите выданный id в <code>wrangler.toml</code>.',
+    'Деплой: <code>wrangler deploy</code>. Адрес воркера появится в выводе команды.'
+  ],
+  'Пароль для входа':[
+    'Придумайте пароль для таск-трекера.',
+    'Положите в секрет: <code>wrangler secret put ADMIN_PASSWORD</code>.',
+    'Если нужны отдельные входы для сотрудников, сделайте логины и роли, как в CRM лички.'
+  ]
+};
 var modOn = {};
 MODS.forEach(function(g){ g.items.forEach(function(m){ if (m.on) modOn[m.id] = true; }); });
 function renderMods(){
@@ -1655,7 +1743,7 @@ function renderBuild(){
   var srcs = ['tg','biz','mail','cal','crm','voice','dash'].filter(has);
   var phases = [];
   phases.push({t:'Этап 1 · MVP', d:'Задачи и сроки'+(has('tg')?', бот в рабочих чатах':'')+(has('remind')?', напоминания':'')+'. Цель: одна команда неделю живёт с ботом.'});
-  var p2 = srcs.filter(function(s){ return s!=='tg'; }).map(function(s){ return NODES[s].t.toLowerCase(); });
+  var p2 = srcs.filter(function(s){ return s!=='tg'; }).map(function(s){ return NODES[s].t; });
   if (p2.length || has('kb')) phases.push({t:'Этап 2 · Больше источников', d:(p2.length ? 'Подключаем: '+p2.join(', ')+'. ' : '')+(has('kb') ? 'Включаем базу знаний, чтобы ассистент копил факты.' : '')});
   var ui = ['web','ask','reports','brief'].filter(has).map(function(id){ return {web:'таск-трекер',ask:'вопросы к ИИ',reports:'отчёты',brief:'утренний брифинг'}[id]; });
   if (ui.length) phases.push({t:'Этап 3 · Интерфейсы', d:'Делаем '+ui.join(', ')+'.'});
@@ -1669,7 +1757,7 @@ function renderBuild(){
   $('#buildOut').innerHTML =
     '<div class="sum"><div><span>Модулей</span><b>'+(sel.length+ideas.length)+'</b></div><div><span>Доступов</span><b>'+need.length+'</b></div></div>'+
     phases.map(function(p){ return '<div class="phase"><b>'+esc(p.t)+'</b><p>'+esc(p.d)+'</p></div>'; }).join('')+
-    '<div class="phase"><b>Что подготовить заранее</b><div class="need">'+need.map(function(n){ return '<span class="tag">'+esc(n)+'</span>'; }).join('')+'</div></div>'+
+    '<div class="phase"><b>Что подготовить заранее</b><p>Нажмите на пункт, чтобы раскрыть инструкцию.</p><div class="accs">'+need.map(function(n){ var st = ACCESS[n]; return st ? '<details class="acc"><summary>'+esc(n)+'</summary><ol>'+st.map(function(x){ return '<li>'+x+'</li>'; }).join('')+'</ol></details>' : '<div class="acc plain">'+esc(n)+'</div>'; }).join('')+'</div></div>'+
     '<div class="prompt"><div class="ph"><span>Промпт для Claude Code</span><button class="btn sm" id="copyPrompt">Скопировать</button></div><pre class="file" id="promptText">'+esc(prompt)+'</pre></div>';
   $('#copyPrompt').addEventListener('click', function(){
     var txt = $('#promptText').textContent;
