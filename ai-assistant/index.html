@@ -406,21 +406,6 @@ pre.file{margin:0;font-family:var(--mono);font-size:12px;line-height:1.55;white-
 .prompt{margin-top:14px;background:var(--sunk);border:1px solid var(--line);border-radius:var(--r);padding:12px}
 .prompt .ph{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:12.5px;color:var(--ink-3);font-weight:600}
 
-/* stack */
-.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;counter-reset:s}
-.st{padding:16px;counter-increment:s}
-.st::before{content:counter(s);display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--brand-soft);color:var(--brand-ink);font-family:var(--mono);font-size:12px;font-weight:600;margin-bottom:8px}
-.st h3{font-size:14.5px}
-.st p{font-size:13px;color:var(--ink-2);margin-top:4px}
-.st code,.inline-code{font-family:var(--mono);font-size:12px;background:var(--sunk);border:1px solid var(--line-soft);padding:0 4px;border-radius:4px}
-.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;margin-top:14px}
-@media(max-width:800px){.two{grid-template-columns:1fr}}
-.list{margin:8px 0 0;padding-left:18px;color:var(--ink-2);font-size:13.5px}
-.list li{margin-top:6px}
-.list b{color:var(--ink)}
-
-footer{margin-top:64px;border-top:1px solid var(--line);padding-block:22px 40px;color:var(--ink-3);font-size:12.5px}
-footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:13.5px;box-shadow:var(--shadow-pop);opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;z-index:50;max-width:calc(100% - 32px)}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .toast a{color:inherit;font-weight:600}
@@ -620,51 +605,8 @@ footer .wrap{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
   </div>
 </section>
 
-<!-- STACK -->
-<section id="stack">
-  <div class="sec-head">
-    <h2>Шесть деталей, из которых собирается система</h2>
-    <p>Тот же стек, что у дашборда и CRM лички: Cloudflare Worker, хранилище KV или D1, Claude API и Telegram.</p>
-  </div>
-  <div class="steps">
-    <div class="card st"><h3>Бот в BotFather</h3><p>Создаёте бота и получаете токен. Чтобы он видел все сообщения в группе, выключите privacy mode (<code>/setprivacy</code> → Disable) или сделайте бота админом чата.</p></div>
-    <div class="card st"><h3>Воркер принимает всё</h3><p>Один Cloudflare Worker ловит вебхуки Telegram, почты, CRM. Почта и календарь подключаются через Google API, CRM через её вебхуки или API.</p></div>
-    <div class="card st"><h3>Claude разбирает</h3><p>Каждое сообщение уходит в Claude с контекстом: команда, проекты, база знаний. В ответ JSON: задача или нет, исполнитель, срок, приоритет, проект.</p></div>
-    <div class="card st"><h3>Хранилище</h3><p>Задачи, история, база знаний и настройки лежат в KV или D1 на вашем аккаунте. Ничего не уходит в чужие сервисы, кроме запроса к модели.</p></div>
-    <div class="card st"><h3>Cron по расписанию</h3><p>Каждые 15 минут воркер проверяет сроки и шлёт напоминания и эскалации. В 9:00 утренний брифинг, в пятницу итоги недели.</p></div>
-    <div class="card st"><h3>Таск-трекер</h3><p>Веб-страница с задачами, фильтрами и окном «Спросить ИИ»: у ИИ под рукой все задачи и база знаний, поэтому ответ по делу.</p></div>
-  </div>
-  <div class="two">
-    <div class="card pad">
-      <h3 style="font-size:16px">Telegram Business: бот в вашей личке</h3>
-      <ul class="list">
-        <li>Нужен <b>Telegram Premium</b>. Настройки → Telegram для бизнеса → Чат-боты → указываете своего бота.</li>
-        <li>Выбираете, какие чаты он видит: <b>все, кроме</b> исключённых, или только выбранные. Личные переписки лучше исключить.</li>
-        <li>Бот получает входящие и ваши исходящие сообщения в этих чатах и может отвечать от вашего имени, если вы дали ему такое право.</li>
-        <li>Так ловятся обещания клиентам: «пришлю КП в пятницу» сразу становится вашей задачей.</li>
-        <li>У нас похожая связка уже работает в <a href="https://cmo-razbory.oxion-ezhkov.workers.dev/crm" target="_blank" rel="noopener">CRM лички</a>.</li>
-      </ul>
-    </div>
-    <div class="card pad">
-      <h3 style="font-size:16px">Границы и этика</h3>
-      <ul class="list">
-        <li><b>Прозрачность.</b> Команда знает, что бот в чате записывает задачи. Без этого будет ощущение слежки.</li>
-        <li><b>Подтверждение.</b> Задача стартует, когда исполнитель нажал «Принять». Спорный срок можно сразу перенести кнопкой.</li>
-        <li><b>Клиентам только через вас.</b> Ассистент готовит черновик ответа, отправляете вы.</li>
-        <li><b>Тихие часы и лимит.</b> Не больше трёх напоминаний по задаче, ночью тишина.</li>
-        <li><b>Ключи в секретах.</b> Токены и API-ключи живут в секретах воркера, а не в коде.</li>
-      </ul>
-    </div>
-  </div>
-</section>
-
 </main>
-
-<footer>
-  <div class="wrap">
-    <div>Материал для воркшопа CMO-сообщества · страница /ai-assistant</div>
-  </div>
-</footer>
+<div style="height:64px"></div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
