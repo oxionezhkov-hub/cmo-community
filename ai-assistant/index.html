@@ -1164,7 +1164,7 @@ function renderBoard(){
       (list.length ? list.map(function(t){
         var st = statusAt(t,h), r = st==='done' ? {t: t.doneAt<=t.due ? 'в срок' : 'опоздание '+hrs(t.doneAt-t.due), c: t.doneAt<=t.due ? 'ok' : 'over'} : relDue(t.due,h);
         var overC = st!=='done' && t.due<h;
-        return '<button class="tk'+(overC?' over':'')+(freshIds[t.id]?' fresh':'')+'" data-task="'+t.id+'" title="Нажмите, чтобы сменить статус"><div class="tt">'+esc(t.title)+'</div><div class="mt">'+whoDot(t.who)+srcBadge(t.src)+'<span class="due '+r.c+'">'+esc(r.t)+'</span></div></button>';
+        return '<button class="tk'+(overC?' over':'')+(freshIds[t.id]?' fresh':'')+'" data-task="'+t.id+'" title="Нажмите, чтобы сменить статус"><div class="tt">'+esc(t.title)+'</div><div class="mt"><span class="who-dot">'+esc(TEAM[t.who].name)+'</span><span class="due '+r.c+'">'+esc(r.t)+'</span></div></button>';
       }).join('') : '<div class="empty">Пусто</div>')+'</div></div>';
   }).join('');
   // лента
