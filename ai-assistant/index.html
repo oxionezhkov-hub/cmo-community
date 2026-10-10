@@ -383,7 +383,7 @@ pre.file{margin:0;font-family:var(--mono);font-size:12px;line-height:1.55;white-
 .mod{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:13.5px;cursor:pointer}
 .mod input{width:16px;height:16px;accent-color:var(--brand);flex:none}
 .mod .d{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--ink-3);white-space:nowrap}
-.out .sum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.out .sum{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px}
 .out .sum div{background:var(--sunk);border:1px solid var(--line-soft);border-radius:var(--r);padding:10px 12px}
 .out .sum span{font-size:11.5px;color:var(--ink-3)}
 .out .sum b{display:block;font-family:var(--mono);font-size:20px;font-weight:600}
@@ -1640,14 +1640,14 @@ var modOn = {};
 MODS.forEach(function(g){ g.items.forEach(function(m){ if (m.on) modOn[m.id] = true; }); });
 function renderMods(){
   $('#mods').innerHTML = MODS.map(function(g){
-    return '<h4>'+g.g+'</h4>'+g.items.map(function(m){ return '<label class="mod"><input type="checkbox" id="mod-'+m.id+'" data-mod="'+m.id+'"'+(modOn[m.id]?' checked':'')+(m.lock?' disabled':'')+'>'+esc(m.t)+(m.lock?' <span class="small muted">обязательно</span>':'')+'<span class="d">'+m.d+' дн</span></label>'; }).join('');
+    return '<h4>'+g.g+'</h4>'+g.items.map(function(m){ return '<label class="mod"><input type="checkbox" id="mod-'+m.id+'" data-mod="'+m.id+'"'+(modOn[m.id]?' checked':'')+(m.lock?' disabled':'')+'>'+esc(m.t)+(m.lock?' <span class="small muted">обязательно</span>':'')+'</label>'; }).join('');
   }).join('') + '<h4>Идеи из раздела 9</h4><div class="small muted" id="modIdeas"></div>';
 }
 $('#mods').addEventListener('change', function(e){ var c = e.target.closest('[data-mod]'); if (!c) return; modOn[c.getAttribute('data-mod')] = c.checked; renderBuild(); });
 function renderBuild(){
   var sel = []; MODS.forEach(function(g){ g.items.forEach(function(m){ if (modOn[m.id]) sel.push(m); }); });
   var ideas = IDEAS.filter(function(i){ return ideaOn[i.id]; });
-  $('#modIdeas').innerHTML = ideas.length ? ideas.map(function(i){ return esc(i.t); }).join(', ') + ' · <span class="mono">'+ideas.reduce(function(a,i){ return a+i.cx*.5; },0)+' дн</span>' : 'Не выбраны. <a href="#ideas">Выбрать</a>';
+  $('#modIdeas').innerHTML = ideas.length ? ideas.map(function(i){ return esc(i.t); }).join(', ') + '' : 'Не выбраны. <a href="#ideas">Выбрать</a>';
   var days = sel.reduce(function(a,m){ return a+m.d; }, 0) + ideas.reduce(function(a,i){ return a+i.cx*.5; }, 0);
   var need = []; sel.forEach(function(m){ m.need.forEach(function(n){ if (need.indexOf(n)<0) need.push(n); }); });
   if (ideas.some(function(i){ return i.id==='protocol'; }) && need.indexOf('Сервис расшифровки речи')<0) need.push('Сервис расшифровки речи');
@@ -1667,7 +1667,7 @@ function renderBuild(){
     (ideas.length ? 'Дополнительно: '+ideas.map(function(i){ return i.t+' ('+i.d.replace(/\.$/,'').toLowerCase()+')'; }).join('; ')+'.\n' : '')+
     '\nНачни с этапа 1, остальное по очереди. Секреты храни в wrangler secret. Перед кодом спроси: состав команды и их Telegram, часовой пояс, какие чаты подключать, как называются проекты.';
   $('#buildOut').innerHTML =
-    '<div class="sum"><div><span>Модулей</span><b>'+(sel.length+ideas.length)+'</b></div><div><span>Сборка с Claude Code</span><b>~'+Math.ceil(days)+' дн</b></div><div><span>Доступов</span><b>'+need.length+'</b></div></div>'+
+    '<div class="sum"><div><span>Модулей</span><b>'+(sel.length+ideas.length)+'</b></div><div><span>Доступов</span><b>'+need.length+'</b></div></div>'+
     phases.map(function(p){ return '<div class="phase"><b>'+esc(p.t)+'</b><p>'+esc(p.d)+'</p></div>'; }).join('')+
     '<div class="phase"><b>Что подготовить заранее</b><div class="need">'+need.map(function(n){ return '<span class="tag">'+esc(n)+'</span>'; }).join('')+'</div></div>'+
     '<div class="prompt"><div class="ph"><span>Промпт для Claude Code</span><button class="btn sm" id="copyPrompt">Скопировать</button></div><pre class="file" id="promptText">'+esc(prompt)+'</pre></div>';
