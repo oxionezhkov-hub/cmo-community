@@ -104,7 +104,8 @@ main > section:first-child{padding-top:36px}
 .map{display:grid;grid-template-columns:minmax(0,1fr) 56px minmax(0,1fr) 56px minmax(0,1fr);align-items:stretch}
 .map .col{display:flex;flex-direction:column;gap:8px;min-width:0}
 .map .col h4{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600;margin-bottom:2px}
-.pipes{display:flex;flex-direction:column;justify-content:space-around;padding-block:30px}
+.pipes{position:relative;display:flex;flex-direction:column;justify-content:space-around;padding-block:30px}
+.pipe.abs{position:absolute;left:0;right:0;margin-inline:6px}
 .pipe{height:2px;margin-inline:6px;background:repeating-linear-gradient(90deg,var(--brand) 0 6px,transparent 6px 13px);background-size:13px 2px;animation:flow .8s linear infinite;transition:opacity .3s}
 @keyframes flow{to{background-position:13px 0}}
 .node{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 11px;transition:border-color .15s,background .15s,opacity .2s}
@@ -421,14 +422,14 @@ pre.file{margin:0;font-family:var(--mono);font-size:12px;line-height:1.55;white-
 <!-- MAP -->
 <section id="map">
   <div class="sec-head">
-    <h2>Всё стекается в одну ОС, а оттуда расходится по людям</h2>
+    <h2>Всё стекается в одну OS, а оттуда расходится по людям</h2>
     <p>Нажмите на любой блок, чтобы увидеть, что он делает. Пошаговая инструкция по подключению каждого блока ниже, в разделе «Как подключить».</p>
   </div>
   <div class="card pad">
     <div class="map">
       <div class="col" id="mapSources"><h4>Откуда приходят задачи</h4></div>
       <div class="pipes" id="pipesL"></div>
-      <div class="col"><h4>ИИ-ОС</h4><div class="core" id="mapCore"><div class="ttl"><i></i>ИИ-ассистент</div></div></div>
+      <div class="col"><h4>OS</h4><div class="core" id="mapCore"><div class="ttl"><i></i>ИИ-ассистент</div></div></div>
       <div class="pipes" id="pipesR"></div>
       <div class="col" id="mapOutputs"><h4>Что получаете</h4></div>
     </div>
@@ -658,12 +659,12 @@ function relDue(due, h){
 
 /* ───────── 1. Схема ───────── */
 var NODES = {
-  tg:{side:'src', w:30, t:'Бот в рабочих чатах', s:'Telegram-группы команды', what:'Сидит во всех рабочих чатах, читает переписку и замечает договорённости: «Маша, сделай к четвергу». Присылает карточку задачи с кнопками «Принять» и «Другой срок».', how:'Бот из BotFather, добавлен в группы, privacy mode выключен. Вебхук на воркер.', ex:'«Дима, баннер к 15:00» → задача Диме, срок сегодня 15:00, приоритет высокий.'},
-  biz:{side:'src', w:20, t:'ТГ Business-бот в личке', s:'Ваши переписки в Telegram с клиентами', what:'Видит вашу личку с клиентами и подрядчиками. Ловит запросы («пришлите КП») и ваши обещания («скину завтра»), ставит задачи вам, обновляет карточку клиента.', how:'Telegram Premium → Telegram для бизнеса → Чат-боты. Выбираете, какие чаты видит бот.', ex:'Клиент: «Пришлите кейсы до пятницы». Вы: «Конечно». → вам задача на пт 12:00.'},
+  tg:{side:'src', w:30, t:'Бот в рабочих чатах', s:'Telegram-группы команды, текст и голосовые', what:'Сидит во всех рабочих чатах, читает переписку и расшифровывает голосовые. Замечает договорённости: «Маша, сделай к четвергу». Присылает карточку задачи с кнопками «Принять» и «Другой срок».', how:'Бот из BotFather, добавлен в группы, privacy mode выключен. Вебхук на воркер, голосовые идут в расшифровку.', ex:'«Дима, баннер к 15:00» → задача Диме, срок сегодня 15:00, приоритет высокий.'},
+  biz:{side:'src', w:20, t:'ТГ Business-бот в личке', s:'Ваши переписки в Telegram, текст и голосовые', what:'Видит вашу личку с клиентами и подрядчиками, голосовые тоже расшифровывает. Ловит запросы («пришлите КП») и ваши обещания («скину завтра»), ставит задачи вам, обновляет карточку клиента.', how:'Telegram Premium → Telegram для бизнеса → Чат-боты. Выбираете, какие чаты видит бот.', ex:'Клиент: «Пришлите кейсы до пятницы». Вы: «Конечно». → вам задача на пт 12:00.'},
   mail:{side:'src', w:15, t:'Почта', s:'Gmail, Яндекс', what:'Читает входящие, находит письма с просьбами и дедлайнами: акты, согласования, запросы клиентов. Рассылки и уведомления пропускает.', how:'Gmail API через OAuth или пересылка писем на адрес воркера.', ex:'«Подпишите акты до 25-го» → задача вам на 25-е, проект «Финансы».'},
   cal:{side:'src', w:10, t:'Календарь', s:'Встречи и созвоны', what:'Знает, когда вы заняты. Перед встречей присылает справку: кто это, какие открыты задачи, о чём договаривались. Не ставит дедлайны на время встреч.', how:'Google Calendar API, чтение событий и свободных слотов.', ex:'За 15 минут до встречи с «Кадром»: «2 открытые задачи, последний разговор был про сценарий».'},
   crm:{side:'src', w:15, t:'CRM', s:'amoCRM, Bitrix24 и др.', what:'Следит за сделками: лид без ответа, сделка без движения, обещанный созвон. Создаёт задачи менеджерам и видит, по какому клиенту что открыто.', how:'Вебхуки CRM на воркер плюс API для чтения сделок.', ex:'Сделка 7 дней без движения → Косте задача «связаться», срок сегодня.'},
-  voice:{side:'src', w:5, t:'Голосовые и созвоны в Zoom', s:'Расшифровка речи', what:'Расшифровывает голосовые в чатах и записи созвонов в Zoom, собирает итоги и раскладывает договорённости по исполнителям.', how:'Записи и транскрипты Zoom через его API, голосовые через сервис расшифровки → тот же разбор в Claude.', ex:'Голосовое на 40 секунд → 3 задачи трём людям с разными сроками.'},
+  voice:{side:'src', w:5, t:'Созвоны в Zoom', s:'Записи и транскрипты встреч', what:'После созвона забирает транскрипт из Zoom, собирает итоги и решения и раскладывает договорённости по исполнителям.', how:'Записи и транскрипты Zoom через его API → тот же разбор в Claude.', ex:'Планёрка на 40 минут → протокол и 5 задач трём людям с разными сроками.'},
   dash:{side:'src', w:5, t:'Дашборд маркетинга', s:'Метрики с прошлого воркшопа', what:'Смотрит на цифры: CPL, конверсии, расход. Когда метрика уходит за порог, ставит задачу ответственному и пишет вам почему.', how:'Тот же воркер читает data.json дашборда, правила задаются в настройках.', ex:'CPL в Директе +38% за 3 дня → Маше «проверить кампании», срок сегодня 18:00.'},
   parse:{side:'core', t:'Разбор в задачи', s:'Кто, что, когда, приоритет', what:'Каждое сообщение проходит через Claude: задача это или нет, кто исполнитель, какой срок, к какому проекту относится. Если не уверен, уточняет.', how:'Claude API получает вместе с сообщением команду, проекты и выдержку из базы знаний.', ex:'«Скину завтра утром» → обещание, исполнитель вы, срок завтра 11:00.'},
   dl:{side:'core', t:'Сроки и напоминания', s:'Cron каждые 15 минут', what:'Помнит все сроки. Пишет исполнителю заранее, в день срока и после просрочки, эскалирует руководителю. Уважает тихие часы.', how:'Cron-триггер воркера, лестница напоминаний в настройках.', ex:'За сутки, за 2 часа, через час после срока, через 4 часа руководителю.'},
@@ -678,6 +679,15 @@ var NODES = {
 };
 var srcOn = {tg:true,biz:true,mail:true,cal:true,crm:true,voice:true,dash:true};
 var mapSel = 'tg';
+function alignPipes(){
+  [['#pipesL','#mapSources'],['#pipesR','#mapOutputs']].forEach(function(pr){
+    var box = $(pr[0]);
+    if (window.innerWidth < 900){ box.innerHTML = '<div class="pipe"></div><div class="pipe"></div><div class="pipe"></div>'; return; }
+    var top = box.getBoundingClientRect().top;
+    box.innerHTML = $$(pr[1]+' .node').map(function(n){ var r = n.getBoundingClientRect(); return '<div class="pipe abs" style="top:'+Math.round(r.top - top + r.height/2 - 1)+'px"></div>'; }).join('');
+  });
+}
+window.addEventListener('resize', function(){ requestAnimationFrame(alignPipes); });
 function renderMap(){
   var srcH = '<h4>Откуда приходят задачи</h4>', coreH = '<div class="ttl"><i></i>ИИ-ассистент</div>', outH = '<h4>Что получаете</h4>';
   Object.keys(NODES).forEach(function(k){
@@ -690,11 +700,9 @@ function renderMap(){
     }
   });
   $('#mapSources').innerHTML = srcH; $('#mapCore').innerHTML = coreH; $('#mapOutputs').innerHTML = outH;
-  var pl = ''; Object.keys(srcOn).forEach(function(){ pl += '<div class="pipe"></div>'; });
-  $('#pipesL').innerHTML = pl;
-  $('#pipesR').innerHTML = '<div class="pipe"></div><div class="pipe"></div><div class="pipe"></div><div class="pipe"></div><div class="pipe"></div><div class="pipe"></div>';
+  requestAnimationFrame(alignPipes);
   var n = NODES[mapSel];
-  var tag = n.side==='src' ? 'Источник' : n.side==='core' ? 'ИИ-ОС' : 'Результат';
+  var tag = n.side==='src' ? 'Источник' : n.side==='core' ? 'OS' : 'Результат';
   $('#mapDetail').innerHTML = '<div class="small muted">'+tag+'</div><h3>'+esc(n.t)+'</h3>'+
     '<div class="row"><b>Что делает</b><div>'+esc(n.what)+'</div></div>'+
     '<div class="row"><b>Пример</b><div>'+esc(n.ex)+'</div></div>'+
@@ -708,13 +716,14 @@ document.addEventListener('click', function(e){
 });
 /* ───────── Как подключить ───────── */
 var CONNECT = {
-  tg:{time:'30 минут', need:['Аккаунт Telegram','Cloudflare Worker'], steps:[
+  tg:{time:'30 минут', need:['Аккаунт Telegram','Cloudflare Worker','Сервис расшифровки для голосовых'], steps:[
     'В @BotFather отправьте <code>/newbot</code>, задайте имя и username. Получите токен бота.',
     'Там же <code>/setprivacy</code> → выберите бота → <b>Disable</b>. Без этого в группах бот видит только команды и упоминания.',
     'Сохраните токен в секрет воркера: <code>wrangler secret put BOT_TOKEN</code>.',
     'Поставьте вебхук на воркер: <code>https://api.telegram.org/bot&lt;ТОКЕН&gt;/setWebhook?url=https://&lt;воркер&gt;/webhook</code>.',
     'Добавьте бота во все рабочие чаты. Можно сделать админом, тогда он точно видит всё.',
     'Попросите каждого сотрудника один раз написать боту <code>/start</code>, иначе бот не сможет писать им в личку.',
+    '<b>Голосовые:</b> бот получает voice, скачивает файл через <code>getFile</code> и отправляет в расшифровку (Workers AI с Whisper или SpeechKit). Текст идёт в тот же разбор, что и обычные сообщения.',
     'Предупредите команду в чате, что бот записывает задачи и сроки.'
   ], tip:'Если privacy mode выключили, когда бот уже был в группе, удалите его и добавьте заново, иначе настройка не применится. Старую переписку до добавления бот не видит.'},
   biz:{time:'20 минут', need:['Telegram Premium','Бот из BotFather','Тот же воркер'], steps:[
@@ -722,6 +731,7 @@ var CONNECT = {
     'В Telegram на своём аккаунте: Настройки → Telegram для бизнеса → Чат-боты → введите username бота.',
     'Выберите, какие чаты видит бот: «все, кроме» исключённых или только выбранные. Личные переписки исключите.',
     'Решите, давать ли боту право отвечать от вашего имени. Для задач и черновиков достаточно чтения.',
+    'Голосовые в личке бот расшифровывает так же, как в рабочих чатах: тот же сервис расшифровки.',
     'В вебхуке добавьте типы обновлений <code>business_connection</code> и <code>business_message</code> в <code>allowed_updates</code>.',
     'Проверьте: напишите себе с другого аккаунта «пришлите КП до пятницы» и ответьте «пришлю». У вас должна появиться задача.'
   ], tip:'Без Premium пункта «Чат-боты» в настройках не будет. Бот видит только чаты, выбранные в настройке, и только с момента подключения.'},
@@ -748,13 +758,12 @@ var CONNECT = {
     'Опишите правила: лид без ответа больше 2 часов, сделка без движения 7 дней, обещанный созвон. Cron проверяет их через API.',
     'Задачи по сделкам уходят ответственному менеджеру, эскалации вам.'
   ], tip:'Начните с одного-двух правил. Если сразу включить всё, менеджеры утонут в напоминаниях и перестанут их читать.'},
-  voice:{time:'1–2 часа', need:['Zoom с облачной записью (платный тариф)','Сервис расшифровки для голосовых'], steps:[
+  voice:{time:'1 час', need:['Zoom с облачной записью (платный тариф)','Права администратора Zoom'], steps:[
     'В Zoom App Marketplace: Develop → Build App → приложение с <b>Server-to-Server OAuth</b>.',
     'Выдайте доступ к облачным записям (cloud recording, чтение).',
     'Подпишитесь на событие <code>recording.completed</code> с адресом воркера. Zoom сначала проверит адрес запросом <code>endpoint.url_validation</code>, воркер должен на него ответить.',
     'В настройках Zoom включите облачную запись и аудио-транскрипт.',
-    'Когда запись готова, воркер забирает транскрипт, Claude делает итоги, решения и задачи по исполнителям.',
-    '<b>Голосовые в Telegram:</b> бот получает voice, скачивает файл через <code>getFile</code>, отправляет в расшифровку (Whisper или SpeechKit), текст идёт в тот же разбор.'
+    'Когда запись готова, воркер забирает транскрипт, Claude делает итоги, решения и задачи по исполнителям.'
   ], tip:'Предупреждайте участников, что созвон записывается и расшифровывается. Итоги показывайте человеку на подтверждение, прежде чем раздавать задачи.'},
   dash:{time:'30 минут', need:['Дашборд с прошлого воркшопа'], steps:[
     'Дашборд уже живёт на этом воркере, данные лежат в <code>/dashboard/data.json</code>.',
@@ -822,7 +831,7 @@ var CONNECT = {
 };
 var connSel = 'tg';
 function renderConnect(){
-  var groups = [['Откуда приходят задачи','src'],['ИИ-ОС','core'],['Что получаете','out']];
+  var groups = [['Откуда приходят задачи','src'],['OS','core'],['Что получаете','out']];
   $('#connList').innerHTML = groups.map(function(g){
     return '<h4>'+g[0]+'</h4>'+Object.keys(NODES).filter(function(k){ return NODES[k].side===g[1]; }).map(function(k){
       return '<button data-conn="'+k+'" class="'+(k===connSel?'on':'')+'">'+esc(NODES[k].t)+'<span>'+esc(CONNECT[k].time)+'</span></button>';
@@ -1570,15 +1579,15 @@ renderIdeas();
 /* ───────── 10. Конструктор ───────── */
 var MODS = [
   {g:'Источники', items:[
-    {id:'tg', t:'Бот в рабочих чатах', d:1, need:['Токен бота из BotFather'], on:true},
-    {id:'biz', t:'ТГ Business-бот в личке', d:1, need:['Telegram Premium','Подключение бота в Telegram для бизнеса']},
+    {id:'tg', t:'Бот в рабочих чатах', d:1, need:['Токен бота из BotFather','Сервис расшифровки речи'], on:true},
+    {id:'biz', t:'ТГ Business-бот в личке', d:1, need:['Telegram Premium','Подключение бота в Telegram для бизнеса','Сервис расшифровки речи']},
     {id:'mail', t:'Почта', d:1, need:['Google OAuth (Gmail API)']},
     {id:'cal', t:'Календарь', d:.5, need:['Google OAuth (Calendar API)']},
     {id:'crm', t:'CRM', d:1, need:['API-ключ и вебхуки CRM']},
-    {id:'voice', t:'Голосовые и созвоны в Zoom', d:1, need:['Zoom API (записи созвонов)','Сервис расшифровки речи']},
+    {id:'voice', t:'Созвоны в Zoom', d:1, need:['Zoom API (записи созвонов)']},
     {id:'dash', t:'Дашборд маркетинга', d:.5, need:['Доступ к data.json дашборда']}
   ]},
-  {g:'ИИ-ОС', items:[
+  {g:'OS', items:[
     {id:'tasks', t:'Задачи и сроки', d:2, need:['Ключ Claude API','Аккаунт Cloudflare (Worker + KV)'], on:true, lock:true},
     {id:'remind', t:'Напоминания и эскалации', d:1, need:[], on:true},
     {id:'kb', t:'База знаний и память', d:1, need:[]}
@@ -1692,7 +1701,7 @@ function renderBuild(){
   if (ideas.length) phases.push({t:'Этап 4 · Фишки', d:ideas.map(function(i){ return i.t; }).join(', ')+'.'});
   var prompt = 'Собери ИИ-ассистента для задач команды на Cloudflare Worker + KV.\n\n'+
     'Источники: '+(srcs.length ? srcs.map(function(s){ return NODES[s].t; }).join(', ') : 'только ручной ввод')+'.\n'+
-    'ИИ-ОС: разбор сообщений в задачи через Claude API (задача или нет, исполнитель, срок, приоритет, проект; если не уверен — уточнить кнопками)'+(has('remind')?'; напоминания по cron каждые 15 минут: за сутки, за 2 часа, через час после срока, эскалация руководителю через 4 часа, тихие часы 21:00–9:00':'')+(has('kb')?'; база знаний в markdown (обо мне, проект, команда), которую ассистент сам обновляет фактами из переписки':'')+'.\n'+
+    'OS: разбор сообщений в задачи через Claude API (задача или нет, исполнитель, срок, приоритет, проект; если не уверен — уточнить кнопками)'+(has('remind')?'; напоминания по cron каждые 15 минут: за сутки, за 2 часа, через час после срока, эскалация руководителю через 4 часа, тихие часы 21:00–9:00':'')+(has('kb')?'; база знаний в markdown (обо мне, проект, команда), которую ассистент сам обновляет фактами из переписки':'')+'.\n'+
     'Интерфейсы: '+(ui.length ? ui.join(', ') : 'только Telegram')+'.\n'+
     (ideas.length ? 'Дополнительно: '+ideas.map(function(i){ return i.t+' ('+i.d.replace(/\.$/,'').toLowerCase()+')'; }).join('; ')+'.\n' : '')+
     '\nНачни с этапа 1, остальное по очереди. Секреты храни в wrangler secret. Перед кодом спроси: состав команды и их Telegram, часовой пояс, какие чаты подключать, как называются проекты.';
