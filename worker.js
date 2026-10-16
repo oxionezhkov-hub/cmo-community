@@ -17522,7 +17522,7 @@ function serveAiAssistant() {
 
 // ─── /plan: рабочее пространство «План воронки» (документы + доски) ───
 // Страница собирается из plan/ (node plan/build-worker-assets.mjs). Без входа всё хранится в браузере;
-// после ввода пароля админки план синхронизируется через /api/plan и общий для команды.
+// план сам синхронизируется через /api/plan и общий для всех, у кого есть ссылка (без пароля).
 const PLAN_KV_KEY = "plan:workspace:v1";
 const PLAN_MAX_BYTES = 5 * 1024 * 1024;
 
@@ -17533,8 +17533,7 @@ function servePlan() {
 }
 
 async function apiPlan(request, env) {
-  const auth = request.headers.get("Authorization") || "";
-  if (auth !== "admin_session_" + ADMIN_PASSWORD) return planResp({ ok: false, error: "Unauthorized" }, 401);
+  // Общий план открыт без пароля: читать и править может любой, у кого есть ссылка на /plan
   const rec = await env.KV.get(PLAN_KV_KEY, "json");
   const curRev = (rec && rec.rev) || 0;
   if (request.method === "GET") {
