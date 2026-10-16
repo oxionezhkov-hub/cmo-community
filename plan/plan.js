@@ -3212,6 +3212,9 @@ const Sync = {
       this.token = s.token; this.rev = s.rev || 0; this.base = s.base || null; this.enabled = true;
       this.pull();
       this.startPoll();
+    } else if (this.avail && !(s && s.off)) {
+      // общий план подключается сам, если человек не отключал его вручную
+      this.connect();
     }
     this.paint();
     document.addEventListener('visibilitychange', () => {
@@ -3321,23 +3324,8 @@ const Sync = {
       ui.info('Общий план', el('p', { text: 'Синхронизация работает, когда страница открыта на сайте (например, /plan на воркере). Сейчас всё сохраняется в этом браузере — можно скачать резервную копию в меню «⋯».' }));
       return;
     }
-    let token = null;
-    const pass = await ui.prompt({
-      title: 'Подключить общий план', password: true, ok: 'Подключить',
-      text: 'Введите пароль администратора (тот же, что для /admin). После этого план будет сохраняться на сервере и будет одинаковым у всей команды.',
-      validate: async v => {
-        if (!v) return 'Введите пароль';
-        try {
-          const r = await fetch('/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: v }) });
-          const j = await r.json().catch(() => ({}));
-          if (!r.ok || !j.token) return j.error || 'Неверный пароль';
-          token = j.token;
-          return null;
-        } catch (e) { return 'Нет связи с сервером'; }
-      }
-    });
-    if (pass == null || !token) return;
-    this.token = token;
+    // пароль не нужен: общий план открыт всем, у кого есть ссылка
+    this.token = 'open';
     let res;
     try { res = await this.api('GET'); } catch (e) { toast('Нет связи с сервером'); return; }
     if (res.status !== 200) { toast(res.status === 404 ? 'На сервере нет хранилища плана — обновите воркер' : 'Сервер ответил ошибкой ' + res.status); this.token = null; return; }
@@ -3379,7 +3367,7 @@ const Sync = {
   disconnect() {
     this.enabled = false; this.token = null; this.base = null; this.rev = 0;
     clearInterval(this.pollT); clearTimeout(this.timer);
-    store.del(LS.sync);
+    store.set(LS.sync, { off: true });
     this.paint();
     toast('Отключено. План остаётся в этом браузере.');
   },
