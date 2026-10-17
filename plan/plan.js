@@ -322,13 +322,15 @@ function normalizeItem(it) {
 
 function normalizePage(p) {
   if (!p || typeof p !== 'object') return null;
-  const type = p.type === 'board' ? 'board' : 'doc';
+  const type = p.type === 'board' ? 'board' : p.type === 'fin' ? 'fin' : 'doc';
   const o = { id: typeof p.id === 'string' && p.id ? p.id : uid(), type, title: typeof p.title === 'string' ? p.title : '', icon: typeof p.icon === 'string' ? p.icon : '' };
   if (type === 'doc') {
     o.blocks = (Array.isArray(p.blocks) ? p.blocks : []).map(normalizeBlock);
     const seen = new Set();
     o.blocks.forEach(b => { if (seen.has(b.id)) b.id = uid(); seen.add(b.id); });
     if (!o.blocks.length) o.blocks.push(normalizeBlock({ type: 'text' }));
+  } else if (type === 'fin') {
+    o.fm = normalizeFm(p.fm);
   } else {
     o.items = (Array.isArray(p.items) ? p.items : []).map(normalizeItem).filter(Boolean);
     const ids = new Set(o.items.filter(i => i.kind !== 'line').map(i => i.id));
@@ -344,7 +346,7 @@ function clonePageFresh(p) {
   const c = clone(p);
   c.id = uid();
   if (c.type === 'doc') c.blocks.forEach(b => { b.id = uid(); });
-  else {
+  else if (c.type === 'board') {
     const map = {};
     c.items.forEach(i => { const n = uid(); map[i.id] = n; i.id = n; });
     c.items.forEach(i => { if (i.kind === 'line') { if (i.from.id) i.from.id = map[i.from.id]; if (i.to.id) i.to.id = map[i.to.id]; } });
@@ -3393,10 +3395,433 @@ function replacePages(pages) {
 }
 
 // ════════════════════════════════════════════════════════════
+//  Финмодель: тарифы × периоды, итоги, расходы, воронки с обратным расчётом
+// ════════════════════════════════════════════════════════════
+const FIN_MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+const FIN_SALE = '_sale';
+const finNum = v => { const n = parseFloat(String(v == null ? '' : v).replace(/[\s ₽%]/g, '').replace(',', '.')); return Number.isFinite(n) ? n : 0; };
+const finEmpty = v => v === '' || v == null;
+const finFmt = (n, d) => (Number.isFinite(n) ? n : 0).toLocaleString('ru-RU', { maximumFractionDigits: d == null ? 0 : d });
+const finRub = n => (Number.isFinite(n) ? finFmt(Math.round(n)) + ' ₽' : '—');
+const finCnt = n => (Number.isFinite(n) ? finFmt(Math.ceil(n - 1e-9)) : '—');
+const finPct = n => (Number.isFinite(n) ? finFmt(n, 1) + '%' : '—');
+
+function finStages(list) { return list.map(([name, conv, cost]) => ({ id: uid(), name, conv: conv == null ? '' : conv, cost: cost == null ? '' : cost })); }
+function finDefaultStages() {
+  return finStages([['Просмотры рилсов', 1.5], ['Переходы на сайт', 30], ['Регистрации', 60], ['Зашли в бесплатный чат', 30], ['Пришли на встречу', 20]]);
+}
+
+function normalizeFm(fm) {
+  fm = fm && typeof fm === 'object' ? fm : {};
+  const id = x => (typeof x === 'string' && x ? x : uid());
+  const str = (x, d) => (typeof x === 'string' ? x : d);
+  const val = x => (finEmpty(x) ? '' : Number.isFinite(+x) ? +x : '');
+  const periods = (Array.isArray(fm.periods) ? fm.periods : []).filter(p => p && typeof p === 'object').map(p => ({ id: id(p.id), name: str(p.name, '') }));
+  const pids = new Set(periods.map(p => p.id));
+  const byPeriod = o => { const r = {}; if (o && typeof o === 'object') for (const k in o) if (pids.has(k)) { const v = val(o[k]); if (v !== '') r[k] = v; } return r; };
+  const tariffs = (Array.isArray(fm.tariffs) ? fm.tariffs : []).filter(t => t && typeof t === 'object').map(t => {
+    const stages = (Array.isArray(t.stages) ? t.stages : []).filter(s => s && typeof s === 'object').map(s => ({ id: id(s.id), name: str(s.name, ''), conv: val(s.conv), cost: val(s.cost) }));
+    const sids = new Set(stages.map(s => s.id).concat(FIN_SALE));
+    const fact = {};
+    if (t.fact && typeof t.fact === 'object') for (const pid in t.fact) {
+      if (!pids.has(pid) || !t.fact[pid] || typeof t.fact[pid] !== 'object') continue;
+      const m = {};
+      for (const sid in t.fact[pid]) { const v = val(t.fact[pid][sid]); if (v !== '' && sids.has(sid)) m[sid] = v; }
+      fact[pid] = m;
+    }
+    return { id: id(t.id), name: str(t.name, ''), price: val(t.price), kind: t.kind === 'sub' ? 'sub' : 'once', start: val(t.start), churn: val(t.churn), sales: byPeriod(t.sales), stages, fact };
+  });
+  const expenses = (Array.isArray(fm.expenses) ? fm.expenses : []).filter(e => e && typeof e === 'object').map(e => ({ id: id(e.id), name: str(e.name, ''), values: byPeriod(e.values) }));
+  const view = fm.view === 'all' || pids.has(fm.view) ? fm.view : 'all';
+  return { periods, tariffs, expenses, view };
+}
+
+// Сколько нужно людей на каждом этапе, чтобы получить план продаж (снизу вверх)
+function finFunnel(t, planned, factOf) {
+  const n = t.stages.length;
+  const need = new Array(n + 1);
+  need[n] = planned;
+  for (let i = n - 1; i >= 0; i--) {
+    const c = finNum(t.stages[i].conv) / 100;
+    need[i] = c > 0 && Number.isFinite(need[i + 1]) ? need[i + 1] / c : NaN;
+  }
+  const fact = t.stages.map(s => factOf(s.id)).concat(factOf(FIN_SALE));
+  const factConv = t.stages.map((s, i) => (fact[i] > 0 && fact[i + 1] != null ? fact[i + 1] / fact[i] * 100 : NaN));
+  let budget = 0, hasCost = false;
+  t.stages.forEach((s, i) => { if (!finEmpty(s.cost) && Number.isFinite(need[i])) { budget += need[i] * finNum(s.cost); hasCost = true; } });
+  // прогноз: если на верхнем этапе есть факт, сколько продаж дадут плановые конверсии
+  let forecast = NaN;
+  if (n && fact[0] > 0) { forecast = fact[0]; t.stages.forEach(s => { forecast *= finNum(s.conv) / 100; }); }
+  return { need, fact, factConv, budget: hasCost ? budget : NaN, forecast };
+}
+
+function finCalc(fm) {
+  const P = fm.periods;
+  const T = {};
+  fm.tariffs.forEach(t => {
+    const price = finNum(t.price), churn = Math.min(100, Math.max(0, finNum(t.churn))) / 100;
+    let prev = finNum(t.start);
+    const r = { count: {}, carry: {}, fresh: {}, rev: {}, totalCount: 0, totalNew: 0, totalRev: 0, funnel: {} };
+    P.forEach(p => {
+      const has = !finEmpty(t.sales[p.id]);
+      let cur, fresh;
+      if (t.kind === 'sub') {
+        const kept = prev * (1 - churn);
+        r.carry[p.id] = kept;
+        cur = has ? finNum(t.sales[p.id]) : kept;
+        fresh = Math.max(0, cur - kept);
+        prev = cur;
+      } else { cur = has ? finNum(t.sales[p.id]) : 0; fresh = cur; }
+      r.count[p.id] = cur; r.fresh[p.id] = fresh; r.rev[p.id] = cur * price;
+      r.totalCount += cur; r.totalNew += fresh; r.totalRev += cur * price;
+    });
+    const factSum = sid => { let s = 0, any = false; P.forEach(p => { const v = t.fact[p.id] && t.fact[p.id][sid]; if (!finEmpty(v)) { s += finNum(v); any = true; } }); return any ? s : null; };
+    r.funnel.all = finFunnel(t, r.totalNew, factSum);
+    P.forEach(p => { r.funnel[p.id] = finFunnel(t, r.fresh[p.id], sid => { const v = t.fact[p.id] && t.fact[p.id][sid]; return finEmpty(v) ? null : finNum(v); }); });
+    T[t.id] = r;
+  });
+  const per = {};
+  let cumProfit = 0, cumRev = 0;
+  P.forEach(p => {
+    const rev = fm.tariffs.reduce((a, t) => a + T[t.id].rev[p.id], 0);
+    const fresh = fm.tariffs.reduce((a, t) => a + T[t.id].fresh[p.id], 0);
+    const exp = fm.expenses.reduce((a, e) => a + finNum(e.values[p.id]), 0);
+    let budget = 0, hasBudget = false;
+    fm.tariffs.forEach(t => { const b = T[t.id].funnel[p.id].budget; if (Number.isFinite(b)) { budget += b; hasBudget = true; } });
+    cumRev += rev; cumProfit += rev - exp;
+    per[p.id] = { rev, fresh, exp, profit: rev - exp, cumRev, cumProfit, budget: hasBudget ? budget : NaN };
+  });
+  const sum = k => P.reduce((a, p) => a + (Number.isFinite(per[p.id][k]) ? per[p.id][k] : 0), 0);
+  const tot = { rev: sum('rev'), fresh: sum('fresh'), exp: sum('exp'), profit: sum('profit'), budget: P.some(p => Number.isFinite(per[p.id].budget)) ? sum('budget') : NaN };
+  tot.sales = fm.tariffs.reduce((a, t) => a + T[t.id].totalCount, 0);
+  return { T, per, tot };
+}
+
+function finNextName(prev) {
+  const m = String(prev || '').trim().match(/^([А-Яа-яЁё]+)\s+(\d{4})$/);
+  if (m) {
+    const i = FIN_MONTHS.findIndex(x => x.toLowerCase() === m[1].toLowerCase());
+    if (i >= 0) return i === 11 ? FIN_MONTHS[0] + ' ' + (+m[2] + 1) : FIN_MONTHS[i + 1] + ' ' + m[2];
+  }
+  const d = new Date();
+  return FIN_MONTHS[d.getMonth()] + ' ' + d.getFullYear();
+}
+
+function newFinPage(title, icon) {
+  return { id: uid(), type: 'fin', title: title || 'Финмодель', icon: icon || '📊', fm: normalizeFm({ periods: [{ name: finNextName('') }], tariffs: [{ name: 'Новый тариф', price: '', kind: 'once', stages: finDefaultStages() }], expenses: [] }) };
+}
+
+class FinEditor {
+  constructor(p, host) {
+    this.page = p;
+    this.host = host;
+    p.fm = normalizeFm(p.fm);
+    this.binds = new Map();
+    this.outs = [];
+    this.build();
+    this.render();
+  }
+
+  build() {
+    this.scroll = el('div', { class: 'doc-scroll', tabindex: '-1' });
+    this.root = el('div', { class: 'fin' });
+    this.scroll.append(this.root);
+    this.host.append(this.scroll);
+    this.root.addEventListener('input', e => this.onInput(e));
+    this.root.addEventListener('focusout', e => { if (e.target.classList && e.target.classList.contains('fm-in')) setTimeout(() => this.refresh(), 0); });
+    this.root.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || !e.target.classList.contains('fm-in')) return;
+      e.preventDefault();
+      const all = $$('.fm-in', this.root);
+      const td = e.target.closest('td, th');
+      // Enter — вниз по колонке, если есть куда, иначе на следующее поле
+      if (td && td.parentElement) {
+        const idx = Array.prototype.indexOf.call(td.parentElement.children, td);
+        let tr = td.parentElement.nextElementSibling;
+        while (tr) { const c = tr.children[idx]; const n = c && c.querySelector('.fm-in'); if (n) { n.focus(); n.select(); return; } tr = tr.nextElementSibling; }
+      }
+      const i = all.indexOf(e.target);
+      if (i >= 0 && all[i + 1]) { all[i + 1].focus(); all[i + 1].select(); } else e.target.blur();
+    });
+  }
+
+  destroy() { this.scroll.remove(); }
+  focusDefault() { this.scroll.focus({ preventScroll: true }); }
+  captureSel() {
+    const a = document.activeElement;
+    if (a && this.root.contains(a) && a.dataset && a.dataset.k) return { k: a.dataset.k, s: a.selectionStart };
+    return null;
+  }
+  reload(p, sel) {
+    this.page = p;
+    p.fm = normalizeFm(p.fm);
+    const y = this.scroll.scrollTop;
+    this.render();
+    this.scroll.scrollTop = y;
+    if (sel && sel.k) {
+      const n = this.root.querySelector('[data-k="' + CSS.escape(sel.k) + '"]');
+      if (n) { n.focus({ preventScroll: true }); try { n.setSelectionRange(sel.s, sel.s); } catch (e) { /* noop */ } }
+    }
+  }
+
+  get fm() { return this.page.fm; }
+
+  commit(key) { changed(this.page, 'fm:' + key, { skipChrome: key !== 'title' }); this.refresh(); }
+  structural(fn) {
+    fn(this.fm);
+    this.page.fm = normalizeFm(this.page.fm);
+    History.breakCoalesce(this.page);
+    changed(this.page, null, { sel: null, skipChrome: true });
+    const y = this.scroll.scrollTop;
+    this.render();
+    this.scroll.scrollTop = y;
+  }
+
+  // поле ввода, привязанное к модели: get отдаёт значение для показа, set принимает строку
+  inp(key, get, set, o) {
+    o = o || {};
+    const n = el('input', { class: 'fm-in' + (o.text ? ' fm-text' : '') + (o.cls ? ' ' + o.cls : ''), 'data-k': key, type: 'text', inputmode: o.text ? null : 'decimal', placeholder: o.ph || '', 'aria-label': o.label || null, autocomplete: 'off', spellcheck: o.text ? 'true' : 'false', title: o.title || null });
+    const b = { node: n, get, set, ph: o.phFn || null };
+    this.binds.set(key, b);
+    n.value = get();
+    if (b.ph) n.placeholder = b.ph();
+    return n;
+  }
+  out(fn, cls) {
+    const n = el('span', { class: 'fm-out' + (cls ? ' ' + cls : '') });
+    this.outs.push({ n, fn });
+    n.textContent = fn();
+    return n;
+  }
+  onInput(e) {
+    const k = e.target.dataset && e.target.dataset.k;
+    const b = k && this.binds.get(k);
+    if (!b) return;
+    b.set(e.target.value);
+    this.commit(k);
+  }
+  refresh() {
+    this.calc = finCalc(this.fm);
+    const a = document.activeElement;
+    this.binds.forEach(b => {
+      if (b.node !== a) { const v = b.get(); if (b.node.value !== v) b.node.value = v; }
+      if (b.ph) b.node.placeholder = b.ph();
+    });
+    this.outs.forEach(o => { o.n.textContent = o.fn(); });
+  }
+
+  btn(label, onClick, cls, title) { return el('button', { type: 'button', class: 'fm-btn' + (cls ? ' ' + cls : ''), title: title || null, onclick: onClick }, label); }
+  numGet(obj, key) { return () => (finEmpty(obj[key]) ? '' : String(obj[key])); }
+  numSet(obj, key) { return v => { obj[key] = String(v).trim() === '' ? '' : finNum(v); }; }
+
+  async confirmDel(text) {
+    const v = await ui.choice({ title: 'Удалить?', text, buttons: [{ label: 'Отмена', value: 'no' }, { label: 'Удалить', value: 'yes', danger: true }] });
+    return v === 'yes';
+  }
+
+  render() {
+    this.binds.clear();
+    this.outs = [];
+    this.calc = finCalc(this.fm);
+    this.root.innerHTML = '';
+    const fm = this.fm;
+    const C = () => this.calc;
+
+    // ── заголовок ──
+    const title = el('input', { class: 'fin-title', 'data-k': 'title', value: this.page.title || '', placeholder: 'Финмодель', 'aria-label': 'Название страницы', autocomplete: 'off' });
+    title.addEventListener('input', () => { this.page.title = title.value; changed(this.page, 'title'); });
+    this.root.append(
+      el('div', { class: 'doc-icon-row' }, el('span', { class: 'doc-icon', text: this.page.icon || '📊' })),
+      title,
+      el('p', { class: 'fin-hint', text: 'Впишите тарифы, цены и план продаж по месяцам — итоги и воронки посчитаются сами. В воронке меняйте конверсию или сразу нужное число людей на этапе: недостающее подставится. Подписка: в ячейке — сколько платящих на конец месяца, новые продажи считаются с учётом оттока.' })
+    );
+
+    // ── сводка ──
+    const kpi = (label, fn, cls) => el('div', { class: 'fm-kpi' + (cls ? ' ' + cls : '') }, el('div', { class: 'fm-kpi-l', text: label }), this.out(fn, 'fm-kpi-v'));
+    this.root.append(el('div', { class: 'fm-kpis' },
+      kpi('Выручка за все периоды', () => finRub(C().tot.rev)),
+      kpi('Расходы', () => finRub(C().tot.exp)),
+      kpi('Прибыль', () => finRub(C().tot.profit), 'fm-kpi-main'),
+      kpi('Новых продаж', () => finCnt(C().tot.fresh)),
+      kpi('Средний чек', () => (C().tot.sales > 0 ? finRub(C().tot.rev / C().tot.sales) : '—')),
+      kpi('Бюджет по воронкам', () => finRub(C().tot.budget)),
+      kpi('Стоимость продажи (CAC)', () => (Number.isFinite(C().tot.budget) && C().tot.fresh > 0 ? finRub(C().tot.budget / C().tot.fresh) : '—'))
+    ));
+
+    this.root.append(this.renderPlan(), this.renderTotals(), this.renderFunnels());
+  }
+
+  // ── 1. тарифы и план продаж ──
+  renderPlan() {
+    const fm = this.fm, C = () => this.calc;
+    const head = el('tr', null,
+      el('th', { class: 'fm-sticky', text: 'Тариф' }), el('th', { class: 'fm-num', text: 'Цена, ₽' }), el('th', { text: 'Тип' }),
+      fm.periods.map(p => el('th', { class: 'fm-num fm-per' },
+        el('div', { class: 'fm-per-h' },
+          this.inp('pname:' + p.id, () => p.name, v => { p.name = v; }, { text: true, cls: 'fm-per-in', label: 'Название периода' }),
+          this.btn('×', async () => {
+            const has = fm.tariffs.some(t => !finEmpty(t.sales[p.id])) || fm.expenses.some(e => !finEmpty(e.values[p.id]));
+            if (has && !(await this.confirmDel('Период «' + (p.name || 'без названия') + '» и все цифры в нём.'))) return;
+            this.structural(f => { f.periods = f.periods.filter(x => x.id !== p.id); });
+          }, 'fm-x', 'Удалить период')))),
+      el('th', { class: 'fm-num', text: 'Итого, шт' }), el('th', { class: 'fm-num', text: 'Выручка' }), el('th'));
+    const rows = fm.tariffs.map(t => {
+      const kind = el('select', { class: 'fm-sel', 'aria-label': 'Тип тарифа' },
+        el('option', { value: 'once', text: 'Разовая продажа' }), el('option', { value: 'sub', text: 'Подписка в месяц' }));
+      kind.value = t.kind;
+      kind.addEventListener('change', () => this.structural(() => { t.kind = kind.value; }));
+      const kindCell = el('td', { class: 'fm-kind' }, kind);
+      if (t.kind === 'sub') kindCell.append(el('div', { class: 'fm-subf' },
+        el('label', null, 'база ', this.inp('start:' + t.id, this.numGet(t, 'start'), this.numSet(t, 'start'), { cls: 'fm-mini', label: 'Платящих на старте', title: 'Сколько платящих уже есть до первого периода' })),
+        el('label', null, 'отток % ', this.inp('churn:' + t.id, this.numGet(t, 'churn'), this.numSet(t, 'churn'), { cls: 'fm-mini', label: 'Отток в месяц, %', title: 'Какая доля платящих уходит за месяц' }))));
+      return el('tr', null,
+        el('td', { class: 'fm-sticky' }, this.inp('tname:' + t.id, () => t.name, v => { t.name = v; }, { text: true, ph: 'Название тарифа', label: 'Название тарифа' })),
+        el('td', { class: 'fm-num' }, this.inp('price:' + t.id, this.numGet(t, 'price'), this.numSet(t, 'price'), { ph: '0', label: 'Цена' })),
+        kindCell,
+        fm.periods.map(p => el('td', { class: 'fm-num' },
+          this.inp('sale:' + t.id + ':' + p.id, () => (finEmpty(t.sales[p.id]) ? '' : String(t.sales[p.id])), v => { if (String(v).trim() === '') delete t.sales[p.id]; else t.sales[p.id] = finNum(v); },
+            { label: (t.name || 'Тариф') + ', ' + (p.name || 'период'), phFn: () => (t.kind === 'sub' ? finCnt(C().T[t.id] ? C().T[t.id].carry[p.id] : 0) : '0') }),
+          t.kind === 'sub' ? this.out(() => '+' + finCnt(C().T[t.id].fresh[p.id]) + ' новых', 'fm-note') : null)),
+        el('td', { class: 'fm-num' }, this.out(() => (t.kind === 'sub' ? finCnt(C().T[t.id].totalNew) + ' новых' : finCnt(C().T[t.id].totalCount)))),
+        el('td', { class: 'fm-num fm-strong' }, this.out(() => finRub(C().T[t.id].totalRev))),
+        el('td', { class: 'fm-act' }, this.btn('×', async () => {
+          if (!(await this.confirmDel('Тариф «' + (t.name || 'без названия') + '» вместе с его воронкой.'))) return;
+          this.structural(f => { f.tariffs = f.tariffs.filter(x => x.id !== t.id); });
+        }, 'fm-x', 'Удалить тариф')));
+    });
+    const foot = el('tr', { class: 'fm-total' },
+      el('td', { class: 'fm-sticky', text: 'Выручка' }), el('td'), el('td'),
+      fm.periods.map(p => el('td', { class: 'fm-num' }, this.out(() => finRub(C().per[p.id].rev)))),
+      el('td'), el('td', { class: 'fm-num' }, this.out(() => finRub(C().tot.rev))), el('td'));
+    return el('section', { class: 'fm-sec' },
+      el('h2', { text: '1. Тарифы и план продаж' }),
+      el('div', { class: 'fm-wrap' }, el('table', { class: 'fm-table' }, el('thead', null, head), el('tbody', null, rows, foot))),
+      el('div', { class: 'fm-bar' },
+        this.btn('+ Тариф', () => this.structural(f => { f.tariffs.push({ id: uid(), name: '', price: '', kind: 'once', sales: {}, stages: finDefaultStages(), fact: {} }); })),
+        this.btn('+ Месяц', () => this.structural(f => { f.periods.push({ id: uid(), name: finNextName(f.periods.length ? f.periods[f.periods.length - 1].name : '') }); }))));
+  }
+
+  // ── 2. итоги, расходы, прибыль ──
+  renderTotals() {
+    const fm = this.fm, C = () => this.calc;
+    const row = (label, fn, cls, totFn) => el('tr', { class: cls || null },
+      el('td', { class: 'fm-sticky', text: label }),
+      fm.periods.map(p => el('td', { class: 'fm-num' }, this.out(() => fn(p)))),
+      el('td', { class: 'fm-num fm-strong' }, totFn ? this.out(totFn) : null), el('td'));
+    const exp = fm.expenses.map(e => el('tr', { class: 'fm-exp' },
+      el('td', { class: 'fm-sticky' }, this.inp('ename:' + e.id, () => e.name, v => { e.name = v; }, { text: true, ph: 'Статья расходов', label: 'Статья расходов' })),
+      fm.periods.map(p => el('td', { class: 'fm-num' }, this.inp('exp:' + e.id + ':' + p.id, () => (finEmpty(e.values[p.id]) ? '' : String(e.values[p.id])), v => { if (String(v).trim() === '') delete e.values[p.id]; else e.values[p.id] = finNum(v); }, { ph: '0', label: (e.name || 'Расход') + ', ' + (p.name || 'период') }))),
+      el('td', { class: 'fm-num' }, this.out(() => finRub(fm.periods.reduce((a, p) => a + finNum(e.values[p.id]), 0)))),
+      el('td', { class: 'fm-act' }, this.btn('×', () => this.structural(f => { f.expenses = f.expenses.filter(x => x.id !== e.id); }), 'fm-x', 'Удалить статью'))));
+    const head = el('tr', null, el('th', { class: 'fm-sticky', text: 'Показатель' }), fm.periods.map(p => el('th', { class: 'fm-num' }, this.out(() => p.name || 'Период'))), el('th', { class: 'fm-num', text: 'Итого' }), el('th'));
+    const body = [
+      fm.tariffs.map(t => row(t.name || 'Тариф', p => finRub(C().T[t.id].rev[p.id]), 'fm-sub', () => finRub(C().T[t.id].totalRev))),
+      row('Выручка', p => finRub(C().per[p.id].rev), 'fm-total', () => finRub(C().tot.rev)),
+      row('Новых продаж', p => finCnt(C().per[p.id].fresh), null, () => finCnt(C().tot.fresh)),
+      el('tr', { class: 'fm-group' }, el('td', { class: 'fm-sticky', text: 'Расходы', colspan: String(fm.periods.length + 3) })),
+      exp,
+      el('tr', null, el('td', { class: 'fm-sticky', colspan: String(fm.periods.length + 3) }, this.btn('+ Статья расходов', () => this.structural(f => { f.expenses.push({ id: uid(), name: '', values: {} }); }), 'fm-link'))),
+      row('Расходы всего', p => finRub(C().per[p.id].exp), 'fm-total', () => finRub(C().tot.exp)),
+      row('Прибыль', p => finRub(C().per[p.id].profit), 'fm-total fm-profit', () => finRub(C().tot.profit)),
+      row('Прибыль нарастающим итогом', p => finRub(C().per[p.id].cumProfit), 'fm-muted'),
+      row('Маржа', p => (C().per[p.id].rev > 0 ? finPct(C().per[p.id].profit / C().per[p.id].rev * 100) : '—'), 'fm-muted', () => (C().tot.rev > 0 ? finPct(C().tot.profit / C().tot.rev * 100) : '—')),
+      row('Бюджет по воронкам (для сверки с рекламой)', p => finRub(C().per[p.id].budget), 'fm-muted', () => finRub(C().tot.budget))
+    ];
+    return el('section', { class: 'fm-sec' },
+      el('h2', { text: '2. Итоги, расходы и прибыль' }),
+      el('div', { class: 'fm-wrap' }, el('table', { class: 'fm-table' }, el('thead', null, head), el('tbody', null, body.flat(3)))));
+  }
+
+  // ── 3. воронки по тарифам ──
+  renderFunnels() {
+    const fm = this.fm, C = () => this.calc;
+    const view = fm.view;
+    const chips = el('div', { class: 'fm-chips', role: 'tablist' },
+      [{ id: 'all', name: 'Все периоды' }].concat(fm.periods).map(p => el('button', {
+        type: 'button', role: 'tab', class: 'fm-chip' + (view === p.id ? ' on' : ''), 'aria-selected': view === p.id ? 'true' : 'false',
+        onclick: () => this.structural(f => { f.view = p.id; })
+      }, p.name || 'Период')));
+    const cards = fm.tariffs.map(t => {
+      const F = () => C().T[t.id].funnel[view];
+      const n = t.stages.length;
+      const factIn = (sid, label) => (view === 'all'
+        ? this.out(() => { const v = F().fact[sid === FIN_SALE ? n : t.stages.findIndex(s => s.id === sid)]; return v == null ? '' : finCnt(v); }, 'fm-faint')
+        : this.inp('fact:' + t.id + ':' + view + ':' + sid, () => { const v = t.fact[view] && t.fact[view][sid]; return finEmpty(v) ? '' : String(v); },
+          v => { t.fact[view] = t.fact[view] || {}; if (String(v).trim() === '') delete t.fact[view][sid]; else t.fact[view][sid] = finNum(v); }, { ph: '—', label: 'Факт: ' + label }));
+      const rows = t.stages.map((s, i) => el('tr', null,
+        el('td', { class: 'fm-sticky' }, this.inp('sname:' + s.id, () => s.name, v => { s.name = v; }, { text: true, ph: 'Этап', label: 'Название этапа' })),
+        el('td', { class: 'fm-num' }, this.inp('conv:' + s.id, this.numGet(s, 'conv'), this.numSet(s, 'conv'), { ph: '%', label: 'Конверсия в следующий этап, %' })),
+        el('td', { class: 'fm-num fm-strong' }, this.inp('need:' + t.id + ':' + view + ':' + s.id, () => { const v = F().need[i]; return Number.isFinite(v) ? finCnt(v).replace(/\s/g, '') : ''; },
+          v => {
+            const want = finNum(v), next = F().need[i + 1];
+            if (want > 0 && Number.isFinite(next) && next > 0) s.conv = Math.round(next / want * 10000) / 100;
+          }, { ph: '—', label: 'Нужно людей на этапе', cls: 'fm-need', title: 'Впишите своё число — конверсия этого этапа пересчитается' })),
+        el('td', { class: 'fm-num' }, factIn(s.id, s.name)),
+        el('td', { class: 'fm-num' }, this.out(() => finPct(F().factConv[i]), 'fm-faint')),
+        el('td', { class: 'fm-num' }, this.inp('cost:' + s.id, this.numGet(s, 'cost'), this.numSet(s, 'cost'), { ph: '—', label: 'Стоимость одного человека на этапе, ₽' })),
+        el('td', { class: 'fm-num' }, this.out(() => (finEmpty(s.cost) ? '' : finRub(F().need[i] * finNum(s.cost))))),
+        el('td', { class: 'fm-act' },
+          this.btn('↑', () => this.structural(() => { if (i > 0) t.stages.splice(i - 1, 0, t.stages.splice(i, 1)[0]); }), 'fm-x', 'Выше'),
+          this.btn('↓', () => this.structural(() => { if (i < n - 1) t.stages.splice(i + 1, 0, t.stages.splice(i, 1)[0]); }), 'fm-x', 'Ниже'),
+          this.btn('×', () => this.structural(() => { t.stages.splice(i, 1); }), 'fm-x', 'Удалить этап'))));
+      const sale = el('tr', { class: 'fm-total' },
+        el('td', { class: 'fm-sticky', text: t.kind === 'sub' ? 'Новые продажи' : 'Продажи' }),
+        el('td', { class: 'fm-num fm-faint', text: 'план' }),
+        el('td', { class: 'fm-num fm-strong' }, this.out(() => finCnt(F().need[n]))),
+        el('td', { class: 'fm-num' }, factIn(FIN_SALE, 'продажи')),
+        el('td'), el('td'),
+        el('td', { class: 'fm-num fm-strong' }, this.out(() => finRub(F().budget))), el('td'));
+      const summary = el('div', { class: 'fm-fsum' },
+        this.out(() => {
+          const f = F(), plan = f.need[n];
+          const parts = ['План: ' + finCnt(plan) + ' продаж'];
+          if (Number.isFinite(f.budget) && plan > 0) parts.push('стоимость продажи ' + finRub(f.budget / plan));
+          if (Number.isFinite(f.forecast)) parts.push('по факту верхнего этапа прогноз ≈ ' + finCnt(f.forecast) + ' продаж');
+          return parts.join(' · ');
+        }));
+      return el('div', { class: 'fm-card' },
+        el('h3', null, this.out(() => (t.name || 'Тариф') + (t.price !== '' ? ' · ' + finRub(finNum(t.price)) : ''))),
+        el('div', { class: 'fm-wrap' }, el('table', { class: 'fm-table fm-funnel' },
+          el('thead', null, el('tr', null,
+            el('th', { class: 'fm-sticky', text: 'Этап' }), el('th', { class: 'fm-num', text: 'Конверсия в следующий' }), el('th', { class: 'fm-num', text: 'Нужно' }),
+            el('th', { class: 'fm-num', text: 'Факт' }), el('th', { class: 'fm-num', text: 'Конверсия факт' }), el('th', { class: 'fm-num', text: '₽ за 1' }), el('th', { class: 'fm-num', text: 'Бюджет' }), el('th'))),
+          el('tbody', null, rows, sale))),
+        summary,
+        el('div', { class: 'fm-bar' }, this.btn('+ Этап', () => this.structural(() => { t.stages.push({ id: uid(), name: '', conv: '', cost: '' }); }))));
+    });
+    return el('section', { class: 'fm-sec' },
+      el('h2', { text: '3. Воронки продаж по тарифам' }),
+      el('p', { class: 'fin-hint', text: 'План продаж берётся из таблицы 1. «Нужно» считается снизу вверх: продажи ÷ конверсия. Впишите «Нужно» сами — пересчитается конверсия этого этапа. «Факт» вносится по месяцам, во вкладке «Все периоды» он суммируется. «₽ за 1» — сколько стоит один человек на этапе (например, переход или заявка), из этого считается бюджет.' }),
+      chips, cards);
+  }
+}
+
+function seedFinPage() {
+  const per = [{ id: 'fp-1', name: 'Ноябрь 2026' }, { id: 'fp-2', name: 'Декабрь 2026' }, { id: 'fp-3', name: 'Январь 2027' }];
+  const st = (pre, list) => list.map(([name, conv, cost], i) => ({ id: pre + i, name, conv: conv == null ? '' : conv, cost: cost == null ? '' : cost }));
+  return {
+    id: 'seed-fin', type: 'fin', title: 'Финмодель', icon: '📊',
+    fm: normalizeFm({
+      periods: per,
+      tariffs: [
+        { id: 'ft-club', name: 'Сообщество', price: 5000, kind: 'sub', start: 70, churn: 10, sales: { 'fp-1': 80, 'fp-2': 90, 'fp-3': 100 },
+          stages: st('fs-c', [['Просмотры рилсов', 1.5], ['Переходы на сайт', 30], ['Регистрации (лид-магнит)', 60], ['Зашли в бесплатный чат', 30], ['Пришли на встречу', 20]]) },
+        { id: 'ft-with', name: 'Сделать вместе · 4 недели', price: 50000, kind: 'once', sales: { 'fp-1': 10, 'fp-3': 12 },
+          stages: st('fs-w', [['Участники сообщества', 25], ['Пришли на встречу-презентацию', 40], ['Оставили заявку', 50]]) },
+        { id: 'ft-done', name: 'Сделать за клиента', price: 200000, kind: 'once', sales: { 'fp-2': 1, 'fp-3': 2 },
+          stages: st('fs-d', [['Заявки', 40], ['Созвон-диагностика', 30]]) }
+      ],
+      expenses: [{ id: 'fe-1', name: 'Реклама и продвижение', values: {} }, { id: 'fe-2', name: 'Команда и кураторы', values: {} }, { id: 'fe-3', name: 'Сервисы', values: {} }],
+      view: 'all'
+    })
+  };
+}
+
+// ════════════════════════════════════════════════════════════
 //  Шаблон: продукт «ИИ для руководителей» — идеи, mindmap, тесты воронок
 // ════════════════════════════════════════════════════════════
 // Поднимайте версию при смене шаблона: нетронутые планы в браузерах пересоберутся из нового шаблона
-const SEED_VERSION = 2;
+const SEED_VERSION = 3;
 const SEED_FIRST_ID = 'seed-product';
 
 const SEED_LAUNCH_MD = `Ход тестов воронок. Отмечайте сделанное, дописывайте задачи, меняйте порядок (тяните за ⋮⋮). «/» — меню блоков.
@@ -3491,11 +3916,11 @@ function seedBoard() {
   const SW = 300, GAP = 30;
   const stickH = html => Math.max(130, 70 + Math.ceil(html.replace(/<[^>]+>/g, '').length / 28) * 22);
 
-  T(-150, -760, 3000, '<b>Mindmap: ИИ для руководителей</b>', 44);
-  T(-150, -680, 3000, 'Двойной клик по пустому месту — новый стикер. Синие точки у выделенного — провести связь. Свои идеи кидайте в «Парковку» справа.', 18, 'gray');
+  T(-150, -760, 3000, '<b>Mindmap: стратегия роста CMO</b>', 44);
+  T(-150, -680, 3000, 'Обновлено 17.10 по саммари стратегии. Двойной клик по пустому месту — новый стикер. Синие точки у выделенного — провести связь. Свои идеи кидайте в «Парковку» справа.', 18, 'gray');
 
   const CX = 1200, CY = 900, CW = 440, CH = 200;
-  const center = SH(CX, CY, CW, CH, 'ellipse', 'dark', '<b>ИИ для руководителей</b><br>предприниматели · руководители в найме · C-level');
+  const center = SH(CX, CY, CW, CH, 'ellipse', 'dark', '<b>Система привлечения клиентов на ИИ</b><br>малый бизнес · 70 участников · ≈350 000 ₽/мес');
 
   // ветка: узел + стикеры, уходящие от центра (up / down / left / right)
   const branch = (x, y, dir, title, shapeColor, stickColor, list) => {
@@ -3518,58 +3943,59 @@ function seedBoard() {
     return node;
   };
 
-  branch(-150, 500, 'up', 'Аудитория', 'blue', 'blue', [
-    '<b>Предприниматели</b><br>Собственники МСБ: меньше рутины, дешевле команда',
-    '<b>Руководители в найме</b><br>CMO, коммерческие, операционные директора: результат отдела и аргумент для CEO',
-    '<b>C-level корпораций</b><br>Стратегия ИИ, безопасность, обучение команды. Платит компания',
-    '<b>?</b> Кого берём первым'
+  branch(-150, 500, 'up', 'Аудитория и боль', 'blue', 'blue', [
+    '<b>Малый бизнес</b><br>Собственники, которые сами отвечают за заявки',
+    '<b>Горящая боль</b><br>Нехватка клиентов и заявок',
+    '<b>Хроническая</b><br>«Всё тяну на себе» — не в заголовок, а в выгоду',
+    'ИИ — не боль, а способ решения',
+    '<b>?</b> Проверить боль на 70 участниках: что болит и какими словами'
   ]);
-  branch(1270, 500, 'up', 'Лестница чеков', 'yellow', 'orange', [
-    '<b>Трипак · 2 500 ₽</b><br>Вход и проверка интереса',
-    '<b>Ступень 1 · 50 000 ₽</b><br>1,5 месяца, 2 занятия в неделю',
-    '<b>Ступень 2 · 200 000 ₽</b><br>Внедрение в компании',
-    '<b>Клуб · 5 000 ₽/мес</b><br>Подписка, месяц в подарок к покупке',
-    '<b>Позже · 400–600 тыс. ₽</b><br>Максимайзер, как ICF или ИСС'
+  branch(1270, 500, 'up', 'Лестница продуктов', 'yellow', 'orange', [
+    '<b>Бесплатно</b><br>Reels, лид-магнит, чат, встречи',
+    '<b>Сообщество · 5 000 ₽/мес</b><br>70 участников ≈ 350 000 ₽/мес',
+    '<b>Сделать вместе</b><br>Внедряем прямо на встречах',
+    '<b>Сделать за клиента</b><br>Команда собирает под ключ, дороже',
+    '<b>Персонализация</b><br>Под конкретный бизнес клиента'
   ]);
-  branch(2690, 500, 'up', 'Формат запуска', 'violet', 'violet', [
-    'Продаём по разным чекам, все ждут в Ядре',
-    'Первый запуск живой для всех, собираем обратную связь',
-    'Потом: запись дёшево, повторный живой дорого',
-    'Навыковые курсы, а не профессии (эфир с Лёней)',
-    '<b>?</b> Конструктор или тарифы'
+  branch(2690, 500, 'up', 'Упаковка', 'violet', 'violet', [
+    '<b>Смысл</b><br>Система привлечения клиентов на ИИ за 4 недели — без агентства и без найма маркетолога',
+    '<b>Обещание</b><br>Контент, реклама, воронка, обработка заявок',
+    '<b>Отличие от курсов</b><br>Не записи, а внедрение на встречах',
+    '<b>Доказательства</b><br>Свои кейсы, гарантии не нужны',
+    '<b>Ограничение</b><br>Маленькая группа, разбор каждого бизнеса'
   ]);
-  branch(3300, 945, 'right', 'Воронки для теста', 'green', 'green', [
-    '<b>Обход личек</b><br>Тёплая база → созвон → 50 000 / 200 000 ₽',
-    '<b>Рилсы из вебов</b><br>Кодовое слово → бот → трипак',
-    '<b>Квиз AI Maturity</b><br>Диагностика → разбор → 200 000 ₽',
-    '<b>Эфир</b><br>Регистрация → бот → продажа 50 000 ₽',
-    '<b>Корпоративный аутрич</b><br>Руслан → пилот для команды'
+  branch(3300, 945, 'right', 'Воронка через Reels', 'green', 'green', [
+    '<b>Reels</b><br>Про ИИ в маркетинге',
+    '<b>Лид-магнит</b><br>За регистрацию на сайте в один шаг',
+    '<b>Бесплатный чат</b><br>Польза + анонсы встреч',
+    '<b>Встреча</b><br>Reels приводят на встречи больше людей',
+    '<b>Платное сообщество</b><br>→ премиум-внедрение'
   ]);
-  branch(2690, 1300, 'down', 'Трафик', 'yellow', 'yellow', [
-    'Нарезки рилсов из текущих вебов',
-    'Партнёрка: клуб на месяц в подарок',
-    'Бартер с медийкой за охваты в Instagram',
-    'Рассылка с рабочей лички по подписчикам. Риск: примут за бота',
-    'SEO, в долгую'
+  branch(2690, 1300, 'down', 'Контент', 'yellow', 'yellow', [
+    '3–5 роликов в неделю',
+    'Хук в первые 2 секунды',
+    'Один полезный шаг на ролик',
+    'Лицо в кадре',
+    'Главный ресурс — нарезки Маркшопов и встреч'
   ]);
-  branch(1270, 1300, 'down', 'Платформа и упаковка', 'gray', 'cyan', [
-    'Ядро → доделать до LMS, не платить GetCourse',
-    'Лендинг: вёрстка Il.Chu, смыслы с нас',
-    'Файл с оффером для личек — Олег',
-    'План продукта — Il.Chu частично'
+  branch(1270, 1300, 'down', 'Живой запуск', 'gray', 'cyan', [
+    '<b>По шагам пути клиента</b><br>Упаковка → контент → реклама → воронка → заявки',
+    'Одна встреча = одна задача, 30–40 минут практики',
+    'Группа 10–15 человек, две комнаты в Zoom',
+    'Шаблоны и чек-листы на каждый шаг',
+    '<b>Контроль</b><br>Скриншот результата в чат; с отстающими — созвон или куратор'
   ]);
-  branch(-150, 1300, 'down', 'Рефы и конкуренты', 'gray', 'gray', [
-    '<b>РШУ</b><br>Маркетинг, 24 ч: 35 000 ₽. Программы по ИИ нет',
-    '<b>Moscow.mba</b><br>«Цифровая трансформация», 18 мес, 319 500 ₽. ИИ — бонусный модуль',
-    '<b>Финконт</b><br>Корпораты, 35 направлений, очно и онлайн',
-    '<b>AIBasis</b><br>НейроСтарт 39 990–119 990 ₽',
-    '<b>5призм</b><br>Библиотека входных продуктов по ~20 $'
+  branch(-150, 1300, 'down', 'Кейсы', 'gray', 'gray', [
+    'Reels, которые принесли заявки',
+    'Оптимизация Директа',
+    'Воронка за минуту',
+    '<b>Первые покупатели</b><br>Среди текущих 70 участников'
   ]);
   branch(-400, 945, 'left', 'Открытые вопросы', 'red', 'red', [
-    'Живой или запись первым?',
-    'Конструктор или тарифы?',
-    'Какие модули за 0 ₽: подготовка, безопасность, …',
-    'Из чего складывается 1 млн на первый запуск?'
+    'Какой лид-магнит выбираем?',
+    'Ритм контента в бесплатном чате',
+    'Цена, число мест, длительность',
+    'Разделение ролей с Ильёй'
   ]);
 
   F(4300, -500, 1060, 1500, 'Парковка идей — кидайте сюда');
@@ -3577,9 +4003,9 @@ function seedBoard() {
     S(4350 + (i % 2) * 500, -420 + Math.floor(i / 2) * 700, 460, 640, c, '<b>' + who + '</b><br>', 'left');
   });
 
-  return { id: 'seed-mindmap', type: 'board', title: 'Mindmap продукта', icon: '🧠', items: items.map(normalizeItem).filter(Boolean) };
+  return { id: 'seed-mindmap', type: 'board', title: 'Mindmap стратегии', icon: '🧠', items: items.map(normalizeItem).filter(Boolean) };
 }
-function seedPages() { return [seedFunnelDoc(), seedBoard(), seedLaunchDoc()].map(normalizePage); }
+function seedPages() { return [seedFunnelDoc(), seedBoard(), seedLaunchDoc(), seedFinPage()].map(normalizePage); }
 
 // ════════════════════════════════════════════════════════════
 //  Приложение: боковая панель, страницы, меню
@@ -3598,7 +4024,7 @@ function updateUndoButtons() {
   $('#redo-btn').disabled = !History.canRedo(p);
 }
 function pageLabel(p) { return p.title || (p.type === 'board' ? 'Без названия' : 'Без названия'); }
-function pageIcon(p) { return p.icon || (p.type === 'board' ? '🧩' : '📄'); }
+function pageIcon(p) { return p.icon || (p.type === 'board' ? '🧩' : p.type === 'fin' ? '📊' : '📄'); }
 
 function renderChrome() {
   renderSidebar();
@@ -3617,7 +4043,7 @@ function renderSidebar() {
     const row = el('div', { class: 'pg' + (p.id === state.activeId ? ' active' : ''), draggable: 'true', 'data-id': p.id, title: pageLabel(p), role: 'button', tabindex: '0' },
       el('span', { class: 'pg-icon', text: pageIcon(p) }),
       el('span', { class: 'pg-title', text: pageLabel(p) }),
-      p.type === 'board' ? el('span', { class: 'pg-kind', text: 'доска' }) : null,
+      p.type === 'board' ? el('span', { class: 'pg-kind', text: 'доска' }) : p.type === 'fin' ? el('span', { class: 'pg-kind', text: 'финмодель' }) : null,
       el('button', { class: 'pg-more', type: 'button', title: 'Действия', 'aria-label': 'Действия со страницей', html: ICONS.dots }));
     row.addEventListener('click', e => {
       if (e.target.closest('.pg-more')) { e.stopPropagation(); pageMenu(p, e.target.closest('.pg-more')); return; }
@@ -3664,7 +4090,7 @@ function openPage(id, opts) {
   const view = $('#view');
   view.innerHTML = '';
   $('#main').classList.toggle('is-board', p.type === 'board');
-  editor = p.type === 'board' ? new BoardEditor(p, view) : new DocEditor(p, view);
+  editor = p.type === 'board' ? new BoardEditor(p, view) : p.type === 'fin' ? new FinEditor(p, view) : new DocEditor(p, view);
   renderChrome();
   updateUndoButtons();
   closeSidebarMobile();
@@ -3686,7 +4112,7 @@ function toggleSidebar(force) {
 }
 
 function addPage(type) {
-  const p = type === 'board' ? newBoardPage() : newDocPage();
+  const p = type === 'board' ? newBoardPage() : type === 'fin' ? newFinPage() : newDocPage();
   const i = state.pages.findIndex(x => x.id === state.activeId);
   state.pages.splice(i + 1, 0, p);
   History.entry(p);
@@ -3699,7 +4125,7 @@ async function renamePage(p) {
   const v = await ui.prompt({ title: 'Название страницы', value: p.title, ok: 'Сохранить' });
   if (v == null) return;
   p.title = v.trim();
-  if (editor && editor.page === p && editor.render && p.type === 'doc') editor.render();
+  if (editor && editor.page === p && editor.render && p.type !== 'board') editor.render();
   changed(p, null, { sel: null });
 }
 function duplicatePage(p) {
@@ -3731,7 +4157,7 @@ function pageMenu(p, anchor) {
   openMenu(anchor, [
     { label: 'Открыть', icon: '↗', onClick: () => openPage(p.id) },
     { label: 'Переименовать', icon: '✎', onClick: () => { if (p.id !== state.activeId) openPage(p.id); setTimeout(() => renamePage(p), 0); } },
-    { label: 'Сменить иконку', icon: '☺', onClick: () => emojiPicker(anchor.getBoundingClientRect ? anchor : anchor, e => { p.icon = e; if (editor && editor.page === p && p.type === 'doc') editor.render(); changed(p, null, { sel: null }); }, true) },
+    { label: 'Сменить иконку', icon: '☺', onClick: () => emojiPicker(anchor.getBoundingClientRect ? anchor : anchor, e => { p.icon = e; if (editor && editor.page === p && p.type !== 'board') editor.render(); changed(p, null, { sel: null }); }, true) },
     { label: 'Дублировать', icon: '⧉', onClick: () => duplicatePage(p) },
     p.type === 'doc' ? { label: 'Скачать как Markdown', icon: '⬇', onClick: () => download(fileName(p) + '.md', '# ' + pageLabel(p) + '\n\n' + blocksToMd(p.blocks), 'text/markdown;charset=utf-8') } : null,
     'sep',
@@ -3746,7 +4172,8 @@ const fileName = p => (pageLabel(p).replace(/[\\/:*?"<>|«»]+/g, '').trim().sli
 function addPageMenu(anchor) {
   openMenu(anchor, [
     { label: 'Документ', icon: '📄', desc: 'Текст, списки, задачи, таблицы — как в Notion', onClick: () => addPage('doc') },
-    { label: 'Доска', icon: '🧩', desc: 'Стикеры, фигуры, стрелки, фреймы — как в Miro', onClick: () => addPage('board') }
+    { label: 'Доска', icon: '🧩', desc: 'Стикеры, фигуры, стрелки, фреймы — как в Miro', onClick: () => addPage('board') },
+    { label: 'Финмодель', icon: '📊', desc: 'Тарифы, план продаж по месяцам, итоги и воронки с обратным расчётом', onClick: () => addPage('fin') }
   ]);
 }
 
