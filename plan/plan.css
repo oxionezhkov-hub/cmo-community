@@ -75,6 +75,10 @@ a{color:inherit}
 .side-foot{border-top:1px solid var(--line);padding:8px 6px 10px}
 .side-btn{display:flex;align-items:center;gap:8px;width:100%;height:32px;padding:0 8px;border-radius:6px;color:var(--text-2);font-size:13.5px;text-align:left}
 .side-btn:hover{background:var(--side-hover);color:var(--text)}
+.side-btn.on{background:var(--side-hover);color:var(--text)}
+.side-count{margin-left:auto;font-size:11.5px;color:var(--text-3)}
+.side-archive{flex:none;max-height:40%;border-top:1px solid var(--line);padding-top:2px}
+.side-archive .pg{opacity:.8}
 .sync-dot{width:8px;height:8px;border-radius:50%;background:var(--text-3);flex:none}
 .sync-dot.ok{background:var(--ok)}.sync-dot.busy{background:#e8a33d}.sync-dot.err{background:var(--danger)}
 .sync-text{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
