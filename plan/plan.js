@@ -324,6 +324,7 @@ function normalizePage(p) {
   if (!p || typeof p !== 'object') return null;
   const type = p.type === 'board' ? 'board' : p.type === 'fin' ? 'fin' : 'doc';
   const o = { id: typeof p.id === 'string' && p.id ? p.id : uid(), type, title: typeof p.title === 'string' ? p.title : '', icon: typeof p.icon === 'string' ? p.icon : '' };
+  if (p.archived) o.archived = true;
   if (type === 'doc') {
     o.blocks = (Array.isArray(p.blocks) ? p.blocks : []).map(normalizeBlock);
     const seen = new Set();
@@ -3207,7 +3208,9 @@ function mergePages(base, local, server) {
 const Sync = {
   avail: /^https?:$/.test(location.protocol),
   enabled: false, token: null, rev: 0, base: null,
-  pushing: false, again: false, timer: 0, pollT: 0, dirtyAt: 0, errs: 0, status: 'local',
+  pushing: false, again: false, timer: 0, pollT: 0, dirtyAt: 0, errs: 0, status: 'local', readyDone: false,
+  // план совпал с серверным (или сервера нет) — можно один раз прогнать миграции
+  ready() { if (this.readyDone) return; this.readyDone = true; migrateToMass(); },
   init() {
     const s = store.get(LS.sync, null);
     if (this.avail && s && s.token) {
@@ -3217,7 +3220,7 @@ const Sync = {
     } else if (this.avail && !(s && s.off)) {
       // общий план подключается сам, если человек не отключал его вручную
       this.connect();
-    }
+    } else this.ready();
     this.paint();
     document.addEventListener('visibilitychange', () => {
       if (!this.enabled) return;
@@ -3309,6 +3312,7 @@ const Sync = {
         this.applyRemote(j.doc, j.rev);
       }
       if (this.isDirty()) this.onLocalChange(); else { this.dirtyAt = 0; this.paint('ok'); }
+      this.ready();
     } catch (e) { this.paint('err'); }
   },
   applyRemote(doc, rev) {
@@ -3358,6 +3362,7 @@ const Sync = {
     this.persist();
     this.startPoll();
     this.paint(this.isDirty() ? 'dirty' : 'ok');
+    this.ready();
   },
   applyRemoteReplace(doc, rev) {
     const server = doc.pages.map(normalizePage).filter(Boolean);
@@ -3821,8 +3826,8 @@ function seedFinPage() {
 //  Шаблон: продукт «ИИ для руководителей» — идеи, mindmap, тесты воронок
 // ════════════════════════════════════════════════════════════
 // Поднимайте версию при смене шаблона: нетронутые планы в браузерах пересоберутся из нового шаблона
-const SEED_VERSION = 3;
-const SEED_FIRST_ID = 'seed-product';
+const SEED_VERSION = 4;
+const SEED_FIRST_ID = 'mass-product';
 
 const SEED_LAUNCH_MD = `Ход тестов воронок. Отмечайте сделанное, дописывайте задачи, меняйте порядок (тяните за ⋮⋮). «/» — меню блоков.
 
@@ -3898,7 +3903,7 @@ function seedFunnelDoc() {
     if (/^Вывод:/.test(t)) { b.type = 'callout'; b.emoji = '💡'; }
     else if (/^Это иллюстрация/.test(t)) { b.type = 'callout'; b.emoji = '⚠️'; }
   });
-  return { id: SEED_FIRST_ID, type: 'doc', title, icon: '💡', blocks: seedIds(blocks.map(normalizeBlock), 'sp') };
+  return { id: 'seed-product', type: 'doc', title, icon: '💡', blocks: seedIds(blocks.map(normalizeBlock), 'sp') };
 }
 function seedLaunchDoc() {
   return { id: 'seed-tests', type: 'doc', title: 'Тесты воронок', icon: '✅', blocks: seedIds(parseMarkdown(SEED_LAUNCH_MD), 'st') };
@@ -4005,7 +4010,154 @@ function seedBoard() {
 
   return { id: 'seed-mindmap', type: 'board', title: 'Mindmap стратегии', icon: '🧠', items: items.map(normalizeItem).filter(Boolean) };
 }
-function seedPages() { return [seedFunnelDoc(), seedBoard(), seedLaunchDoc(), seedFinPage()].map(normalizePage); }
+// старый шаблон «ИИ для руководителей» лежит в архиве, сверху — массовый продукт
+function oldSeedPages() { return [seedFunnelDoc(), seedBoard(), seedLaunchDoc(), seedFinPage()].map(p => normalizePage(Object.assign(p, { archived: true }))); }
+function seedPages() { return massPages().concat(oldSeedPages()); }
+
+// ════════════════════════════════════════════════════════════
+//  Шаблон: массовый продукт «заработок на ИИ» — продукт, боли, рилсы, воронка
+// ════════════════════════════════════════════════════════════
+// Документы — из plan/seed-mass/*.md (сборка кладёт их в window.PLAN_SEED_MASS), доска воронки — ниже.
+const MASS_DOCS = [['product', '💸', 'mp'], ['pains', '😣', 'mb'], ['reels', '🎬', 'mr'], ['tests', '✅', 'mt']];
+function massDoc(key, icon, prefix) {
+  const md = (window.PLAN_SEED_MASS || {})[key] || '# ' + key + '\n';
+  const blocks = parseMarkdown(md);
+  let title = key;
+  if (blocks[0] && blocks[0].type === 'h1') { title = htmlToText(blocks[0].html); blocks.shift(); }
+  blocks.forEach(b => {
+    if (b.type !== 'text') return;
+    const t = htmlToText(b.html);
+    if (/^(Вывод|Главное):/.test(t)) { b.type = 'callout'; b.emoji = '💡'; }
+    else if (/^(Это иллюстрация|Осторожно):/.test(t)) { b.type = 'callout'; b.emoji = '⚠️'; }
+  });
+  return { id: 'mass-' + key, type: 'doc', title, icon, blocks: seedIds(blocks.map(normalizeBlock), prefix) };
+}
+function massPages() {
+  const d = Object.fromEntries(MASS_DOCS.map(([k, i, pre]) => [k, massDoc(k, i, pre)]));
+  return [d.product, d.pains, d.reels, massFunnelBoard(), d.tests, massFinPage()].map(normalizePage);
+}
+
+function massFunnelBoard() {
+  let n = 0;
+  const items = [];
+  const add = o => { o.id = 'mf-' + (n++); items.push(o); return o; };
+  const S = (x, y, w, h, color, html) => add({ kind: 'sticky', x, y, w, h, color, html, align: 'left' });
+  const F = (x, y, w, h, title, color) => add({ kind: 'frame', x, y, w, h, title, color: color || 'white' });
+  const SH = (x, y, w, h, color, html) => add({ kind: 'shape', x, y, w, h, shape: 'round', color, html });
+  const T = (x, y, w, html, fs, color) => add({ kind: 'text', x, y, w, h: fs * 1.4, html, fs, color: color || 'default' });
+  const A = (a, b, o) => add(Object.assign({ kind: 'line', from: { id: a.id }, to: { id: b.id }, color: 'dark', arrow: 'end', html: '' }, o || {}));
+  const stickH = html => Math.max(120, 60 + Math.ceil(html.replace(/<[^>]+>/g, '').length / 26) * 22);
+
+  T(0, -420, 3400, '<b>Воронка: заработок на ИИ</b>', 44);
+  T(0, -340, 3400, 'Механика как у Турча: анкета → бесплатный закрытый канал с отбором → прогрев → продажа внутри. Цифры конверсий — в «Финмодели: массовый продукт». Свои идеи — в «Парковку» справа.', 18, 'gray');
+
+  // этапы слева направо, под каждым — стикеры с деталями
+  const SW = 300, STEP = 400, Y = 0;
+  const col = (i, color, title, stickColor, list) => {
+    const x = i * STEP;
+    const node = SH(x, Y, SW, 120, color, title);
+    let y = Y + 160;
+    list.forEach(html => { const h = stickH(html); S(x, y, SW, h, stickColor, html); y += h + 24; });
+    return node;
+  };
+  const stages = [
+    col(0, 'violet', '<b>Источники</b>', 'violet', [
+      '<b>Рилсы</b><br>Про заработок на ИИ, своя воронка — см. «Рилсы»',
+      '<b>Чат CMO</b><br>Анкета под широкую ЦА, не под бизнес',
+      '<b>Не прошли в Ядро</b><br>Всех, кто не прошёл квалификацию, — сюда',
+      '<b>Эксперты-юниты</b><br>Мини-продукты (Мари и др.) на креативах'
+    ]),
+    col(1, 'blue', '<b>Кодовое слово → бот</b>', 'blue', [
+      'Слово «ИИ» в комментариях',
+      'Бот присылает анкету и правила: вход бесплатный, но не всех берём'
+    ]),
+    col(2, 'blue', '<b>Анкета</b><br>Google Forms', 'blue', [
+      'Отбор + исследование болей: возраст, занятость, доход, что мешает',
+      '<b>Реф Турча:</b> 319 анкет → 215 в канале + 101 заявка'
+    ]),
+    col(3, 'yellow', '<b>Закрытый канал</b><br>заявки на вступление', 'yellow', [
+      'Принимаем партиями: «отобрали 2/3»',
+      '«Многие после анкеты не перешли в канал — проверьте»',
+      '«Мы не пишем первыми — не ведитесь на мошенников»'
+    ]),
+    col(4, 'yellow', '<b>Прогрев</b><br>видео каждый день', 'yellow', [
+      '5–7 видео: какие задачи на ИИ покупают и как сделать первую',
+      'Домашка и первые результаты участников в канале',
+      'Надежда: механизм, почему получится'
+    ]),
+    col(5, 'green', '<b>Продажа внутри</b>', 'green', [
+      '<b>Мини-продукт</b> 990–2 900 ₽<br>один способ заработка под ключ',
+      '<b>Курс «До первого заказа»</b> 15–30 тыс. ₽, 4 недели'
+    ]),
+    col(6, 'green', '<b>Удержание</b>', 'green', [
+      '<b>Клуб по заработку на ИИ</b> 2–3 тыс. ₽/мес',
+      'Лучшие выпускники → исполнители в «контент-завод» и наши проекты',
+      'Кейсы участников → новые рилсы'
+    ])
+  ];
+  for (let i = 1; i < stages.length; i++) A(stages[i - 1], stages[i]);
+
+  // вторая модель рядом — сообщество CMO остаётся как есть
+  const Y2 = 1300;
+  T(0, Y2 - 90, 3000, '<b>Модель 1 · Сообщество CMO (параллельно)</b>', 28);
+  const m1 = [
+    SH(0, Y2, SW, 110, 'gray', '<b>Рилсы на бренд «семьи»</b>'),
+    SH(STEP, Y2, SW, 110, 'gray', '<b>Чат CMO</b><br>диалоги, голосовые, больше инфы'),
+    SH(STEP * 2, Y2, SW, 110, 'gray', '<b>Квалификация</b><br>заходят с болью или не заходят'),
+    SH(STEP * 3, Y2, SW, 110, 'gray', '<b>Ядро / клуб 5 000 ₽</b><br>+ витрина продуктов')
+  ];
+  for (let i = 1; i < m1.length; i++) A(m1[i - 1], m1[i], { color: 'gray' });
+  S(STEP * 3, Y2 + 150, SW, 150, 'gray', '<b>Масштаб</b><br>Обход базы диалогов Олега, напоминания — как Гребенюк');
+  A(m1[2], stages[0], { color: 'orange', arrow: 'end', html: 'не прошли → в массовую' });
+
+  F(2850, Y2 - 120, 1000, 900, 'Открытые вопросы', 'white');
+  [
+    'Кто лицо продукта: мы, Мари, несколько экспертов?',
+    'Какие 3 способа заработка даём первыми?',
+    'Что продаём первым в канале?',
+    'Как не обещать денег и не уйти в скам?'
+  ].forEach((t, i) => S(2900 + (i % 2) * 470, Y2 - 40 + Math.floor(i / 2) * 330, 430, 280, 'red', t));
+
+  F(2950, -260, 1060, 1200, 'Парковка идей — кидайте сюда');
+  [['Олег', 'yellow'], ['Дима', 'pink'], ['Il.Chu', 'cyan'], ['Руслан', 'green']].forEach(([who, c], i) => {
+    S(3000 + (i % 2) * 500, -180 + Math.floor(i / 2) * 540, 460, 500, c, '<b>' + who + '</b><br>');
+  });
+
+  return { id: 'mass-funnel', type: 'board', title: 'Воронка: заработок на ИИ', icon: '🔁', items: items.map(normalizeItem).filter(Boolean) };
+}
+
+function massFinPage() {
+  const per = [{ id: 'mp-1', name: 'Ноябрь 2026' }, { id: 'mp-2', name: 'Декабрь 2026' }, { id: 'mp-3', name: 'Январь 2027' }];
+  const st = (pre, list) => list.map(([name, conv, cost], i) => ({ id: pre + i, name, conv: conv == null ? '' : conv, cost: cost == null ? '' : cost }));
+  return {
+    id: 'mass-fin', type: 'fin', title: 'Финмодель: массовый продукт', icon: '📊',
+    fm: normalizeFm({
+      periods: per,
+      tariffs: [
+        { id: 'mt-mini', name: 'Мини-продукт', price: 1990, kind: 'once', sales: { 'mp-1': 60, 'mp-2': 120, 'mp-3': 200 },
+          stages: st('ms-m', [['Просмотры рилсов', 1], ['Кодовое слово', 40], ['Анкеты', 65], ['Вступили в канал', 30]]) },
+        { id: 'mt-course', name: 'Курс «До первого заказа» · 4 недели', price: 19900, kind: 'once', sales: { 'mp-1': 10, 'mp-2': 20, 'mp-3': 30 },
+          stages: st('ms-c', [['Участники канала', 15], ['Купили мини-продукт', 30]]) },
+        { id: 'mt-club', name: 'Клуб по заработку на ИИ', price: 2500, kind: 'sub', churn: 20, sales: { 'mp-2': 10, 'mp-3': 20 },
+          stages: st('ms-k', [['Выпускники курса', 60]]) }
+      ],
+      expenses: [{ id: 'me-1', name: 'Трафик и креативы', values: {} }, { id: 'me-2', name: 'Эксперты и кураторы', values: {} }, { id: 'me-3', name: 'Сервисы', values: {} }],
+      view: 'all'
+    })
+  };
+}
+
+// Один раз переводим общий план на массовый продукт: всё, что было, — в архив, новые страницы — сверху.
+// Страницы и id одинаковые у всех, поэтому если два браузера сделают это одновременно, слияние ничего не задвоит.
+function migrateToMass() {
+  if (state.pages.some(p => p.archived || /^mass-/.test(p.id))) return;
+  state.pages.forEach(p => { p.archived = true; });
+  const fresh = massPages();
+  state.pages.unshift(...fresh);
+  globalChanged();
+  openPage(fresh[0].id);
+  toast('Старые страницы про продукт для предпринимателей теперь в «Архиве» внизу панели', { timeout: 9000 });
+}
 
 // ════════════════════════════════════════════════════════════
 //  Приложение: боковая панель, страницы, меню
@@ -4036,10 +4188,24 @@ function renderChrome() {
 }
 
 let dragPage = null;
+let archiveOpen = false;
 function renderSidebar() {
-  const list = $('#pages');
-  list.innerHTML = '';
+  const main = $('#pages'), arch = $('#archive-pages');
+  main.innerHTML = '';
+  arch.innerHTML = '';
+  const archived = state.pages.filter(p => p.archived);
+  const ap = activePage();
+  if (!archived.length) archiveOpen = false;
+  // архивные страницы видны только по кнопке «Архив» внизу панели или пока одна из них открыта
+  const show = archiveOpen || !!(ap && ap.archived);
+  $('#archive-btn').hidden = !archived.length;
+  $('#archive-btn').classList.toggle('on', show);
+  $('#archive-count').textContent = archived.length;
+  arch.hidden = !show;
+  if (show) arch.append(el('div', { class: 'side-section', text: 'Архив' }));
   state.pages.forEach(p => {
+    if (p.archived && !show) return;
+    const list = p.archived ? arch : main;
     const row = el('div', { class: 'pg' + (p.id === state.activeId ? ' active' : ''), draggable: 'true', 'data-id': p.id, title: pageLabel(p), role: 'button', tabindex: '0' },
       el('span', { class: 'pg-icon', text: pageIcon(p) }),
       el('span', { class: 'pg-title', text: pageLabel(p) }),
@@ -4053,12 +4219,12 @@ function renderSidebar() {
     row.addEventListener('dblclick', e => { if (!e.target.closest('.pg-more')) renamePage(p); });
     row.addEventListener('contextmenu', e => { e.preventDefault(); pageMenu(p, { left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }); });
     row.addEventListener('dragstart', e => { dragPage = p.id; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', pageLabel(p)); } catch (er) { /* noop */ } });
-    row.addEventListener('dragend', () => { dragPage = null; $$('.pg', list).forEach(r => r.classList.remove('drop-before', 'drop-after')); });
+    row.addEventListener('dragend', () => { dragPage = null; $$('.pg', $('#sidebar')).forEach(r => r.classList.remove('drop-before', 'drop-after')); });
     row.addEventListener('dragover', e => {
       if (!dragPage || dragPage === p.id) return;
       e.preventDefault();
       const r = row.getBoundingClientRect(), after = e.clientY > r.top + r.height / 2;
-      $$('.pg', list).forEach(x => x.classList.remove('drop-before', 'drop-after'));
+      $$('.pg', $('#sidebar')).forEach(x => x.classList.remove('drop-before', 'drop-after'));
       row.classList.add(after ? 'drop-after' : 'drop-before');
     });
     row.addEventListener('drop', e => {
@@ -4066,6 +4232,7 @@ function renderSidebar() {
       e.preventDefault();
       const after = row.classList.contains('drop-after');
       const moving = page(dragPage);
+      if (p.archived) moving.archived = true; else delete moving.archived;
       state.pages = state.pages.filter(x => x !== moving);
       const i = state.pages.indexOf(p);
       state.pages.splice(after ? i + 1 : i, 0, moving);
@@ -4079,7 +4246,7 @@ function globalChanged() { setSaveState('dirty'); saveLocal(); Sync.onLocalChang
 
 function openPage(id, opts) {
   opts = opts || {};
-  const p = page(id) || state.pages[0];
+  const p = page(id) || state.pages.find(x => !x.archived) || state.pages[0];
   if (!p) return;
   closeMenu();
   SelTool.hide();
@@ -4142,9 +4309,26 @@ async function deletePage(p) {
   if (i < 0) return;
   state.pages.splice(i, 1);
   if (!state.pages.length) state.pages.push(newDocPage('Без названия'));
-  if (state.activeId === p.id) openPage(state.pages[Math.max(0, i - 1)].id);
+  if (state.activeId === p.id) openPage((state.pages.slice(0, i).reverse().find(x => !!x.archived === !!p.archived) || state.pages.find(x => !x.archived) || state.pages[0]).id);
   globalChanged();
   toast('Страница удалена', { timeout: 8000, action: { label: 'Вернуть', fn: () => { if (page(p.id)) return; state.pages.splice(Math.min(i, state.pages.length), 0, p); History.reset(p); globalChanged(); openPage(p.id); } } });
+}
+function archivePage(p, on) {
+  if (on) p.archived = true; else delete p.archived;
+  if (on && p.id === state.activeId) {
+    const next = state.pages.find(x => !x.archived);
+    if (next) openPage(next.id);
+  }
+  globalChanged();
+  toast(on ? 'Страница в архиве — кнопка «Архив» внизу' : 'Страница вернулась из архива', { timeout: 6000, action: { label: 'Отменить', fn: () => archivePage(p, !on) } });
+}
+function toggleArchive() {
+  const ap = activePage();
+  archiveOpen = !(archiveOpen || (ap && ap.archived));
+  // прячем архив, пока открыта архивная страница, — уходим на обычную
+  if (!archiveOpen && ap && ap.archived) { const next = state.pages.find(x => !x.archived); if (next) openPage(next.id); }
+  renderSidebar();
+  if (archiveOpen) $('#archive-pages').scrollIntoView({ block: 'nearest' });
 }
 function movePage(p, dir) {
   const i = state.pages.indexOf(p), j = i + dir;
@@ -4160,6 +4344,7 @@ function pageMenu(p, anchor) {
     { label: 'Сменить иконку', icon: '☺', onClick: () => emojiPicker(anchor.getBoundingClientRect ? anchor : anchor, e => { p.icon = e; if (editor && editor.page === p && p.type !== 'board') editor.render(); changed(p, null, { sel: null }); }, true) },
     { label: 'Дублировать', icon: '⧉', onClick: () => duplicatePage(p) },
     p.type === 'doc' ? { label: 'Скачать как Markdown', icon: '⬇', onClick: () => download(fileName(p) + '.md', '# ' + pageLabel(p) + '\n\n' + blocksToMd(p.blocks), 'text/markdown;charset=utf-8') } : null,
+    p.archived ? { label: 'Вернуть из архива', icon: '↩', onClick: () => archivePage(p, false) } : { label: 'В архив', icon: '🗄', desc: 'Страница уйдёт под кнопку «Архив» внизу', onClick: () => archivePage(p, true) },
     'sep',
     { label: 'Выше', icon: '↑', onClick: () => movePage(p, -1) },
     { label: 'Ниже', icon: '↓', onClick: () => movePage(p, 1) },
@@ -4189,7 +4374,7 @@ function moreMenu(anchor) {
     'sep',
     { label: 'Скачать резервную копию', icon: '💾', desc: 'Все страницы в одном файле .json', onClick: () => download('plan-backup-' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify({ v: 1, app: 'cmo-plan', exportedAt: new Date().toISOString(), pages: state.pages }, null, 1), 'application/json') },
     { label: 'Импорт из файла', icon: '📂', desc: 'Резервная копия .json или текст .md', onClick: importFile },
-    { label: 'Добавить шаблон «ИИ для руководителей»', icon: '💡', desc: 'Исходные страницы ещё раз, текущие не трогаем', onClick: addTemplate },
+    { label: 'Добавить шаблон «Массовый продукт»', icon: '💸', desc: 'Исходные страницы ещё раз, текущие не трогаем', onClick: addTemplate },
     'sep',
     { label: 'Тема', icon: '◐', sub: () => [['auto', 'Как в системе'], ['light', 'Светлая'], ['dark', 'Тёмная']].map(([v, l]) => ({ label: l, checked: theme === v, onClick: () => setTheme(v) })) },
     { label: 'Горячие клавиши', icon: '⌨', onClick: showHelp }
@@ -4197,7 +4382,7 @@ function moreMenu(anchor) {
 }
 
 function addTemplate() {
-  const fresh = seedPages().map(clonePageFresh);
+  const fresh = massPages().map(clonePageFresh);
   state.pages.push(...fresh);
   globalChanged();
   openPage(fresh[0].id);
@@ -4307,6 +4492,7 @@ function init() {
   $('#redo-btn').addEventListener('click', () => undoRedo(1));
   $('#more-btn').addEventListener('click', e => moreMenu(e.currentTarget));
   $('#help-btn').addEventListener('click', showHelp);
+  $('#archive-btn').addEventListener('click', toggleArchive);
   $('#crumb').addEventListener('click', () => renamePage(activePage()));
   $('#sync-btn').addEventListener('click', e => {
     if (!Sync.enabled) { Sync.connect(); return; }
