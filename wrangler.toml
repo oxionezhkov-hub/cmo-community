@@ -14,7 +14,7 @@ service = "tasktracker"
 
 [triggers]
 # 9:00 UTC = 12:00 МСК, каждый час пн и пт (scheduled() сам проверяет час === 9)
-crons = ["0 9 * * 1,5"]
+crons = ["0 9 * * 1,5", "*/5 * * * *"]  # */5 — напоминания о нетворке (остальные задачи по дням/часам внутри scheduled())
 
 # Required secrets (set via `wrangler secret put <NAME>`, never committed here):
 #   BOT_TOKEN               - Telegram bot token

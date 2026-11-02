@@ -15,15 +15,16 @@ const ADMIN_PATH = "/admin";
 // Ссылка одна и та же для всех нетворков — при смене даты меняем этот конфиг,
 // старые заявки остаются в KV под своим eventId и не мешают новому раунду регистрации.
 const NETWORKING_EVENT = {
-  id: 'networking-2026-10-07',
+  id: 'networking-2026-11-04',
   startParam: 'networking0902',
   title: 'Онлайн-нетворкинг CMO',
-  dateLabel: '7 октября, 16:00 (по МСК)',
-  // 07.10.2026 16:00 МСК = 13:00 UTC
-  startAtUTC: Date.UTC(2026, 9, 7, 13, 0, 0),
+  dateLabel: '4 ноября, 13:00 (по МСК)',
+  // 04.11.2026 13:00 МСК = 10:00 UTC, длительность 1,5 часа
+  startAtUTC: Date.UTC(2026, 10, 4, 10, 0, 0),
+  durationMin: 90,
   // Ссылка на Zoom пока не известна — появится ближе к мероприятию (её пришлют отдельно)
   zoomUrl: null,
-  intro: '👑 *Онлайн-нетворкинг CMO — 7 октября, 16:00*\n\nЕсли хочется расширить круг общения, познакомиться с предпринимателями, фаундерами и специалистами из IT/AI-среды — присоединяйтесь к нам.\n\nЭто встреча для тех, кто хочет выйти из привычного круга, рассказать о себе, своих задачах и найти новые контакты.\n\n*Что будет на встрече:*\n— новые знакомства с участниками из разных сфер, проектов и городов\n— возможность рассказать о себе, своём деле и текущих задачах\n— пространство, где можно не только познакомиться, но и увидеть точки пересечения уже в процессе общения\n\nОнлайн-нетворкинг CMO — это хороший способ оказаться среди людей, которые тоже создают, запускают, развивают и ищут новые возможности.\n\n🗓 7 октября (среда), 16:00 (по МСК)\nМодерируемый формат: 40 секунд на самопрезентацию, дальше — штурм по запросам, если есть. Длительность 1–1,5 часа.\n\nЧтобы попасть — ответь на несколько коротких вопросов для знакомства (займёт пару минут). Ссылку на Zoom пришлём ближе к мероприятию.',
+  intro: '👑 *Онлайн-нетворкинг CMO — 4 ноября, 13:00*\n\nЕсли хочется расширить круг общения, познакомиться с предпринимателями, фаундерами и специалистами из IT/AI-среды — присоединяйтесь к нам.\n\nЭто встреча для тех, кто хочет выйти из привычного круга, рассказать о себе, своих задачах и найти новые контакты.\n\n*Что будет на встрече:*\n— новые знакомства с участниками из разных сфер, проектов и городов\n— возможность рассказать о себе, своём деле и текущих задачах\n— пространство, где можно не только познакомиться, но и увидеть точки пересечения уже в процессе общения\n\nОнлайн-нетворкинг CMO — это хороший способ оказаться среди людей, которые тоже создают, запускают, развивают и ищут новые возможности.\n\n🗓 4 ноября (среда), 13:00 (по МСК)\nМодерируемый формат: 40 секунд на самопрезентацию, дальше — штурм по запросам, если есть. Длительность 1–1,5 часа.\n\nЧтобы попасть — ответь на несколько коротких вопросов для знакомства (займёт пару минут). Ссылку на Zoom пришлём ближе к мероприятию.',
   questions: [
     'Имя, фамилия',
     'Кто ты и чем занимаешься?\nРоль, сфера, компания — в 2-3 предложениях.\nСайт или соцсеть — приложи ссылкой если есть.',
@@ -36,6 +37,25 @@ function networkingFormatAnswers(reg) {
     .map((a, i) => a ? `${i + 1}. ${a.question}\n${a.answer}` : null)
     .filter(Boolean)
     .join('\n\n');
+}
+
+// Ссылка «Добавить в Google Календарь» (шаблон события, без API)
+function networkingGcalUrl() {
+  const start = new Date(NETWORKING_EVENT.startAtUTC);
+  const end = new Date(NETWORKING_EVENT.startAtUTC + NETWORKING_EVENT.durationMin * 60 * 1000);
+  const fmt = d => d.toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: NETWORKING_EVENT.title + ' (CMO)',
+    dates: fmt(start) + '/' + fmt(end),
+    details: 'Модерируемый онлайн-нетворкинг сообщества CMO. Ссылку на Zoom пришлём отдельно.',
+    ctz: 'Europe/Moscow'
+  });
+  return 'https://calendar.google.com/calendar/render?' + params.toString();
+}
+
+function networkingCalKeyboard() {
+  return { inline_keyboard: [[{ text: '📅 Добавить в Google Календарь', url: networkingGcalUrl() }]] };
 }
 
 function networkingZoomLine(prefix) {
@@ -145,6 +165,11 @@ if (url.pathname === '/api/admin/coffee/send-now') {
   },
   async scheduled(event, env, ctx) {
   try {
+    // Частый крон (каждые 5 минут) — только напоминания о нетворке, остальное не трогаем
+    if (event && event.cron === '*/5 * * * *') {
+      await networkingSendReminders(env);
+      return;
+    }
     const now = new Date();
     const day = now.getUTCDay(); // 1=пн, 5=пт
     const hour = now.getUTCHours();
@@ -161,7 +186,6 @@ if (url.pathname === '/api/admin/coffee/send-now') {
       if (day === 5) await coffeeSendReminder(env); // пятница — напоминание + оценка
     }
     await coffeeSendNewbieReminders(env);
-    await networkingSendReminders(env);
   } catch(err) {
     await notifyAdminError(env, 'scheduled', err);
   }
@@ -425,6 +449,12 @@ async function handleMessage(msg, env) {
       await handleNetworkingStart(msg, env);
       return;
     }
+  }
+
+  // Код нетворка, написанный вручную (без deep-link) — запускаем ту же анкету
+  if (text.trim() === NETWORKING_EVENT.startParam) {
+    await handleNetworkingStart(msg, env);
+    return;
   }
 
   // Идёт анкетирование на нетворк — следующее сообщение считаем ответом на вопрос
@@ -790,7 +820,7 @@ async function handleNetworkingStart(msg, env) {
     // Уже зарегистрирован и прошёл анкету — сообщаем об этом и даём скорректировать ответы
     await notifyAdmin(env, `🔁 *${NETWORKING_EVENT.title}* (${NETWORKING_EVENT.dateLabel}) — повторный переход по ссылке (уже зарегистрирован)\n\n${reg.name} (@${reg.username || '—'}), TG ID: ${userId}`);
     const keyboard = { inline_keyboard: [[{ text: '✏️ Скорректировать анкету', callback_data: 'networking_edit' }]] };
-    await tgSend(env, chatId, `Ты уже зарегистрирован(а) на нетворк 🤝\n\n📅 ${NETWORKING_EVENT.dateLabel}\n${networkingZoomLine('\n')}\n\nТвои ответы:\n\n${networkingFormatAnswers(reg)}`, keyboard);
+    await tgSend(env, chatId, `Ты уже зарегистрирован(а) на нетворк 🤝\n\n📅 ${NETWORKING_EVENT.dateLabel}\n${networkingZoomLine('\n')}\n\nТвои ответы:\n\n${networkingFormatAnswers(reg)}`, { inline_keyboard: [[{ text: '✏️ Скорректировать анкету', callback_data: 'networking_edit' }], [{ text: '📅 Добавить в Google Календарь', url: networkingGcalUrl() }]] });
     return;
   }
 
@@ -870,9 +900,9 @@ async function handleNetworkingAnswer(msg, env, state) {
   await logEvent(env, wasEditing ? 'networking_edited' : 'networking_answered', userId, { eventId });
 
   if (wasEditing) {
-    await tgSend(env, chatId, `Готово, ответы обновлены ✅\n\n📅 ${NETWORKING_EVENT.dateLabel}${networkingZoomLine('\n')}`);
+    await tgSend(env, chatId, `Готово, ответы обновлены ✅\n\n📅 ${NETWORKING_EVENT.dateLabel}${networkingZoomLine('\n')}`, networkingCalKeyboard());
   } else {
-    await tgSend(env, chatId, `Спасибо! Ты зарегистрирован(а) на нетворк 🤝\n\n📅 ${NETWORKING_EVENT.dateLabel}\n⏱ 1–1,5 часа, модерируемый формат\n${networkingZoomLine('\n')}`);
+    await tgSend(env, chatId, `Спасибо! Ты зарегистрирован(а) на нетворк 🤝\n\n📅 ${NETWORKING_EVENT.dateLabel}\n⏱ 1–1,5 часа, модерируемый формат\n${networkingZoomLine('\n')}`, networkingCalKeyboard());
   }
 
   const qaText = networkingFormatAnswers(reg);
@@ -882,7 +912,6 @@ async function handleNetworkingAnswer(msg, env, state) {
 // Рассылка зум-ссылки всем зарегистрированным (даже не ответившим на анкету)
 // за 3 часа, за 15 минут и в момент начала. Идемпотентно — каждое окно шлётся один раз.
 async function networkingSendReminders(env) {
-  if (!NETWORKING_EVENT.zoomUrl) return; // ссылка на Zoom ещё не известна
   const eventId = NETWORKING_EVENT.id;
   const startAt = NETWORKING_EVENT.startAtUTC;
   const now = Date.now();
@@ -904,14 +933,20 @@ async function networkingSendReminders(env) {
     await env.KV.put(sentFlagKey, '1', { expirationTtl: 60 * 60 * 24 * 7 });
 
     const registrants = await env.KV.get(`networking:registrants:${eventId}`, 'json') || [];
+    const zoomPart = NETWORKING_EVENT.zoomUrl
+      ? `\n\n🔗 Ссылка на Zoom:\n${NETWORKING_EVENT.zoomUrl}`
+      : `\n\nСсылку на Zoom пришлём отдельным сообщением.`;
     let sent = 0;
     for (const tgId of registrants) {
       try {
-        await tgSend(env, tgId, `⏰ *${w.label}*\n\n🔗 Ссылка на Zoom:\n${NETWORKING_EVENT.zoomUrl}`);
+        await tgSend(env, tgId, `⏰ *${w.label}*${zoomPart}`);
         sent++;
       } catch (e) {}
     }
-    await notifyAdmin(env, `📤 Нетворк 02.09 — разослана ссылка на Zoom (${w.key}) ${registrants.length ? sent + '/' + registrants.length : '0'} участникам`);
+    if (!NETWORKING_EVENT.zoomUrl) {
+      await notifyAdmin(env, `⚠️ Нетворк: напоминание (${w.key}) ушло без ссылки на Zoom — задай zoomUrl в NETWORKING_EVENT`);
+    }
+    await notifyAdmin(env, `📤 ${NETWORKING_EVENT.title} — напоминание (${w.key}) отправлено ${registrants.length ? sent + '/' + registrants.length : '0'} участникам`);
   }
 }
 
@@ -8182,87 +8217,96 @@ function getMiniAppHTML() {
   <!-- Gate для гостей — внутри appScreen, скрыт по умолчанию -->
   <div id="nucleusGateScreen" style="display:none; overflow-y:auto; position:absolute; top:52px; left:0; right:0; bottom:60px; padding: 20px 16px 20px;">
 
-    <div style="margin-bottom:24px;">
-  <div style="font-size:22px; font-weight:700; margin-bottom:4px;">CMO Ядро</div>
-  <div style="color:#888; font-size:14px;">
-    Комьюнити для маркетологов, фаундеров и CMO, которые внедряют ИИ в бизнес
-  </div>
-</div>
+    <div style="margin-bottom:20px;">
+      <div style="font-size:22px; font-weight:700; margin-bottom:4px;">Смело.Ядро</div>
+      <div style="color:#888; font-size:14px;">Закрытый клуб для CMO, маркетинг-директоров и фаундеров, которые внедряют ИИ в бизнес и маркетинг</div>
+    </div>
 
-<div style="background:#1a1a1a; border-radius:12px; padding:16px; margin-bottom:10px;">
-  <div style="font-weight:600; margin-bottom:8px;">Формат</div>
-  <div style="color:#ccc; font-size:14px; line-height:1.5;">
-    Каждую субботу в 12:15 (мск) — живой воркшоп с разбором рабочих AI-схем, инструментов и новых маркетинговых механик. После эфира всю неделю помогаем участникам внедрить решение в свой проект и довести до результата.
-  </div>
-</div>
+    <div style="background:#1a1a1a; border-radius:12px; padding:16px; margin-bottom:10px;">
+      <div style="font-weight:600; margin-bottom:8px;">Как устроено сообщество CMO</div>
+      <div style="color:#ccc; font-size:14px; line-height:1.7;">
+        1. <b>Общий чат CMO</b> — знакомства, нетворкинг, визитки участников, анонсы и ссылки на эфиры.<br>
+        2. <b>Смело.Ядро</b> — закрытая часть: воркшопы, эфиры с экспертами, база знаний и практика внедрения.<br>
+        3. <b>Нетворк и мероприятия</b> — онлайн-встречи для знакомств с предпринимателями и специалистами.
+      </div>
+    </div>
 
-<div style="background:#1a1a1a; border-radius:12px; padding:16px; margin-bottom:10px;">
-  <div style="font-weight:600; margin-bottom:8px;">Что изучаем в июне</div>
-  <div style="color:#ccc; font-size:14px; line-height:1.8;">
-    ☄️ Полностью автоматизированный AI-контент: рилсы, посты, карусели, SEO и трендвотчинг.<br>
-    ☄️ Игровые мини-курсы для прогрева холодного трафика и эвергрин-воронки с высокой конверсией.<br><br>
-    Эксперты направления:<br>
-    — Илья Чумаченков (AI-контент)<br>
-    — Олег Ежков (игровые мини-курсы и воронки)
-  </div>
-</div>
+    <div style="background:#1a1a1a; border-radius:12px; padding:16px; margin-bottom:10px;">
+      <div style="font-weight:600; margin-bottom:8px;">Что такое Смело.Ядро</div>
+      <div style="color:#ccc; font-size:14px; line-height:1.7;">
+        Практическое ядро для тех, кто отвечает за маркетинг и рост: разбираем рабочие ИИ-схемы, инструменты и механики, которые уже приносят результат, и внедряем их вместе с экспертами и участниками.
+      </div>
+    </div>
 
-<div style="background:#1a1a1a; border-radius:12px; padding:16px; margin-bottom:10px;">
-  <div style="font-weight:600; margin-bottom:8px;">Что внутри</div>
-  <div style="color:#ccc; font-size:14px; line-height:1.8;">
-    — Закрытое комьюнити маркетологов и предпринимателей<br>
-    — Записи всех воркшопов и база знаний<br>
-    — Практические задания с отслеживанием прогресса<br>
-    — Поддержка и помощь во внедрении<br>
-    — Мастер-группы и нетворкинг<br>
-    — AI-инструменты и рекомендации
-  </div>
-</div>
+    <div style="background:#1a1a1a; border-radius:12px; padding:16px; margin-bottom:10px;">
+      <div style="font-weight:600; margin-bottom:8px;">Зачем это нужно</div>
+      <div style="color:#ccc; font-size:14px; line-height:1.7;">
+        — Внедрить ИИ в маркетинг на практике, а не на словах<br>
+        — Получить разбор ваших задач от экспертов и коллег<br>
+        — Не проходить путь в одиночку: поддержка комьюнити и помощь во внедрении
+      </div>
+    </div>
 
-<div style="background:#1a1a1a; border-radius:12px; padding:16px; margin-bottom:10px;">
-  <div style="font-weight:600; margin-bottom:8px;">Результат</div>
-  <div style="color:#ccc; font-size:14px; line-height:1.5;">
-    Вы внедряете ИИ в маркетинг на практике: автоматизируете контент, воронки, прогрев и процессы продаж вместе с экспертами и комьюнити — без бесконечных курсов и теории.
-  </div>
-</div>
+    <div style="background:#1a1a1a; border-radius:12px; padding:16px; margin-bottom:10px;">
+      <div style="font-weight:600; margin-bottom:8px;">Для кого</div>
+      <div style="color:#ccc; font-size:14px; line-height:1.7;">
+        Для CMO, маркетинг-директоров, предпринимателей и руководителей, которые хотят встроить ИИ в свой бизнес и готовы выполнять практику.
+      </div>
+    </div>
 
-<div style="background:#1a1a1a; border-radius:12px; padding:16px; margin-bottom:20px;">
-  <div style="font-weight:600; margin-bottom:8px;">Условия участия</div>
-  <div style="color:#ccc; font-size:14px; line-height:1.8;">
-    — 5 000 ₽/мес<br>
-    — Практика и выполнение заданий<br>
-    — Активное участие в комьюнити<br>
-    — Подписание NDA
-  </div>
-</div>
+    <div style="background:#1a1a1a; border-radius:12px; padding:16px; margin-bottom:10px;">
+      <div style="font-weight:600; margin-bottom:8px;">Что внутри</div>
+      <div style="color:#ccc; font-size:14px; line-height:1.7;">
+        — Воркшопы по субботам, эфиры с экспертами по пятницам<br>
+        — Записи всех занятий и база знаний с поиском<br>
+        — Практические задания с отслеживанием прогресса<br>
+        — Форум-группы и чат с нетворкингом<br>
+        — Поддержка во внедрении
+      </div>
+    </div>
+
+    <div style="background:#1a1a1a; border-radius:12px; padding:16px; margin-bottom:10px;">
+      <div style="font-weight:600; margin-bottom:8px;">Стоимость</div>
+      <div style="color:#ccc; font-size:14px; line-height:1.7;">
+        <span style="text-decoration:line-through; color:#888;">25 000 ₽/мес</span>
+        &nbsp;<b style="color:#fff;">5 000 ₽/мес</b> — специальная цена по скидке
+        <div style="color:#888; font-size:13px; margin-top:6px;">Условия и оплату уточняем в личных сообщениях.</div>
+      </div>
+    </div>
 
     <div style="display:flex; flex-direction:column; gap:12px; padding-bottom:8px;">
 
-  <div id="nucleusEmailForm" style="background:#1a1a1a;border-radius:12px;padding:16px;">
-    <div style="font-weight:600;margin-bottom:4px;">Уже участник Ядра?</div>
-    <div style="color:#888;font-size:13px;margin-bottom:12px;">Введи email, с которым оплатил участие</div>
-    <div class="input-wrap" style="max-width:100%;margin-bottom:10px;">
-      <input type="email" id="nucleusEmailInput" placeholder="example@email.com"
-        autocomplete="email" inputmode="email"
-        onkeydown="if(event.key==='Enter')checkNucleusEmail()"/>
-    </div>
-    <button class="btn-primary"
-      style="width:100%; max-width:100%; box-sizing:border-box;"
-      onclick="checkNucleusEmail()">
-      Войти
-    </button>
-    <div id="nucleusEmailMsg" style="font-size:13px; margin-top:10px; color:#888;"></div>
-  </div>
+      <div id="nucleusEmailForm" style="background:#1a1a1a;border-radius:12px;padding:16px;">
+        <div style="font-weight:600;margin-bottom:4px;">Уже участник Смело.Ядра?</div>
+        <div style="color:#888;font-size:13px;margin-bottom:12px;">Введи email, с которым оплатил участие</div>
+        <div class="input-wrap" style="max-width:100%;margin-bottom:10px;">
+          <input type="email" id="nucleusEmailInput" placeholder="example@email.com"
+            autocomplete="email" inputmode="email"
+            onkeydown="if(event.key==='Enter')checkNucleusEmail()"/>
+        </div>
+        <button class="btn-primary"
+          style="width:100%; max-width:100%; box-sizing:border-box;"
+          onclick="checkNucleusEmail()">
+          Войти
+        </button>
+        <div id="nucleusEmailMsg" style="font-size:13px; margin-top:10px; color:#888;"></div>
+      </div>
 
-  <a href="https://t.me/m/R12fmbLzOWJi" target="_blank"
-    style="width:100%; display:block; text-decoration:none;">
-    <button class="btn-primary"
-        style="width:100%; max-width:100%; box-sizing:border-box; background:transparent; border:1px solid #444; color:#ccc; font-size:14px;">
-      Хочу вступить в Ядро →
-    </button>
-  </a>
-</div>
-</div>
+      <a href="https://t.me/oleg_ezhkov" target="_blank" style="width:100%; display:block; text-decoration:none;">
+        <button class="btn-primary"
+            style="width:100%; max-width:100%; box-sizing:border-box; background:transparent; border:1px solid #444; color:#ccc; font-size:14px;">
+          Я уже в Ядре — написать →
+        </button>
+      </a>
+
+      <a href="https://t.me/oleg_ezhkov" target="_blank" style="width:100%; display:block; text-decoration:none;">
+        <button class="btn-primary"
+            style="width:100%; max-width:100%; box-sizing:border-box; font-size:14px;">
+          Хочу вступить в Смело.Ядро — написать →
+        </button>
+      </a>
+    </div>
+  </div>
 
   <!-- Bottom Nav -->
   <nav class="bottom-nav">
