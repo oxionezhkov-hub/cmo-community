@@ -404,12 +404,27 @@ async function apiAuthEmail(request, env) {
 
 // ─── TELEGRAM WEBHOOK ────────────────────────────────────────
 async function handleWebhook(request, env, ctx) {
-  const update = await request.json();
-  // Модерация клубных чатов: входы и заявки на вступление
-  if (update.chat_member) await modHandleChatMember(update, env);
-  if (update.chat_join_request) await modHandleJoinRequest(update, env);
-  if (update.message) await handleMessage(update.message, env, ctx);
-  if (update.callback_query) await handleCallback(update.callback_query, env);
+  let update = null;
+  try {
+    update = await request.json();
+    // Модерация клубных чатов: входы и заявки на вступление
+    if (update.chat_member) await modHandleChatMember(update, env);
+    if (update.chat_join_request) await modHandleJoinRequest(update, env);
+    if (update.message) await handleMessage(update.message, env, ctx);
+    if (update.callback_query) await handleCallback(update.callback_query, env);
+  } catch (err) {
+    // Всегда отвечаем Telegram 200: иначе он будет присылать то же событие снова и снова,
+    // и бот повторит уже сделанные действия. Ошибку — в лог и админу (не чаще раза в 10 минут).
+    console.error('webhook error:', err && err.stack ? err.stack : err);
+    try {
+      const kind = update ? Object.keys(update).filter(k => k !== 'update_id').join(', ') : 'не разобрать JSON';
+      if (env.ADMIN_ID && !(await env.KV.get('webhook:errnotified'))) {
+        await env.KV.put('webhook:errnotified', '1', { expirationTtl: 600 });
+        const detail = (err && err.stack ? String(err.stack) : String(err)).slice(0, 700);
+        await tgSend(env, env.ADMIN_ID, `⚠️ Ошибка в боте при обработке события (${kind})\n\n${detail}`);
+      }
+    } catch (e) {}
+  }
   return new Response("OK");
 }
 
