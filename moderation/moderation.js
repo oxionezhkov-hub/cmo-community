@@ -5,21 +5,21 @@
 //     эфемерным сообщением (Bot API 10.2+): его видит только этот человек, остальные — нет.
 //     Копия с кнопкой уходит в личку, если человек запускал бота. Если эфемерное сообщение
 //     отправить не удалось, в чате на 15 секунд появляется обычная подсказка и удаляется сама.
-//  3. Анкета проходит в личке с ботом. После неё визитка публикуется в чат, ответы уходят
+//  3. Анкета проходит в личке с ботом. После неё ответы уходят
 //     в Google Таблицу (Apps Script, секрет MOD_SHEET_WEBHOOK), человек может писать.
 // Участники, которые были в чате до подключения бота, не ограничиваются.
 // Боту в каждом чате нужны права администратора: «Удаление сообщений».
 
 export const MOD_BOT_USERNAME = 'cmo_razbory_bot';
 
-// Вопросы анкеты. key — колонка в таблице, card — показывать в визитке,
+// Вопросы анкеты. key — колонка в таблице,
 // required — нельзя пропустить, auto: 'username' — берём @username из Telegram и не спрашиваем, если он есть.
 // Сейчас у всех клубов вопросы из их Google Форм; у каждого клуба список свой — меняется здесь.
 const FORM_QUESTIONS = [
-  { key: 'name', label: 'Имя', text: 'Как тебя зовут?', required: true, card: true },
+  { key: 'name', label: 'Имя', text: 'Как тебя зовут?', required: true },
   { key: 'telegram', label: 'Telegram', text: 'Контакт в Telegram (личный, без анонимов)', required: true, auto: 'username' },
-  { key: 'background', label: 'Бэкграунд', text: 'Расскажи про свой бэкграунд: какие проекты были в прошлом? Текущая компания и должность. Твоя экспертиза и польза для других участников сообщества', required: true, card: true },
-  { key: 'pain', label: 'Что болит', text: 'Что сейчас болит больше всего?', required: false, card: true },
+  { key: 'background', label: 'Бэкграунд', text: 'Расскажи про свой бэкграунд: какие проекты были в прошлом? Текущая компания и должность. Твоя экспертиза и польза для других участников сообщества', required: true },
+  { key: 'pain', label: 'Что болит', text: 'Что сейчас болит больше всего?', required: false },
   { key: 'email', label: 'Email', text: 'Электронная почта (если нужен доступ к базе знаний)', required: false },
   { key: 'questions', label: 'Вопросы на старте', text: 'Какие есть вопросы к нам на старте?', required: false }
 ];
@@ -112,15 +112,11 @@ function fullName(u) {
 async function markNewcomer(env, chatId, user, clubKey) {
   if (!user || user.is_bot) return;
   const club = MOD_CLUBS[clubKey];
-  if (await env.KV.get(`mod:ok:${clubKey}:${user.id}`)) {
-    // Анкета уже есть (заполнил по заявке до входа) — публикуем отложенную визитку
-    await publishPendingCard(env, chatId, user.id, clubKey);
-    return;
-  }
+  if (await env.KV.get(`mod:ok:${clubKey}:${user.id}`)) return; // анкета уже есть — пишет свободно
   await env.KV.put(`mod:new:${normChatId(chatId)}:${user.id}`, String(Date.now()));
   // Приветствие прямо в чате — видит только новичок
   await sendEphemeral(env, chatId, user.id,
-    `👋 Добро пожаловать в <b>${esc(club.title)}</b>!\n\nЧтобы писать в чат, заполни короткую анкету — пара минут. После неё участники увидят твою визитку.`,
+    `👋 Добро пожаловать в <b>${esc(club.title)}</b>!\n\nЧтобы писать в чат, заполни короткую анкету — это пара минут.`,
     clubKey);
   await sendInviteDm(env, user.id, clubKey, true);
 }
@@ -220,7 +216,7 @@ async function sendInviteDm(env, userId, clubKey, force) {
   if (!force && (await env.KV.get(throttleKey))) return true;
   const res = await sendHtml(env, userId,
     `👋 Привет! Это бот сообщества CMO.\n\n<b>${esc(club.title)}</b> — ${esc(club.about)}\n\n` +
-    `Чтобы писать в чат, заполни короткую анкету — это пара минут. После неё твоя визитка появится в чате, и участники узнают, кто ты и чем полезен.`,
+    `Чтобы писать в чат, заполни короткую анкету — это пара минут.`,
     { inline_keyboard: [[{ text: '📝 Заполнить анкету', callback_data: `mod_start_${clubKey}` }]] });
   if (!res.ok) return false;
   await env.KV.put(throttleKey, '1', { expirationTtl: DM_THROTTLE_SEC });
@@ -340,18 +336,6 @@ export async function modHandleCallback(cq, env) {
   return false;
 }
 
-function cardHtml(club, answers, from) {
-  const lines = [`👋 <b>Новый участник ${esc(club.title)}</b>`, ''];
-  const name = answers.name || fullName(from);
-  lines.push(`<b>${esc(name)}</b>${from.username ? ' · @' + esc(from.username) : ''}`);
-  for (const q of club.questions) {
-    if (!q.card || q.key === 'name') continue;
-    const a = answers[q.key];
-    if (a) lines.push('', `<b>${esc(q.label)}:</b> ${esc(a)}`);
-  }
-  return lines.join('\n');
-}
-
 async function finishAnketa(env, userId, state, from) {
   const clubKey = state.club;
   const club = MOD_CLUBS[clubKey];
@@ -363,36 +347,13 @@ async function finishAnketa(env, userId, state, from) {
   await env.KV.put(`mod:ok:${clubKey}:${userId}`, '1');
   await env.KV.put(`mod:anketa:${clubKey}:${userId}`, JSON.stringify(record));
 
-  // Визитка — во все чаты клуба, где человек уже состоит. Если он ещё не в чате
-  // (подал заявку и ждёт одобрения) — визитка появится, когда он войдёт.
-  const card = cardHtml(club, state.answers, from || {});
-  let published = 0, deferred = 0;
-  for (const chatId of club.chatIds) {
-    const fullId = Number('-100' + normChatId(chatId));
-    const member = await tg(env, 'getChatMember', { chat_id: fullId, user_id: userId });
-    const inChat = member.ok && isPresent(member.result.status) && member.result.is_member !== false;
-    if (!inChat) {
-      await env.KV.put(`mod:cardpending:${clubKey}:${userId}:${normChatId(chatId)}`, card, { expirationTtl: 60 * 24 * 3600 });
-      deferred++;
-      continue;
-    }
-    const res = await sendHtml(env, fullId, card);
-    if (res.ok) { published++; await env.KV.put(`mod:card:${clubKey}:${userId}:${normChatId(chatId)}`, String(res.result.message_id)); }
-  }
-
-  await sendHtml(env, userId, published || !deferred
-    ? `Спасибо! Анкета принята ✅\nТвоя визитка опубликована в <b>${esc(club.title)}</b> — теперь можно писать в чат.`
-    : `Спасибо! Анкета принята ✅\nКак только заявку в <b>${esc(club.title)}</b> одобрят, твоя визитка появится в чате и можно будет сразу писать.`);
+  // Визитку в чат не публикуем — после анкеты человек просто может писать
+  const member = await tg(env, 'getChatMember', { chat_id: Number('-100' + normChatId(club.chatIds[0])), user_id: userId });
+  const inChat = member.ok && isPresent(member.result.status) && member.result.is_member !== false;
+  await sendHtml(env, userId, inChat || !member.ok
+    ? `Спасибо! Анкета принята ✅\nТеперь можно писать в <b>${esc(club.title)}</b>.`
+    : `Спасибо! Анкета принята ✅\nКак только заявку в <b>${esc(club.title)}</b> одобрят, сразу сможешь писать в чат.`);
   await sendToSheet(env, club, record);
-}
-
-async function publishPendingCard(env, chatId, userId, clubKey) {
-  const key = `mod:cardpending:${clubKey}:${userId}:${normChatId(chatId)}`;
-  const card = await env.KV.get(key);
-  if (!card) return;
-  await env.KV.delete(key);
-  const res = await sendHtml(env, Number('-100' + normChatId(chatId)), card);
-  if (res.ok) await env.KV.put(`mod:card:${clubKey}:${userId}:${normChatId(chatId)}`, String(res.result.message_id));
 }
 
 // Ответы — в Google Таблицу через веб-приложение Apps Script (см. moderation/apps-script.gs)
