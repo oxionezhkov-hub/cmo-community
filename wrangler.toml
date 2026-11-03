@@ -21,6 +21,8 @@ crons = ["0 9 * * 1,5", "*/5 * * * *"]  # */5 — напоминания о не
 #   ADMIN_ID                - Telegram chat id for admin notifications
 #   PAYMENTS_WEBHOOK_SECRET  - shared secret for POST /api/payments/webhook (edsofa.ai reconciliation)
 #   CLAUDE_API                - Claude API key (квизы, вопросы к ИИ на /dashboard, ИИ-разбор работы на /crm)
+#   MOD_SHEET_WEBHOOK         - URL веб-приложения Apps Script для анкет клубных чатов (moderation/README.md)
+#   MOD_SHEET_SECRET          - необязательный общий секрет с Apps Script
 #   INBOX_API_TOKEN           - токен к API инбокса tasktracker для /crm — то же значение, что секрет
 #                               INBOX_CMO_TOKEN на воркере tasktracker (mybrand-smm)
 # Optional vars:

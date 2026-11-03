@@ -4,6 +4,7 @@ import { AI_ASSISTANT_HTML } from "./ai-assistant/dist/worker-assets.js";
 import { BOARD_OG_IMAGE_B64 } from "./board/dist/worker-assets.js";
 import { PLAN_HTML } from "./plan/dist/worker-assets.js";
 import { serveCrm, handleCrmApi } from "./crm/api.js";
+import { modHandleChatMember, modHandleJoinRequest, modHandleGroupMessage, modHandleStart, modHandlePrivateMessage, modHandleCallback, modCleanupNotices } from "./moderation/moderation.js";
 
 const WORKER_URL = "https://cmo-razbory.oxion-ezhkov.workers.dev";
 const PAYMENT_LINK = "https://edsofa.ai/sb/JIx";
@@ -66,10 +67,10 @@ function networkingZoomLine(prefix) {
 
 // ─── ROUTING ────────────────────────────────────────────────
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    if (url.pathname === "/webhook") return handleWebhook(request, env);
+    if (url.pathname === "/webhook") return handleWebhook(request, env, ctx);
     if (url.pathname === "/crm" || url.pathname === "/crm/") return serveCrm();
     if (url.pathname.startsWith("/api/tgcrm/")) return handleCrmApi(request, env, url);
     if (url.pathname === "/setup-webhook") return setupWebhook(env);
@@ -168,6 +169,7 @@ if (url.pathname === '/api/admin/coffee/send-now') {
     // Частый крон (каждые 5 минут) — только напоминания о нетворке, остальное не трогаем
     if (event && event.cron === '*/5 * * * *') {
       await networkingSendReminders(env);
+      await modCleanupNotices(env);
       return;
     }
     const now = new Date();
@@ -342,7 +344,11 @@ async function setupWebhook(env) {
   const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/setWebhook`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url: `${WORKER_URL}/webhook` })
+    body: JSON.stringify({
+      url: `${WORKER_URL}/webhook`,
+      // chat_member и chat_join_request нужны модерации клубных чатов
+      allowed_updates: ['message', 'callback_query', 'chat_member', 'chat_join_request', 'my_chat_member']
+    })
   });
   const data = await res.json();
   return jsonResp(data);
@@ -397,9 +403,12 @@ async function apiAuthEmail(request, env) {
 }
 
 // ─── TELEGRAM WEBHOOK ────────────────────────────────────────
-async function handleWebhook(request, env) {
+async function handleWebhook(request, env, ctx) {
   const update = await request.json();
-  if (update.message) await handleMessage(update.message, env);
+  // Модерация клубных чатов: входы и заявки на вступление
+  if (update.chat_member) await modHandleChatMember(update, env);
+  if (update.chat_join_request) await modHandleJoinRequest(update, env);
+  if (update.message) await handleMessage(update.message, env, ctx);
   if (update.callback_query) await handleCallback(update.callback_query, env);
   return new Response("OK");
 }
@@ -423,13 +432,15 @@ async function apiRequestAccess(request, env) {
   return jsonResp({ ok: true });
 }
 
-async function handleMessage(msg, env) {
+async function handleMessage(msg, env, ctx) {
   const chatId = msg.chat.id;
   const text = msg.text || "";
   const userId = msg.from.id;
 
   // Групповой чат (например, чат Ядра) — отдельная ветка: только учёт активности, без ответов бота
   if (msg.chat.type === 'group' || msg.chat.type === 'supergroup') {
+    // Клубные чаты: сообщения новичков без анкеты удаляются
+    if (await modHandleGroupMessage(msg, env, ctx)) return;
     await handleGroupMessage(msg, env);
     return;
   }
@@ -445,6 +456,7 @@ async function handleMessage(msg, env) {
 
   if (text.startsWith("/start")) {
     const payload = text.slice(6).trim();
+    if (await modHandleStart(msg, env, payload)) return;
     if (payload === NETWORKING_EVENT.startParam) {
       await handleNetworkingStart(msg, env);
       return;
@@ -456,6 +468,9 @@ async function handleMessage(msg, env) {
     await handleNetworkingStart(msg, env);
     return;
   }
+
+  // Идёт анкета клубного чата — следующее сообщение считаем ответом
+  if (!text.startsWith('/') && await modHandlePrivateMessage(msg, env)) return;
 
   // Идёт анкетирование на нетворк — следующее сообщение считаем ответом на вопрос
   const networkingState = await env.KV.get(`networking:state:${userId}`, "json");
@@ -554,6 +569,7 @@ async function handleCallback(cq, env) {
     body: JSON.stringify({ callback_query_id: cq.id })
   });
   const data = cq.data || '';
+  if (await modHandleCallback(cq, env)) return;
 
 if (data.startsWith('approve_')) {
   const [, userId, email] = data.split('_');
