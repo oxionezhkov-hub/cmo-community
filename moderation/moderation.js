@@ -109,7 +109,11 @@ function fullName(u) {
 // ─── Вход в чат ──────────────────────────────────────────────────────────────
 async function markNewcomer(env, chatId, user, clubKey) {
   if (!user || user.is_bot) return;
-  if (await env.KV.get(`mod:ok:${clubKey}:${user.id}`)) return; // анкета уже есть — ничего не делаем
+  if (await env.KV.get(`mod:ok:${clubKey}:${user.id}`)) {
+    // Анкета уже есть (заполнил по заявке до входа) — публикуем отложенную визитку
+    await publishPendingCard(env, chatId, user.id, clubKey);
+    return;
+  }
   await env.KV.put(`mod:new:${normChatId(chatId)}:${user.id}`, String(Date.now()));
   await sendInviteDm(env, user.id, clubKey, true);
 }
@@ -332,15 +336,36 @@ async function finishAnketa(env, userId, state, from) {
   await env.KV.put(`mod:ok:${clubKey}:${userId}`, '1');
   await env.KV.put(`mod:anketa:${clubKey}:${userId}`, JSON.stringify(record));
 
-  // Визитка — во все чаты клуба
+  // Визитка — во все чаты клуба, где человек уже состоит. Если он ещё не в чате
+  // (подал заявку и ждёт одобрения) — визитка появится, когда он войдёт.
   const card = cardHtml(club, state.answers, from || {});
+  let published = 0, deferred = 0;
   for (const chatId of club.chatIds) {
-    const res = await sendHtml(env, Number('-100' + normChatId(chatId)), card);
-    if (res.ok) await env.KV.put(`mod:card:${clubKey}:${userId}:${normChatId(chatId)}`, String(res.result.message_id));
+    const fullId = Number('-100' + normChatId(chatId));
+    const member = await tg(env, 'getChatMember', { chat_id: fullId, user_id: userId });
+    const inChat = member.ok && isPresent(member.result.status) && member.result.is_member !== false;
+    if (!inChat) {
+      await env.KV.put(`mod:cardpending:${clubKey}:${userId}:${normChatId(chatId)}`, card, { expirationTtl: 60 * 24 * 3600 });
+      deferred++;
+      continue;
+    }
+    const res = await sendHtml(env, fullId, card);
+    if (res.ok) { published++; await env.KV.put(`mod:card:${clubKey}:${userId}:${normChatId(chatId)}`, String(res.result.message_id)); }
   }
 
-  await sendHtml(env, userId, `Спасибо! Анкета принята ✅\nТвоя визитка опубликована в <b>${esc(club.title)}</b> — теперь можно писать в чат.`);
+  await sendHtml(env, userId, published || !deferred
+    ? `Спасибо! Анкета принята ✅\nТвоя визитка опубликована в <b>${esc(club.title)}</b> — теперь можно писать в чат.`
+    : `Спасибо! Анкета принята ✅\nКак только заявку в <b>${esc(club.title)}</b> одобрят, твоя визитка появится в чате и можно будет сразу писать.`);
   await sendToSheet(env, club, record);
+}
+
+async function publishPendingCard(env, chatId, userId, clubKey) {
+  const key = `mod:cardpending:${clubKey}:${userId}:${normChatId(chatId)}`;
+  const card = await env.KV.get(key);
+  if (!card) return;
+  await env.KV.delete(key);
+  const res = await sendHtml(env, Number('-100' + normChatId(chatId)), card);
+  if (res.ok) await env.KV.put(`mod:card:${clubKey}:${userId}:${normChatId(chatId)}`, String(res.result.message_id));
 }
 
 // Ответы — в Google Таблицу через веб-приложение Apps Script (см. moderation/apps-script.gs)
