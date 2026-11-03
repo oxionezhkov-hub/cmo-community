@@ -5,21 +5,21 @@
 //     эфемерным сообщением (Bot API 10.2+): его видит только этот человек, остальные — нет.
 //     Копия с кнопкой уходит в личку, если человек запускал бота. Если эфемерное сообщение
 //     отправить не удалось, в чате на 15 секунд появляется обычная подсказка и удаляется сама.
-//  3. Анкета проходит в личке с ботом. После неё визитка публикуется в чат, ответы уходят
+//  3. Анкета проходит в личке с ботом. После неё ответы уходят
 //     в Google Таблицу (Apps Script, секрет MOD_SHEET_WEBHOOK), человек может писать.
 // Участники, которые были в чате до подключения бота, не ограничиваются.
 // Боту в каждом чате нужны права администратора: «Удаление сообщений».
 
 export const MOD_BOT_USERNAME = 'cmo_razbory_bot';
 
-// Вопросы анкеты. key — колонка в таблице, card — показывать в визитке,
+// Вопросы анкеты. key — колонка в таблице,
 // required — нельзя пропустить, auto: 'username' — берём @username из Telegram и не спрашиваем, если он есть.
 // Сейчас у всех клубов вопросы из их Google Форм; у каждого клуба список свой — меняется здесь.
 const FORM_QUESTIONS = [
-  { key: 'name', label: 'Имя', text: 'Как тебя зовут?', required: true, card: true },
+  { key: 'name', label: 'Имя', text: 'Как тебя зовут?', required: true },
   { key: 'telegram', label: 'Telegram', text: 'Контакт в Telegram (личный, без анонимов)', required: true, auto: 'username' },
-  { key: 'background', label: 'Бэкграунд', text: 'Расскажи про свой бэкграунд: какие проекты были в прошлом? Текущая компания и должность. Твоя экспертиза и польза для других участников сообщества', required: true, card: true },
-  { key: 'pain', label: 'Что болит', text: 'Что сейчас болит больше всего?', required: false, card: true },
+  { key: 'background', label: 'Бэкграунд', text: 'Расскажи про свой бэкграунд: какие проекты были в прошлом? Текущая компания и должность. Твоя экспертиза и польза для других участников сообщества', required: true },
+  { key: 'pain', label: 'Что болит', text: 'Что сейчас болит больше всего?', required: false },
   { key: 'email', label: 'Email', text: 'Электронная почта (если нужен доступ к базе знаний)', required: false },
   { key: 'questions', label: 'Вопросы на старте', text: 'Какие есть вопросы к нам на старте?', required: false }
 ];
@@ -51,6 +51,9 @@ export const MOD_CLUBS = {
     questions: FORM_QUESTIONS
   }
 };
+
+// Кто может выдавать «доверенный» доступ (писать без анкеты): ADMIN_ID из секретов + эти id
+const MOD_TRUST_ADMINS = ['345618009']; // Дима
 
 const NOTICE_TTL_MS = 15 * 1000;
 const EPHEMERAL_THROTTLE_SEC = 20;      // эфемерное напоминание — не чаще раза в 20 секунд        // сколько висит подсказка в чате, если в личку написать нельзя
@@ -108,19 +111,118 @@ function fullName(u) {
   return [u.first_name, u.last_name].filter(Boolean).join(' ') || 'участник';
 }
 
+// ─── Доверенные: пишут во всех клубных чатах без анкеты ─────────────────────
+function isTrustAdmin(env, userId) {
+  return [String(env.ADMIN_ID || ''), ...MOD_TRUST_ADMINS].filter(Boolean).includes(String(userId));
+}
+
+async function isTrusted(env, user) {
+  if (!user) return false;
+  if (await env.KV.get(`mod:trust:id:${user.id}`)) return true;
+  return !!(user.username && await env.KV.get(`mod:trust:u:${user.username.toLowerCase()}`));
+}
+
+// Разбор того, что админ прислал боту: @username, t.me/username, числовой id или пересланное сообщение
+function parseTrustTarget(msg) {
+  const fo = msg.forward_origin;
+  if (fo && fo.type === 'user' && fo.sender_user) {
+    const u = fo.sender_user;
+    return { id: String(u.id), username: (u.username || '').toLowerCase(), label: u.username ? '@' + u.username : fullName(u) };
+  }
+  if (fo && fo.type === 'hidden_user') return { hidden: true, label: fo.sender_user_name || '' };
+  const t = (msg.text || '').trim();
+  let m = t.match(/^(?:https?:\/\/)?(?:t\.me|telegram\.me)\/([A-Za-z][A-Za-z0-9_]{3,31})\/?$/i) || t.match(/^@([A-Za-z][A-Za-z0-9_]{3,31})$/);
+  if (m) return { username: m[1].toLowerCase(), label: '@' + m[1] };
+  m = t.match(/^(?:id\s*:?\s*)?(\d{5,15})$/i);
+  if (m) return { id: m[1], label: 'id ' + m[1] };
+  return null;
+}
+
+async function trustIndex(env) {
+  return await env.KV.get('mod:trust:list', 'json') || [];
+}
+
+async function addTrust(env, target, byUser) {
+  const entry = { id: target.id || '', username: target.username || '', label: target.label, by: byUser.id, byName: byUser.username ? '@' + byUser.username : fullName(byUser), at: new Date().toISOString() };
+  if (entry.id) await env.KV.put(`mod:trust:id:${entry.id}`, JSON.stringify(entry));
+  if (entry.username) await env.KV.put(`mod:trust:u:${entry.username}`, JSON.stringify(entry));
+  const list = (await trustIndex(env)).filter(e => !((entry.id && e.id === entry.id) || (entry.username && e.username === entry.username)));
+  list.push(entry);
+  await env.KV.put('mod:trust:list', JSON.stringify(list));
+  return entry;
+}
+
+async function removeTrust(env, key) {
+  const list = await trustIndex(env);
+  const left = [];
+  let removed = null;
+  for (const e of list) {
+    if (e.id === key || e.username === key) { removed = e; continue; }
+    left.push(e);
+  }
+  if (!removed) return null;
+  if (removed.id) await env.KV.delete(`mod:trust:id:${removed.id}`);
+  if (removed.username) await env.KV.delete(`mod:trust:u:${removed.username}`);
+  await env.KV.put('mod:trust:list', JSON.stringify(left));
+  return removed;
+}
+
+function trustKey(e) { return e.id || e.username; }
+
+async function notifyOtherTrustAdmins(env, byId, text) {
+  for (const id of [String(env.ADMIN_ID || ''), ...MOD_TRUST_ADMINS].filter(Boolean)) {
+    if (id !== String(byId)) await sendHtml(env, Number(id), text);
+  }
+}
+
+// Личка с ботом: админ кидает @username / ссылку / id / пересылает сообщение → человек пишет без анкеты.
+// Команды: /trusted — список, /untrust @username — забрать доступ. Возвращает true, если обработали.
+export async function modHandleAdminTrust(msg, env) {
+  if (!msg.from || !isTrustAdmin(env, msg.from.id)) return false;
+  const text = (msg.text || '').trim();
+
+  if (text === '/trusted') {
+    const list = await trustIndex(env);
+    await sendHtml(env, msg.chat.id, list.length
+      ? '<b>Пишут без анкеты:</b>\n' + list.map(e => `• ${esc(e.label)} — добавил ${esc(e.byName)}`).join('\n') + '\n\nЗабрать доступ: <code>/untrust @username</code>'
+      : 'Список пуст. Пришли @username, ссылку t.me/… или id человека — и он сможет писать без анкеты.');
+    return true;
+  }
+
+  const un = text.match(/^\/untrust\s+(.+)$/i);
+  if (un) {
+    const t = parseTrustTarget({ text: un[1] });
+    const removed = t ? await removeTrust(env, t.id || t.username) : null;
+    await sendHtml(env, msg.chat.id, removed ? `Готово: ${esc(removed.label)} снова пишет только после анкеты.` : 'Такого человека нет в списке. Список: /trusted');
+    if (removed) await notifyOtherTrustAdmins(env, msg.from.id, `↩️ ${esc(removed.label)} убран из доверенных (${esc(msg.from.username ? '@' + msg.from.username : fullName(msg.from))}).`);
+    return true;
+  }
+
+  const target = parseTrustTarget(msg);
+  if (!target) return false;
+  if (target.hidden) {
+    await sendHtml(env, msg.chat.id, `У ${esc(target.label)} скрыт аккаунт в пересылке — пришли его @username или ссылку t.me/…`);
+    return true;
+  }
+  const entry = await addTrust(env, target, msg.from);
+  await sendHtml(env, msg.chat.id,
+    `✅ ${esc(entry.label)} может писать во всех клубных чатах без анкеты.` +
+    (entry.username ? '' : '\n\nДобавлен по id — сработает, даже если человек сменит @username.'),
+    { inline_keyboard: [[{ text: '↩️ Отменить', callback_data: `mod_untrust_${trustKey(entry)}` }]] });
+  await notifyOtherTrustAdmins(env, msg.from.id, `🤝 ${esc(entry.label)} добавлен в доверенные (пишет без анкеты). Добавил ${esc(entry.byName)}.`);
+  return true;
+}
+
 // ─── Вход в чат ──────────────────────────────────────────────────────────────
 async function markNewcomer(env, chatId, user, clubKey) {
   if (!user || user.is_bot) return;
   const club = MOD_CLUBS[clubKey];
-  if (await env.KV.get(`mod:ok:${clubKey}:${user.id}`)) {
-    // Анкета уже есть (заполнил по заявке до входа) — публикуем отложенную визитку
-    await publishPendingCard(env, chatId, user.id, clubKey);
-    return;
-  }
+  if (await env.KV.get(`mod:ok:${clubKey}:${user.id}`)) return; // анкета уже есть — пишет свободно
+  if (await isTrusted(env, user)) return;                         // доверенный — без анкеты
   await env.KV.put(`mod:new:${normChatId(chatId)}:${user.id}`, String(Date.now()));
   // Приветствие прямо в чате — видит только новичок
   await sendEphemeral(env, chatId, user.id,
-    `👋 Добро пожаловать в <b>${esc(club.title)}</b>!\n\nЧтобы писать в чат, заполни короткую анкету — пара минут. После неё участники увидят твою визитку.`,
+    `👋 Добро пожаловать в <b>${esc(club.title)}</b>!\n\nЧтобы писать в чат, заполни короткую анкету — это пара минут.`,
     clubKey);
   await sendInviteDm(env, user.id, clubKey, true);
 }
@@ -160,6 +262,7 @@ export async function modHandleJoinRequest(update, env) {
   const found = modClubByChat(req.chat.id);
   if (!found) return;
   if (await env.KV.get(`mod:ok:${found.key}:${req.from.id}`)) return;
+  if (await isTrusted(env, req.from)) return;
   await env.KV.put(`mod:new:${normChatId(req.chat.id)}:${req.from.id}`, String(Date.now()));
   // На заявку боту разрешено написать первым — даже если человек не запускал бота
   await sendInviteDm(env, req.user_chat_id || req.from.id, found.key, true);
@@ -183,6 +286,7 @@ export async function modHandleGroupMessage(msg, env, ctx) {
   const newKey = `mod:new:${normChatId(msg.chat.id)}:${from.id}`;
   if (!(await env.KV.get(newKey))) return false;              // старый участник — пишет свободно
   if (await env.KV.get(`mod:ok:${clubKey}:${from.id}`)) return false;
+  if (await isTrusted(env, from)) return false;                // доверенный — пишет без анкеты
 
   // Админов чата не трогаем, даже если они зашли недавно
   const member = await tg(env, 'getChatMember', { chat_id: msg.chat.id, user_id: from.id });
@@ -220,7 +324,7 @@ async function sendInviteDm(env, userId, clubKey, force) {
   if (!force && (await env.KV.get(throttleKey))) return true;
   const res = await sendHtml(env, userId,
     `👋 Привет! Это бот сообщества CMO.\n\n<b>${esc(club.title)}</b> — ${esc(club.about)}\n\n` +
-    `Чтобы писать в чат, заполни короткую анкету — это пара минут. После неё твоя визитка появится в чате, и участники узнают, кто ты и чем полезен.`,
+    `Чтобы писать в чат, заполни короткую анкету — это пара минут.`,
     { inline_keyboard: [[{ text: '📝 Заполнить анкету', callback_data: `mod_start_${clubKey}` }]] });
   if (!res.ok) return false;
   await env.KV.put(throttleKey, '1', { expirationTtl: DM_THROTTLE_SEC });
@@ -327,6 +431,12 @@ export async function modHandleCallback(cq, env) {
     await startAnketa(env, cq.from, data.slice('mod_start_'.length));
     return true;
   }
+  if (data.startsWith('mod_untrust_')) {
+    if (!isTrustAdmin(env, cq.from.id)) return true;
+    const removed = await removeTrust(env, data.slice('mod_untrust_'.length));
+    await sendHtml(env, cq.from.id, removed ? `↩️ Отменено: ${esc(removed.label)} снова пишет только после анкеты.` : 'Уже отменено.');
+    return true;
+  }
   if (data === 'mod_skip') {
     const state = await env.KV.get(stateKey(cq.from.id), 'json');
     if (!state || !MOD_CLUBS[state.club]) return true;
@@ -340,18 +450,6 @@ export async function modHandleCallback(cq, env) {
   return false;
 }
 
-function cardHtml(club, answers, from) {
-  const lines = [`👋 <b>Новый участник ${esc(club.title)}</b>`, ''];
-  const name = answers.name || fullName(from);
-  lines.push(`<b>${esc(name)}</b>${from.username ? ' · @' + esc(from.username) : ''}`);
-  for (const q of club.questions) {
-    if (!q.card || q.key === 'name') continue;
-    const a = answers[q.key];
-    if (a) lines.push('', `<b>${esc(q.label)}:</b> ${esc(a)}`);
-  }
-  return lines.join('\n');
-}
-
 async function finishAnketa(env, userId, state, from) {
   const clubKey = state.club;
   const club = MOD_CLUBS[clubKey];
@@ -363,36 +461,13 @@ async function finishAnketa(env, userId, state, from) {
   await env.KV.put(`mod:ok:${clubKey}:${userId}`, '1');
   await env.KV.put(`mod:anketa:${clubKey}:${userId}`, JSON.stringify(record));
 
-  // Визитка — во все чаты клуба, где человек уже состоит. Если он ещё не в чате
-  // (подал заявку и ждёт одобрения) — визитка появится, когда он войдёт.
-  const card = cardHtml(club, state.answers, from || {});
-  let published = 0, deferred = 0;
-  for (const chatId of club.chatIds) {
-    const fullId = Number('-100' + normChatId(chatId));
-    const member = await tg(env, 'getChatMember', { chat_id: fullId, user_id: userId });
-    const inChat = member.ok && isPresent(member.result.status) && member.result.is_member !== false;
-    if (!inChat) {
-      await env.KV.put(`mod:cardpending:${clubKey}:${userId}:${normChatId(chatId)}`, card, { expirationTtl: 60 * 24 * 3600 });
-      deferred++;
-      continue;
-    }
-    const res = await sendHtml(env, fullId, card);
-    if (res.ok) { published++; await env.KV.put(`mod:card:${clubKey}:${userId}:${normChatId(chatId)}`, String(res.result.message_id)); }
-  }
-
-  await sendHtml(env, userId, published || !deferred
-    ? `Спасибо! Анкета принята ✅\nТвоя визитка опубликована в <b>${esc(club.title)}</b> — теперь можно писать в чат.`
-    : `Спасибо! Анкета принята ✅\nКак только заявку в <b>${esc(club.title)}</b> одобрят, твоя визитка появится в чате и можно будет сразу писать.`);
+  // Визитку в чат не публикуем — после анкеты человек просто может писать
+  const member = await tg(env, 'getChatMember', { chat_id: Number('-100' + normChatId(club.chatIds[0])), user_id: userId });
+  const inChat = member.ok && isPresent(member.result.status) && member.result.is_member !== false;
+  await sendHtml(env, userId, inChat || !member.ok
+    ? `Спасибо! Анкета принята ✅\nТеперь можно писать в <b>${esc(club.title)}</b>.`
+    : `Спасибо! Анкета принята ✅\nКак только заявку в <b>${esc(club.title)}</b> одобрят, сразу сможешь писать в чат.`);
   await sendToSheet(env, club, record);
-}
-
-async function publishPendingCard(env, chatId, userId, clubKey) {
-  const key = `mod:cardpending:${clubKey}:${userId}:${normChatId(chatId)}`;
-  const card = await env.KV.get(key);
-  if (!card) return;
-  await env.KV.delete(key);
-  const res = await sendHtml(env, Number('-100' + normChatId(chatId)), card);
-  if (res.ok) await env.KV.put(`mod:card:${clubKey}:${userId}:${normChatId(chatId)}`, String(res.result.message_id));
 }
 
 // Ответы — в Google Таблицу через веб-приложение Apps Script (см. moderation/apps-script.gs)

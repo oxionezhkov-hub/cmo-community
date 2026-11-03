@@ -4,7 +4,7 @@ import { AI_ASSISTANT_HTML } from "./ai-assistant/dist/worker-assets.js";
 import { BOARD_OG_IMAGE_B64 } from "./board/dist/worker-assets.js";
 import { PLAN_HTML } from "./plan/dist/worker-assets.js";
 import { serveCrm, handleCrmApi } from "./crm/api.js";
-import { modHandleChatMember, modHandleJoinRequest, modHandleGroupMessage, modHandleStart, modHandlePrivateMessage, modHandleCallback, modCleanupNotices } from "./moderation/moderation.js";
+import { modHandleChatMember, modHandleJoinRequest, modHandleGroupMessage, modHandleStart, modHandlePrivateMessage, modHandleCallback, modCleanupNotices, modHandleAdminTrust } from "./moderation/moderation.js";
 
 const WORKER_URL = "https://cmo-razbory.oxion-ezhkov.workers.dev";
 const PAYMENT_LINK = "https://edsofa.ai/sb/JIx";
@@ -468,6 +468,9 @@ async function handleMessage(msg, env, ctx) {
     await handleNetworkingStart(msg, env);
     return;
   }
+
+  // Админы модерации: @username / ссылка / id / пересылка → человек пишет в клубных чатах без анкеты
+  if (await modHandleAdminTrust(msg, env)) return;
 
   // Идёт анкета клубного чата — следующее сообщение считаем ответом
   if (!text.startsWith('/') && await modHandlePrivateMessage(msg, env)) return;
