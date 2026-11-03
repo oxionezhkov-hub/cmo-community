@@ -4,6 +4,7 @@ import { AI_ASSISTANT_HTML } from "./ai-assistant/dist/worker-assets.js";
 import { BOARD_OG_IMAGE_B64 } from "./board/dist/worker-assets.js";
 import { PLAN_HTML } from "./plan/dist/worker-assets.js";
 import { serveCrm, handleCrmApi } from "./crm/api.js";
+import { modHandleChatMember, modHandleJoinRequest, modHandleGroupMessage, modHandleStart, modHandlePrivateMessage, modHandleCallback, modCleanupNotices } from "./moderation/moderation.js";
 
 const WORKER_URL = "https://cmo-razbory.oxion-ezhkov.workers.dev";
 const PAYMENT_LINK = "https://edsofa.ai/sb/JIx";
@@ -15,16 +16,16 @@ const ADMIN_PATH = "/admin";
 // Ссылка одна и та же для всех нетворков — при смене даты меняем этот конфиг,
 // старые заявки остаются в KV под своим eventId и не мешают новому раунду регистрации.
 const NETWORKING_EVENT = {
-  id: 'networking-2026-11-04',
+  id: 'networking-2026-11-11',
   startParam: 'networking0902',
   title: 'Онлайн-нетворкинг CMO',
-  dateLabel: '4 ноября, 13:00 (по МСК)',
-  // 04.11.2026 13:00 МСК = 10:00 UTC, длительность 1,5 часа
-  startAtUTC: Date.UTC(2026, 10, 4, 10, 0, 0),
+  dateLabel: '11 ноября, 13:00 (по МСК)',
+  // 11.11.2026 13:00 МСК = 10:00 UTC, длительность 1,5 часа
+  startAtUTC: Date.UTC(2026, 10, 11, 10, 0, 0),
   durationMin: 90,
   // Ссылка на Zoom пока не известна — появится ближе к мероприятию (её пришлют отдельно)
   zoomUrl: null,
-  intro: '👑 *Онлайн-нетворкинг CMO — 4 ноября, 13:00*\n\nЕсли хочется расширить круг общения, познакомиться с предпринимателями, фаундерами и специалистами из IT/AI-среды — присоединяйтесь к нам.\n\nЭто встреча для тех, кто хочет выйти из привычного круга, рассказать о себе, своих задачах и найти новые контакты.\n\n*Что будет на встрече:*\n— новые знакомства с участниками из разных сфер, проектов и городов\n— возможность рассказать о себе, своём деле и текущих задачах\n— пространство, где можно не только познакомиться, но и увидеть точки пересечения уже в процессе общения\n\nОнлайн-нетворкинг CMO — это хороший способ оказаться среди людей, которые тоже создают, запускают, развивают и ищут новые возможности.\n\n🗓 4 ноября (среда), 13:00 (по МСК)\nМодерируемый формат: 40 секунд на самопрезентацию, дальше — штурм по запросам, если есть. Длительность 1–1,5 часа.\n\nЧтобы попасть — ответь на несколько коротких вопросов для знакомства (займёт пару минут). Ссылку на Zoom пришлём ближе к мероприятию.',
+  intro: '👑 *Онлайн-нетворкинг CMO — 11 ноября, 13:00*\n\nЕсли хочется расширить круг общения, познакомиться с предпринимателями, фаундерами и специалистами из IT/AI-среды — присоединяйтесь к нам.\n\nЭто встреча для тех, кто хочет выйти из привычного круга, рассказать о себе, своих задачах и найти новые контакты.\n\n*Что будет на встрече:*\n— новые знакомства с участниками из разных сфер, проектов и городов\n— возможность рассказать о себе, своём деле и текущих задачах\n— пространство, где можно не только познакомиться, но и увидеть точки пересечения уже в процессе общения\n\nОнлайн-нетворкинг CMO — это хороший способ оказаться среди людей, которые тоже создают, запускают, развивают и ищут новые возможности.\n\n🗓 11 ноября (среда), 13:00 (по МСК)\nМодерируемый формат: 40 секунд на самопрезентацию, дальше — штурм по запросам, если есть. Длительность 1–1,5 часа.\n\nЧтобы попасть — ответь на несколько коротких вопросов для знакомства (займёт пару минут). Ссылку на Zoom пришлём ближе к мероприятию.',
   questions: [
     'Имя, фамилия',
     'Кто ты и чем занимаешься?\nРоль, сфера, компания — в 2-3 предложениях.\nСайт или соцсеть — приложи ссылкой если есть.',
@@ -66,10 +67,10 @@ function networkingZoomLine(prefix) {
 
 // ─── ROUTING ────────────────────────────────────────────────
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    if (url.pathname === "/webhook") return handleWebhook(request, env);
+    if (url.pathname === "/webhook") return handleWebhook(request, env, ctx);
     if (url.pathname === "/crm" || url.pathname === "/crm/") return serveCrm();
     if (url.pathname.startsWith("/api/tgcrm/")) return handleCrmApi(request, env, url);
     if (url.pathname === "/setup-webhook") return setupWebhook(env);
@@ -168,6 +169,7 @@ if (url.pathname === '/api/admin/coffee/send-now') {
     // Частый крон (каждые 5 минут) — только напоминания о нетворке, остальное не трогаем
     if (event && event.cron === '*/5 * * * *') {
       await networkingSendReminders(env);
+      await modCleanupNotices(env);
       return;
     }
     const now = new Date();
@@ -342,7 +344,11 @@ async function setupWebhook(env) {
   const res = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/setWebhook`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url: `${WORKER_URL}/webhook` })
+    body: JSON.stringify({
+      url: `${WORKER_URL}/webhook`,
+      // chat_member и chat_join_request нужны модерации клубных чатов
+      allowed_updates: ['message', 'callback_query', 'chat_member', 'chat_join_request', 'my_chat_member']
+    })
   });
   const data = await res.json();
   return jsonResp(data);
@@ -397,9 +403,12 @@ async function apiAuthEmail(request, env) {
 }
 
 // ─── TELEGRAM WEBHOOK ────────────────────────────────────────
-async function handleWebhook(request, env) {
+async function handleWebhook(request, env, ctx) {
   const update = await request.json();
-  if (update.message) await handleMessage(update.message, env);
+  // Модерация клубных чатов: входы и заявки на вступление
+  if (update.chat_member) await modHandleChatMember(update, env);
+  if (update.chat_join_request) await modHandleJoinRequest(update, env);
+  if (update.message) await handleMessage(update.message, env, ctx);
   if (update.callback_query) await handleCallback(update.callback_query, env);
   return new Response("OK");
 }
@@ -423,13 +432,15 @@ async function apiRequestAccess(request, env) {
   return jsonResp({ ok: true });
 }
 
-async function handleMessage(msg, env) {
+async function handleMessage(msg, env, ctx) {
   const chatId = msg.chat.id;
   const text = msg.text || "";
   const userId = msg.from.id;
 
   // Групповой чат (например, чат Ядра) — отдельная ветка: только учёт активности, без ответов бота
   if (msg.chat.type === 'group' || msg.chat.type === 'supergroup') {
+    // Клубные чаты: сообщения новичков без анкеты удаляются
+    if (await modHandleGroupMessage(msg, env, ctx)) return;
     await handleGroupMessage(msg, env);
     return;
   }
@@ -445,6 +456,7 @@ async function handleMessage(msg, env) {
 
   if (text.startsWith("/start")) {
     const payload = text.slice(6).trim();
+    if (await modHandleStart(msg, env, payload)) return;
     if (payload === NETWORKING_EVENT.startParam) {
       await handleNetworkingStart(msg, env);
       return;
@@ -456,6 +468,9 @@ async function handleMessage(msg, env) {
     await handleNetworkingStart(msg, env);
     return;
   }
+
+  // Идёт анкета клубного чата — следующее сообщение считаем ответом
+  if (!text.startsWith('/') && await modHandlePrivateMessage(msg, env)) return;
 
   // Идёт анкетирование на нетворк — следующее сообщение считаем ответом на вопрос
   const networkingState = await env.KV.get(`networking:state:${userId}`, "json");
@@ -554,6 +569,7 @@ async function handleCallback(cq, env) {
     body: JSON.stringify({ callback_query_id: cq.id })
   });
   const data = cq.data || '';
+  if (await modHandleCallback(cq, env)) return;
 
 if (data.startsWith('approve_')) {
   const [, userId, email] = data.split('_');
