@@ -10,6 +10,8 @@
 // Участники, которые были в чате до подключения бота, не ограничиваются.
 // Боту в каждом чате нужны права администратора: «Удаление сообщений».
 
+import { modLog } from './modlog.js';
+
 export const MOD_BOT_USERNAME = 'cmo_razbory_bot';
 
 // Вопросы анкеты. key — колонка в таблице,
@@ -63,6 +65,8 @@ const GROUP_NOTICE_THROTTLE_SEC = 60;   // не чаще раза в минут�
 function normChatId(id) {
   return String(id).replace(/^-100/, '').replace(/^-/, '');
 }
+
+export { normChatId };
 
 export function modClubByChat(chatId) {
   const n = normChatId(chatId);
@@ -194,7 +198,10 @@ export async function modHandleAdminTrust(msg, env) {
     const t = parseTrustTarget({ text: un[1] });
     const removed = t ? await removeTrust(env, t.id || t.username) : null;
     await sendHtml(env, msg.chat.id, removed ? `Готово: ${esc(removed.label)} снова пишет только после анкеты.` : 'Такого человека нет в списке. Список: /trusted');
-    if (removed) await notifyOtherTrustAdmins(env, msg.from.id, `↩️ ${esc(removed.label)} убран из доверенных (${esc(msg.from.username ? '@' + msg.from.username : fullName(msg.from))}).`);
+    if (removed) {
+      await notifyOtherTrustAdmins(env, msg.from.id, `↩️ ${esc(removed.label)} убран из доверенных (${esc(msg.from.username ? '@' + msg.from.username : fullName(msg.from))}).`);
+      await modLog(env, { type: 'trust_remove', userId: removed.id, username: removed.username, name: removed.label, by: msg.from.username ? '@' + msg.from.username : fullName(msg.from) });
+    }
     return true;
   }
 
@@ -210,6 +217,7 @@ export async function modHandleAdminTrust(msg, env) {
     (entry.username ? '' : '\n\nДобавлен по id — сработает, даже если человек сменит @username.'),
     { inline_keyboard: [[{ text: '↩️ Отменить', callback_data: `mod_untrust_${trustKey(entry)}` }]] });
   await notifyOtherTrustAdmins(env, msg.from.id, `🤝 ${esc(entry.label)} добавлен в доверенные (пишет без анкеты). Добавил ${esc(entry.byName)}.`);
+  await modLog(env, { type: 'trust_add', userId: entry.id, username: entry.username, name: entry.label, by: entry.byName });
   return true;
 }
 
@@ -219,7 +227,10 @@ async function markNewcomer(env, chatId, user, clubKey) {
   const club = MOD_CLUBS[clubKey];
   if (await env.KV.get(`mod:ok:${clubKey}:${user.id}`)) return; // анкета уже есть — пишет свободно
   if (await isTrusted(env, user)) return;                         // доверенный — без анкеты
+  const already = await env.KV.get(`mod:new:${normChatId(chatId)}:${user.id}`);
   await env.KV.put(`mod:new:${normChatId(chatId)}:${user.id}`, String(Date.now()));
+  // При автоприёме заявки вход уже записан в журнал как «заявка принята»
+  if (!already) await modLog(env, { type: 'join', club: clubKey, user });
   // Приветствие прямо в чате — видит только новичок
   await welcomeInChat(env, chatId, user, clubKey);
   // Копия в личку — если не писали только что (например, при автоприёме заявки)
@@ -274,6 +285,9 @@ export async function modHandleJoinRequest(update, env) {
   }
 
   const approved = await tg(env, 'approveChatJoinRequest', { chat_id: req.chat.id, user_id: userId });
+  await modLog(env, approved.ok
+    ? { type: 'join_request', club: clubKey, user: req.from, detail: free ? 'без анкеты (доверенный или анкета уже есть)' : '' }
+    : { type: 'join_request_failed', club: clubKey, user: req.from, detail: approved.description || '' });
   if (!approved.ok) {
     await notifyAdminOnce(env, `mod:warn:noapprove:${normChatId(req.chat.id)}`,
       `⚠️ Модерация «${esc(club.title)}»: бот не может принимать заявки. Дай боту право администратора «Добавление участников».\n\n<code>${esc(approved.description || '')}</code>`);
@@ -327,6 +341,8 @@ export async function modHandleGroupMessage(msg, env, ctx) {
       `⚠️ Модерация «${esc(club.title)}»: бот не может удалять сообщения новичков. Дай боту право администратора «Удаление сообщений».\n\n<code>${esc(del.description || '')}</code>`);
     return false;
   }
+  const snippet = msg.text || msg.caption || (msg.photo ? '[фото]' : msg.video ? '[видео]' : msg.sticker ? '[стикер]' : msg.document ? '[файл]' : msg.voice ? '[голосовое]' : '[сообщение]');
+  await modLog(env, { type: 'msg_deleted', club: clubKey, user: from, detail: snippet });
 
   // Напоминание прямо в чате, видимое только этому человеку
   const ephKey = `mod:eph:${normChatId(msg.chat.id)}:${from.id}`;
@@ -421,6 +437,7 @@ async function startAnketa(env, from, clubKey) {
     return;
   }
   const state = { club: clubKey, step: 0, answers: {}, startedAt: Date.now() };
+  await modLog(env, { type: 'anketa_start', club: clubKey, user: from });
   await sendHtml(env, from.id, `Анкета для <b>${esc(MOD_CLUBS[clubKey].title)}</b> 📝\nОтвечай одним сообщением на каждый вопрос.`);
   await askStep(env, from.id, state, from);
 }
@@ -463,6 +480,7 @@ export async function modHandleCallback(cq, env) {
     if (!isTrustAdmin(env, cq.from.id)) return true;
     const removed = await removeTrust(env, data.slice('mod_untrust_'.length));
     await sendHtml(env, cq.from.id, removed ? `↩️ Отменено: ${esc(removed.label)} снова пишет только после анкеты.` : 'Уже отменено.');
+    if (removed) await modLog(env, { type: 'trust_remove', userId: removed.id, username: removed.username, name: removed.label, by: cq.from.username ? '@' + cq.from.username : fullName(cq.from) });
     return true;
   }
   if (data === 'mod_skip') {
@@ -488,6 +506,7 @@ async function finishAnketa(env, userId, state, from) {
   };
   await env.KV.put(`mod:ok:${clubKey}:${userId}`, '1');
   await env.KV.put(`mod:anketa:${clubKey}:${userId}`, JSON.stringify(record));
+  await modLog(env, { type: 'anketa_done', club: clubKey, userId, username: record.username, name: state.answers.name || [record.firstName, record.lastName].filter(Boolean).join(' ') });
 
   // Визитку в чат не публикуем — после анкеты человек просто может писать
   const member = await tg(env, 'getChatMember', { chat_id: Number('-100' + normChatId(club.chatIds[0])), user_id: userId });
@@ -523,6 +542,7 @@ async function sendToSheet(env, club, record) {
   } catch (e) { detail = String(e); }
   if (!ok) {
     await env.KV.put(`mod:sheetfail:${record.club}:${record.tgId}`, JSON.stringify(payload), { expirationTtl: 30 * 24 * 3600 });
+    await modLog(env, { type: 'sheet_fail', club: record.club, userId: record.tgId, username: record.username, name: record.answers.name || '', detail: detail.slice(0, 200) });
     if (env.ADMIN_ID) await sendHtml(env, env.ADMIN_ID, `⚠️ Анкета ${esc(club.title)} не записалась в таблицу (TG ID ${record.tgId}). Она сохранена в KV.\n<code>${esc(detail)}</code>`);
   }
 }

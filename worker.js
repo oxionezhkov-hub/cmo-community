@@ -4,7 +4,9 @@ import { AI_ASSISTANT_HTML } from "./ai-assistant/dist/worker-assets.js";
 import { BOARD_OG_IMAGE_B64 } from "./board/dist/worker-assets.js";
 import { PLAN_HTML } from "./plan/dist/worker-assets.js";
 import { serveCrm, handleCrmApi } from "./crm/api.js";
-import { modHandleChatMember, modHandleJoinRequest, modHandleGroupMessage, modHandleStart, modHandlePrivateMessage, modHandleCallback, modCleanupNotices, modHandleAdminTrust } from "./moderation/moderation.js";
+import { modHandleChatMember, modHandleJoinRequest, modHandleGroupMessage, modHandleStart, modHandlePrivateMessage, modHandleCallback, modCleanupNotices, modHandleAdminTrust, MOD_CLUBS, normChatId } from "./moderation/moderation.js";
+import { modLogApi } from "./moderation/modlog.js";
+import { MOD_LOG_HTML } from "./moderation/log-page.js";
 
 const WORKER_URL = "https://cmo-razbory.oxion-ezhkov.workers.dev";
 const PAYMENT_LINK = "https://edsofa.ai/sb/JIx";
@@ -72,6 +74,17 @@ export default {
 
     if (url.pathname === "/webhook") return handleWebhook(request, env, ctx);
     if (url.pathname === "/crm" || url.pathname === "/crm/") return serveCrm();
+    // Журнал модерации клубных чатов (вход по паролю админки)
+    if (url.pathname === "/moderation" || url.pathname === "/moderation/") {
+      return new Response(MOD_LOG_HTML, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+    }
+    if (url.pathname === "/api/mod/log") {
+      return modLogApi(request, env, url, {
+        isAdmin: (req) => (req.headers.get("Authorization") || "").includes("admin_session_" + ADMIN_PASSWORD),
+        clubs: MOD_CLUBS,
+        normChatId
+      });
+    }
     if (url.pathname.startsWith("/api/tgcrm/")) return handleCrmApi(request, env, url);
     if (url.pathname === "/setup-webhook") return setupWebhook(env);
     if (url.pathname === "/api/export-modules") return apiExportModules(request, env);
