@@ -1,9 +1,10 @@
 // ─── МОДЕРАЦИЯ КЛУБНЫХ ЧАТОВ ────────────────────────────────────────────────
 // Новые участники клубных чатов не могут писать, пока не заполнят анкету:
 //  1. Бот видит вход человека в чат (chat_member / new_chat_members) и помечает его как «новичка».
-//  2. Сообщения новичка сразу удаляются. Напоминание «заполни анкету» уходит ему в личку —
-//     его видит только он. Если бот не может написать первым (человек ни разу не запускал бота),
-//     в чате на 15 секунд появляется короткое сообщение со ссылкой на бота и удаляется само.
+//  2. Сообщения новичка сразу удаляются. Напоминание «заполни анкету» бот показывает прямо в чате
+//     эфемерным сообщением (Bot API 10.2+): его видит только этот человек, остальные — нет.
+//     Копия с кнопкой уходит в личку, если человек запускал бота. Если эфемерное сообщение
+//     отправить не удалось, в чате на 15 секунд появляется обычная подсказка и удаляется сама.
 //  3. Анкета проходит в личке с ботом. После неё визитка публикуется в чат, ответы уходят
 //     в Google Таблицу (Apps Script, секрет MOD_SHEET_WEBHOOK), человек может писать.
 // Участники, которые были в чате до подключения бота, не ограничиваются.
@@ -51,7 +52,8 @@ export const MOD_CLUBS = {
   }
 };
 
-const NOTICE_TTL_MS = 15 * 1000;        // сколько висит подсказка в чате, если в личку написать нельзя
+const NOTICE_TTL_MS = 15 * 1000;
+const EPHEMERAL_THROTTLE_SEC = 20;      // эфемерное напоминание — не чаще раза в 20 секунд        // сколько висит подсказка в чате, если в личку написать нельзя
 const DM_THROTTLE_SEC = 10 * 60;        // не чаще раза в 10 минут напоминать в личку
 const GROUP_NOTICE_THROTTLE_SEC = 60;   // не чаще раза в минуту показывать подсказку в чате
 
@@ -109,13 +111,28 @@ function fullName(u) {
 // ─── Вход в чат ──────────────────────────────────────────────────────────────
 async function markNewcomer(env, chatId, user, clubKey) {
   if (!user || user.is_bot) return;
+  const club = MOD_CLUBS[clubKey];
   if (await env.KV.get(`mod:ok:${clubKey}:${user.id}`)) {
     // Анкета уже есть (заполнил по заявке до входа) — публикуем отложенную визитку
     await publishPendingCard(env, chatId, user.id, clubKey);
     return;
   }
   await env.KV.put(`mod:new:${normChatId(chatId)}:${user.id}`, String(Date.now()));
+  // Приветствие прямо в чате — видит только новичок
+  await sendEphemeral(env, chatId, user.id,
+    `👋 Добро пожаловать в <b>${esc(club.title)}</b>!\n\nЧтобы писать в чат, заполни короткую анкету — пара минут. После неё участники увидят твою визитку.`,
+    clubKey);
   await sendInviteDm(env, user.id, clubKey, true);
+}
+
+// Эфемерное сообщение в группе: видит только receiver. Бот должен быть админом чата.
+async function sendEphemeral(env, chatId, userId, text, clubKey) {
+  const res = await tg(env, 'sendMessage', {
+    chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true,
+    ephemeral_message_parameters: { receiver_user_id: userId },
+    reply_markup: { inline_keyboard: [[{ text: '📝 Заполнить анкету', url: startLink(clubKey) }]] }
+  });
+  return !!res.ok;
 }
 
 function isPresent(status) {
@@ -181,8 +198,18 @@ export async function modHandleGroupMessage(msg, env, ctx) {
     return false;
   }
 
+  // Напоминание прямо в чате, видимое только этому человеку
+  const ephKey = `mod:eph:${normChatId(msg.chat.id)}:${from.id}`;
+  const recent = await env.KV.get(ephKey); // '1' — показали, '0' — не прошло
+  let shown = recent === '1';
+  if (!recent) {
+    shown = await sendEphemeral(env, msg.chat.id, from.id,
+      `Сообщение не отправлено: чтобы писать в <b>${esc(club.title)}</b>, сначала заполни короткую анкету 👇`, clubKey);
+    await env.KV.put(ephKey, shown ? '1' : '0', { expirationTtl: EPHEMERAL_THROTTLE_SEC });
+  }
   const dmSent = await sendInviteDm(env, from.id, clubKey, false);
-  if (!dmSent) await groupNotice(env, msg.chat.id, from, clubKey, ctx);
+  // Запасной вариант, если эфемерные сообщения не прошли и в личку написать нельзя
+  if (!shown && !dmSent) await groupNotice(env, msg.chat.id, from, clubKey, ctx);
   return true;
 }
 
