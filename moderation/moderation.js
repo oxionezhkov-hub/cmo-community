@@ -221,10 +221,9 @@ async function markNewcomer(env, chatId, user, clubKey) {
   if (await isTrusted(env, user)) return;                         // доверенный — без анкеты
   await env.KV.put(`mod:new:${normChatId(chatId)}:${user.id}`, String(Date.now()));
   // Приветствие прямо в чате — видит только новичок
-  await sendEphemeral(env, chatId, user.id,
-    `👋 Добро пожаловать в <b>${esc(club.title)}</b>!\n\nЧтобы писать в чат, заполни короткую анкету — это пара минут.`,
-    clubKey);
-  await sendInviteDm(env, user.id, clubKey, true);
+  await welcomeInChat(env, chatId, user, clubKey);
+  // Копия в личку — если не писали только что (например, при автоприёме заявки)
+  await sendInviteDm(env, user.id, clubKey, false);
 }
 
 // Эфемерное сообщение в группе: видит только receiver. Бот должен быть админом чата.
@@ -256,16 +255,43 @@ export async function modHandleChatMember(update, env) {
 
 // update.chat_join_request — человек подал заявку по ссылке «по заявке».
 // Одобряют заявки админы клуба, бот только сразу присылает анкету.
+// Все заявки в клубные чаты принимаются автоматически: человек сразу видит чат и может
+// читать его без «подписки», а писать — только после анкеты (сообщения удаляются).
+// Порядок: помечаем новичком → пишем в личку (пока заявка не обработана, боту можно написать
+// первым) → принимаем заявку → в самом чате показываем приветствие, которое видит только он.
 export async function modHandleJoinRequest(update, env) {
   const req = update.chat_join_request;
   if (!req) return;
   const found = modClubByChat(req.chat.id);
   if (!found) return;
-  if (await env.KV.get(`mod:ok:${found.key}:${req.from.id}`)) return;
-  if (await isTrusted(env, req.from)) return;
-  await env.KV.put(`mod:new:${normChatId(req.chat.id)}:${req.from.id}`, String(Date.now()));
-  // На заявку боту разрешено написать первым — даже если человек не запускал бота
-  await sendInviteDm(env, req.user_chat_id || req.from.id, found.key, true);
+  const { key: clubKey, club } = found;
+  const userId = req.from.id;
+  const free = (await env.KV.get(`mod:ok:${clubKey}:${userId}`)) || (await isTrusted(env, req.from));
+
+  if (!free) {
+    await env.KV.put(`mod:new:${normChatId(req.chat.id)}:${userId}`, String(Date.now()));
+    await sendInviteDm(env, req.user_chat_id || userId, clubKey, true, true);
+  }
+
+  const approved = await tg(env, 'approveChatJoinRequest', { chat_id: req.chat.id, user_id: userId });
+  if (!approved.ok) {
+    await notifyAdminOnce(env, `mod:warn:noapprove:${normChatId(req.chat.id)}`,
+      `⚠️ Модерация «${esc(club.title)}»: бот не может принимать заявки. Дай боту право администратора «Добавление участников».\n\n<code>${esc(approved.description || '')}</code>`);
+    return;
+  }
+  if (!free) await welcomeInChat(env, req.chat.id, req.from, clubKey);
+}
+
+// Приветствие в чате, видимое только новичку. Один раз на вход (после автоприёма заявки
+// следом приходит ещё и событие о вступлении — второй раз не показываем).
+async function welcomeInChat(env, chatId, user, clubKey) {
+  const flag = `mod:welcomed:${normChatId(chatId)}:${user.id}`;
+  if (await env.KV.get(flag)) return;
+  await env.KV.put(flag, '1', { expirationTtl: 3600 });
+  const club = MOD_CLUBS[clubKey];
+  await sendEphemeral(env, chatId, user.id,
+    `👋 Добро пожаловать в <b>${esc(club.title)}</b>!\n\nЧитать чат можно уже сейчас. Чтобы писать, заполни короткую анкету — это пара минут 👇`,
+    clubKey);
 }
 
 // ─── Сообщения в чате ────────────────────────────────────────────────────────
@@ -318,12 +344,14 @@ export async function modHandleGroupMessage(msg, env, ctx) {
 }
 
 // Напоминание в личку. Возвращает true, если человек его получил (или получал недавно).
-async function sendInviteDm(env, userId, clubKey, force) {
+async function sendInviteDm(env, userId, clubKey, force, joinRequest = false) {
   const club = MOD_CLUBS[clubKey];
   const throttleKey = `mod:dm:${clubKey}:${userId}`;
   if (!force && (await env.KV.get(throttleKey))) return true;
   const res = await sendHtml(env, userId,
-    `👋 Привет! Это бот сообщества CMO.\n\n<b>${esc(club.title)}</b> — ${esc(club.about)}\n\n` +
+    (joinRequest
+      ? `👋 Привет! Заявка в <b>${esc(club.title)}</b> принята — чат уже открыт, его можно читать.\n\n${esc(club.about)}\n\n`
+      : `👋 Привет! Это бот сообщества CMO.\n\n<b>${esc(club.title)}</b> — ${esc(club.about)}\n\n`) +
     `Чтобы писать в чат, заполни короткую анкету — это пара минут.`,
     { inline_keyboard: [[{ text: '📝 Заполнить анкету', callback_data: `mod_start_${clubKey}` }]] });
   if (!res.ok) return false;
