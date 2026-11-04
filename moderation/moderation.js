@@ -316,9 +316,11 @@ export async function modHandleGroupMessage(msg, env, ctx) {
   const { key: clubKey, club } = found;
 
   // Вход через сервисное сообщение — помечаем новичков
-  if (Array.isArray(msg.new_chat_members)) {
-    for (const u of msg.new_chat_members) await markNewcomer(env, msg.chat.id, u, clubKey);
-    return false;
+  if (Array.isArray(msg.new_chat_members) || msg.left_chat_member) {
+    for (const u of msg.new_chat_members || []) await markNewcomer(env, msg.chat.id, u, clubKey);
+    // Служебные «X вступил(а) / покинул(а) группу» удаляем — они засоряют чат и дают уведомления всем
+    await tg(env, 'deleteMessage', { chat_id: msg.chat.id, message_id: msg.message_id });
+    return true;
   }
 
   const from = msg.from;
@@ -369,7 +371,9 @@ async function sendInviteDm(env, userId, clubKey, force, joinRequest = false) {
       ? `👋 Привет! Заявка в <b>${esc(club.title)}</b> принята — чат уже открыт, его можно читать.\n\n${esc(club.about)}\n\n`
       : `👋 Привет! Это бот сообщества CMO.\n\n<b>${esc(club.title)}</b> — ${esc(club.about)}\n\n`) +
     `Чтобы писать в чат, заполни короткую анкету — это пара минут.`,
-    { inline_keyboard: [[{ text: '📝 Заполнить анкету', callback_data: `mod_start_${clubKey}` }]] });
+    // Ссылка, а не callback-кнопка: если человек ни разу не нажимал «Старт», после приёма заявки бот
+    // уже не может ему писать — callback «молчал». Ссылка открывает бота со «Стартом», и анкета идёт.
+    { inline_keyboard: [[{ text: '📝 Заполнить анкету', url: startLink(clubKey) }]] });
   if (!res.ok) return false;
   await env.KV.put(throttleKey, '1', { expirationTtl: DM_THROTTLE_SEC });
   return true;
@@ -380,9 +384,11 @@ async function groupNotice(env, chatId, from, clubKey, ctx) {
   const throttleKey = `mod:gn:${normChatId(chatId)}:${from.id}`;
   if (await env.KV.get(throttleKey)) return;
   await env.KV.put(throttleKey, '1', { expirationTtl: GROUP_NOTICE_THROTTLE_SEC });
-  const res = await sendHtml(env, chatId,
-    `<a href="tg://user?id=${from.id}">${esc(fullName(from))}</a>, чтобы писать в чат, заполни короткую анкету у бота 👇`,
-    { inline_keyboard: [[{ text: '📝 Заполнить анкету', url: startLink(clubKey) }]] });
+  const res = await tg(env, 'sendMessage', {
+    chat_id: chatId, parse_mode: 'HTML', disable_notification: true,
+    text: `<a href="tg://user?id=${from.id}">${esc(fullName(from))}</a>, чтобы писать в чат, заполни короткую анкету у бота 👇`,
+    reply_markup: { inline_keyboard: [[{ text: '📝 Заполнить анкету', url: startLink(clubKey) }]] }
+  });
   if (!res.ok) return;
   const messageId = res.result.message_id;
   // Запасной вариант на случай, если воркер не доживёт до таймера — подчистит крон
@@ -436,6 +442,13 @@ async function startAnketa(env, from, clubKey) {
     await sendHtml(env, from.id, `Анкета для <b>${esc(MOD_CLUBS[clubKey].title)}</b> уже заполнена ✅ Можно писать в чат.`);
     return;
   }
+  // Анкета уже идёт — не начинаем заново, а повторяем текущий вопрос
+  const current = await env.KV.get(stateKey(from.id), 'json');
+  if (current && current.club === clubKey) {
+    await sendHtml(env, from.id, `Продолжаем анкету для <b>${esc(MOD_CLUBS[clubKey].title)}</b> — ответь на вопрос ниже 👇`);
+    await askStep(env, from.id, current, from);
+    return;
+  }
   const state = { club: clubKey, step: 0, answers: {}, startedAt: Date.now() };
   await modLog(env, { type: 'anketa_start', club: clubKey, user: from });
   await sendHtml(env, from.id, `Анкета для <b>${esc(MOD_CLUBS[clubKey].title)}</b> 📝\nОтвечай одним сообщением на каждый вопрос.`);
@@ -473,7 +486,10 @@ export async function modHandlePrivateMessage(msg, env) {
 export async function modHandleCallback(cq, env) {
   const data = cq.data || '';
   if (data.startsWith('mod_start_')) {
-    await startAnketa(env, cq.from, data.slice('mod_start_'.length));
+    // Кнопка из старых сообщений. Открываем бота по ссылке со «Стартом» — это работает,
+    // даже если человек ни разу не запускал бота (тогда написать ему первым бот не может)
+    const clubKey = data.slice('mod_start_'.length);
+    await tg(env, 'answerCallbackQuery', { callback_query_id: cq.id, url: startLink(clubKey) });
     return true;
   }
   if (data.startsWith('mod_untrust_')) {
