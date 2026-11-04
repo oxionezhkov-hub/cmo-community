@@ -227,6 +227,7 @@ async function markNewcomer(env, chatId, user, clubKey) {
   const club = MOD_CLUBS[clubKey];
   if (await env.KV.get(`mod:ok:${clubKey}:${user.id}`)) return; // анкета уже есть — пишет свободно
   if (await isTrusted(env, user)) return;                         // доверенный — без анкеты
+  if (await reuseAnketa(env, user, clubKey)) return;              // анкета уже есть в другом клубе
   const already = await env.KV.get(`mod:new:${normChatId(chatId)}:${user.id}`);
   await env.KV.put(`mod:new:${normChatId(chatId)}:${user.id}`, String(Date.now()));
   // При автоприёме заявки вход уже записан в журнал как «заявка принята»
@@ -277,7 +278,8 @@ export async function modHandleJoinRequest(update, env) {
   if (!found) return;
   const { key: clubKey, club } = found;
   const userId = req.from.id;
-  const free = (await env.KV.get(`mod:ok:${clubKey}:${userId}`)) || (await isTrusted(env, req.from));
+  const free = (await env.KV.get(`mod:ok:${clubKey}:${userId}`)) || (await isTrusted(env, req.from)) ||
+    (await reuseAnketa(env, req.from, clubKey, { notify: true, dmChatId: req.user_chat_id || userId }));
 
   if (!free) {
     await env.KV.put(`mod:new:${normChatId(req.chat.id)}:${userId}`, String(Date.now()));
@@ -328,6 +330,7 @@ export async function modHandleGroupMessage(msg, env, ctx) {
   const newKey = `mod:new:${normChatId(msg.chat.id)}:${from.id}`;
   if (!(await env.KV.get(newKey))) return false;              // старый участник — пишет свободно
   if (await env.KV.get(`mod:ok:${clubKey}:${from.id}`)) return false;
+  if (await reuseAnketa(env, from, clubKey)) return false;      // анкета уже есть в другом клубе
   if (await isTrusted(env, from)) return false;                // доверенный — пишет без анкеты
 
   // Админов чата не трогаем, даже если они зашли недавно
@@ -419,8 +422,11 @@ async function askStep(env, userId, state, from) {
   const club = MOD_CLUBS[state.club];
   const qs = club.questions;
   // Пропускаем вопросы, ответ на которые знаем сами (например, @username)
-  while (state.step < qs.length && qs[state.step].auto === 'username' && from && from.username) {
-    state.answers[qs[state.step].key] = '@' + from.username;
+  while (state.step < qs.length && (
+    (qs[state.step].auto === 'username' && from && from.username) ||
+    (state.prefilled && state.answers[qs[state.step].key] != null && (state.answers[qs[state.step].key] || !qs[state.step].required))
+  )) {
+    if (qs[state.step].auto === 'username' && from && from.username && state.answers[qs[state.step].key] == null) state.answers[qs[state.step].key] = '@' + from.username;
     state.step++;
   }
   if (state.step >= qs.length) {
@@ -430,7 +436,8 @@ async function askStep(env, userId, state, from) {
   }
   await env.KV.put(stateKey(userId), JSON.stringify(state), { expirationTtl: 7 * 24 * 3600 });
   const q = qs[state.step];
-  const shown = qs.filter(x => !(x.auto === 'username' && from && from.username));
+  const known = (x) => (x.auto === 'username' && from && from.username) || (state.prefilled && state.answers[x.key] != null && (state.answers[x.key] || !x.required));
+  const shown = qs.filter(x => !known(x) || x === q);
   const num = shown.indexOf(q) + 1;
   await sendHtml(env, userId, `<b>Вопрос ${num} из ${shown.length}</b>\n${esc(q.text)}`,
     q.required ? undefined : { inline_keyboard: [[{ text: 'Пропустить →', callback_data: 'mod_skip' }]] });
@@ -449,14 +456,38 @@ async function startAnketa(env, from, clubKey) {
     await askStep(env, from.id, current, from);
     return;
   }
-  const state = { club: clubKey, step: 0, answers: {}, startedAt: Date.now() };
+  // Анкета уже есть в другом клубе — переносим, а если не хватает вопросов, спрашиваем только их
+  if (await reuseAnketa(env, from, clubKey, { notify: true })) return;
+  const prev = await findAnyAnketa(env, from.id, clubKey);
+  const state = { club: clubKey, step: 0, answers: prev ? carryAnswers(clubKey, prev, from) : {}, prefilled: !!prev, startedAt: Date.now() };
   await modLog(env, { type: 'anketa_start', club: clubKey, user: from });
-  await sendHtml(env, from.id, `Анкета для <b>${esc(MOD_CLUBS[clubKey].title)}</b> 📝\nОтвечай одним сообщением на каждый вопрос.`);
+  await sendHtml(env, from.id, prev
+    ? `Анкета для <b>${esc(MOD_CLUBS[clubKey].title)}</b> 📝\nЧасть ответов взяли из <b>${esc(MOD_CLUBS[prev.club].title)}</b> — осталось ответить на пару вопросов.`
+    : `Анкета для <b>${esc(MOD_CLUBS[clubKey].title)}</b> 📝\nОтвечай одним сообщением на каждый вопрос.`);
   await askStep(env, from.id, state, from);
 }
 
 // /start mod_<club> в личке. Возвращает true, если обработали.
+export const MOD_ANKETA_LINK = `https://t.me/${MOD_BOT_USERNAME}?start=anketa`;
+
 export async function modHandleStart(msg, env, payload) {
+  if (payload === 'anketa') {
+    // Универсальная ссылка: открывает анкету того чата, где человек её ждёт
+    const from = msg.from;
+    const waiting = await pendingClubs(env, from.id);
+    if (waiting.length) {
+      await startAnketa(env, from, waiting[0]); // остальные ожидающие клубы откроются этой же анкетой
+      return true;
+    }
+    if (await findAnyAnketa(env, from.id, '')) {
+      await sendHtml(env, from.id, 'Анкета уже заполнена ✅ Писать в клубных чатах можно без ограничений.');
+      return true;
+    }
+    await sendHtml(env, from.id, 'Для какого клуба заполняем анкету?', {
+      inline_keyboard: Object.entries(MOD_CLUBS).map(([key, c]) => [{ text: c.title, url: startLink(key) }])
+    });
+    return true;
+  }
   if (!payload || !payload.startsWith('mod_')) return false;
   await startAnketa(env, msg.from, payload.slice(4));
   return true;
@@ -512,25 +543,95 @@ export async function modHandleCallback(cq, env) {
   return false;
 }
 
-async function finishAnketa(env, userId, state, from) {
-  const clubKey = state.club;
+// Сохраняет анкету клуба: доступ, запись, журнал, строка в таблице.
+async function saveAnketa(env, clubKey, userId, person, answers, reusedFrom = '') {
   const club = MOD_CLUBS[clubKey];
   const record = {
     club: clubKey, clubTitle: club.title, tgId: userId,
-    username: from?.username || '', firstName: from?.first_name || '', lastName: from?.last_name || '',
-    answers: state.answers, filledAt: new Date().toISOString()
+    username: person?.username || '', firstName: person?.first_name || person?.firstName || '', lastName: person?.last_name || person?.lastName || '',
+    answers, filledAt: new Date().toISOString(), ...(reusedFrom ? { reusedFrom } : {})
   };
   await env.KV.put(`mod:ok:${clubKey}:${userId}`, '1');
   await env.KV.put(`mod:anketa:${clubKey}:${userId}`, JSON.stringify(record));
-  await modLog(env, { type: 'anketa_done', club: clubKey, userId, username: record.username, name: state.answers.name || [record.firstName, record.lastName].filter(Boolean).join(' ') });
+  await modLog(env, { type: 'anketa_done', club: clubKey, userId, username: record.username,
+    name: answers.name || [record.firstName, record.lastName].filter(Boolean).join(' '),
+    detail: reusedFrom ? `перенесена из ${MOD_CLUBS[reusedFrom]?.title || reusedFrom}` : '' });
+  await sendToSheet(env, club, record);
+  return record;
+}
+
+// Клубы, где человек вошёл и ждёт анкету
+async function pendingClubs(env, userId) {
+  const out = [];
+  for (const [key, club] of Object.entries(MOD_CLUBS)) {
+    if (await env.KV.get(`mod:ok:${key}:${userId}`)) continue;
+    for (const id of club.chatIds) {
+      if (await env.KV.get(`mod:new:${normChatId(id)}:${userId}`)) { out.push(key); break; }
+    }
+  }
+  return out;
+}
+
+async function finishAnketa(env, userId, state, from) {
+  const clubKey = state.club;
+  const club = MOD_CLUBS[clubKey];
+  await saveAnketa(env, clubKey, userId, from, state.answers);
+
+  // Одна анкета на все клубы: открываем доступ и в других клубах, где человек ждёт анкету
+  const also = [];
+  for (const other of await pendingClubs(env, userId)) {
+    if (other !== clubKey && await reuseAnketa(env, from || { id: userId }, other)) also.push(MOD_CLUBS[other].title);
+  }
 
   // Визитку в чат не публикуем — после анкеты человек просто может писать
   const member = await tg(env, 'getChatMember', { chat_id: Number('-100' + normChatId(club.chatIds[0])), user_id: userId });
   const inChat = member.ok && isPresent(member.result.status) && member.result.is_member !== false;
-  await sendHtml(env, userId, inChat || !member.ok
+  await sendHtml(env, userId, (inChat || !member.ok
     ? `Спасибо! Анкета принята ✅\nТеперь можно писать в <b>${esc(club.title)}</b>.`
-    : `Спасибо! Анкета принята ✅\nКак только заявку в <b>${esc(club.title)}</b> одобрят, сразу сможешь писать в чат.`);
-  await sendToSheet(env, club, record);
+    : `Спасибо! Анкета принята ✅\nКак только заявку в <b>${esc(club.title)}</b> одобрят, сразу сможешь писать в чат.`) +
+    (also.length ? `\n\nЭта же анкета открыла доступ в: ${also.map(t => '<b>' + esc(t) + '</b>').join(', ')}.` : ''));
+}
+
+// ─── Одна анкета на все клубы ────────────────────────────────────────────────
+// Если человек уже заполнил анкету в одном клубе, в другом заново её не спрашиваем:
+// берём те же ответы. Если у нового клуба есть обязательные вопросы, которых не было
+// в той анкете, — анкета откроется и спросит только их (см. startAnketa).
+async function findAnyAnketa(env, userId, exceptClub) {
+  for (const key of Object.keys(MOD_CLUBS)) {
+    if (key === exceptClub) continue;
+    const r = await env.KV.get(`mod:anketa:${key}:${userId}`, 'json');
+    if (r && r.answers) return r;
+  }
+  return null;
+}
+
+function carryAnswers(clubKey, prev, user) {
+  const answers = {};
+  for (const q of MOD_CLUBS[clubKey].questions) {
+    if (prev.answers[q.key] != null) answers[q.key] = prev.answers[q.key];
+    else if (q.auto === 'username' && (user?.username || prev.username)) answers[q.key] = '@' + (user?.username || prev.username);
+  }
+  return answers;
+}
+
+function missingRequired(clubKey, answers) {
+  return MOD_CLUBS[clubKey].questions.filter(q => q.required && !answers[q.key]);
+}
+
+// true — анкета перенесена, писать можно
+async function reuseAnketa(env, user, clubKey, { notify = false, dmChatId = null } = {}) {
+  if (!user || !MOD_CLUBS[clubKey]) return false;
+  if (await env.KV.get(`mod:ok:${clubKey}:${user.id}`)) return true;
+  const prev = await findAnyAnketa(env, user.id, clubKey);
+  if (!prev) return false;
+  const answers = carryAnswers(clubKey, prev, user);
+  if (missingRequired(clubKey, answers).length) return false;
+  await saveAnketa(env, clubKey, user.id, user.first_name ? user : prev, answers, prev.club);
+  if (notify) {
+    await sendHtml(env, dmChatId || user.id,
+      `👋 Анкету заново заполнять не нужно — взяли твои ответы из <b>${esc(MOD_CLUBS[prev.club].title)}</b>. В <b>${esc(MOD_CLUBS[clubKey].title)}</b> можно писать сразу ✅`);
+  }
+  return true;
 }
 
 // Ответы — в Google Таблицу через веб-приложение Apps Script (см. moderation/apps-script.gs)
