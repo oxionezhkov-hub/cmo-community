@@ -594,6 +594,8 @@ async function handleEmailCheck(msg, env, email) {
 }
 
 async function handleCallback(cq, env) {
+  // Кнопка анкеты клубного чата отвечает на callback сама (ссылкой на бота)
+  if ((cq.data || '').startsWith('mod_start_')) { await modHandleCallback(cq, env); return; }
   await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/answerCallbackQuery`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
