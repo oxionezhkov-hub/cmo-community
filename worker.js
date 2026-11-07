@@ -49,16 +49,53 @@ function networkingGcalUrl() {
   const fmt = d => d.toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
   const params = new URLSearchParams({
     action: 'TEMPLATE',
-    text: NETWORKING_EVENT.title + ' (CMO)',
+    text: NETWORKING_EVENT.title,
     dates: fmt(start) + '/' + fmt(end),
-    details: 'Модерируемый онлайн-нетворкинг сообщества CMO. Ссылку на Zoom пришлём отдельно.',
+    details: networkingCalDescription(),
+    location: NETWORKING_EVENT.zoomUrl || 'Zoom',
     ctz: 'Europe/Moscow'
   });
   return 'https://calendar.google.com/calendar/render?' + params.toString();
 }
 
+function networkingCalDescription() {
+  return 'Модерируемый онлайн-нетворкинг сообщества CMO. ' + (NETWORKING_EVENT.zoomUrl
+    ? 'Ссылка на Zoom: ' + NETWORKING_EVENT.zoomUrl
+    : 'Ссылку на Zoom пришлём ближе к мероприятию в боте @cmo_razbory_bot.');
+}
+
+// .ics для Apple Календаря (и Outlook) — генерируется на лету, поэтому подхватывает zoomUrl после его появления
+function networkingIcs() {
+  const fmt = d => new Date(d).toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
+  const esc = t => String(t).replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/([,;])/g, '\\$1');
+  const start = NETWORKING_EVENT.startAtUTC;
+  const end = start + NETWORKING_EVENT.durationMin * 60 * 1000;
+  const lines = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//CMO//Networking//RU', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    'UID:' + NETWORKING_EVENT.id + '@cmo-razbory',
+    'DTSTAMP:' + fmt(Date.now()),
+    'DTSTART:' + fmt(start),
+    'DTEND:' + fmt(end),
+    'SUMMARY:' + esc(NETWORKING_EVENT.title),
+    'DESCRIPTION:' + esc(networkingCalDescription()),
+    'LOCATION:' + esc(NETWORKING_EVENT.zoomUrl || 'Zoom'),
+    NETWORKING_EVENT.zoomUrl ? 'URL:' + NETWORKING_EVENT.zoomUrl : null,
+    'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:' + esc(NETWORKING_EVENT.title), 'TRIGGER:-PT15M', 'END:VALARM',
+    'END:VEVENT', 'END:VCALENDAR'
+  ].filter(Boolean);
+  return lines.join('\r\n') + '\r\n';
+}
+
+function networkingCalButtons() {
+  return [
+    [{ text: '📅 Google Календарь', url: networkingGcalUrl() }],
+    [{ text: '🍏 Apple Календарь', url: `${WORKER_URL}/networking.ics` }]
+  ];
+}
+
 function networkingCalKeyboard() {
-  return { inline_keyboard: [[{ text: '📅 Добавить в Google Календарь', url: networkingGcalUrl() }]] };
+  return { inline_keyboard: networkingCalButtons() };
 }
 
 function networkingZoomLine(prefix) {
@@ -158,6 +195,13 @@ if (url.pathname === '/api/admin/coffee/send-now') {
   await coffeeSendPairs(env);
   return jsonResp({ ok: true, weekId, pairs: round.pairs.length });
 }
+    if (url.pathname === '/networking.ics') {
+      return new Response(networkingIcs(), { headers: {
+        'Content-Type': 'text/calendar; charset=utf-8',
+        'Content-Disposition': 'inline; filename="cmo-networking.ics"',
+        'Cache-Control': 'no-store'
+      }});
+    }
     if (url.pathname === '/api/event-ics') {
   const id = Number(url.searchParams.get('id'));
   const events = await env.KV.get('events:list', 'json') || [];
@@ -869,7 +913,7 @@ async function handleNetworkingStart(msg, env) {
     // Уже зарегистрирован и прошёл анкету — сообщаем об этом и даём скорректировать ответы
     await notifyAdmin(env, `🔁 *${NETWORKING_EVENT.title}* (${NETWORKING_EVENT.dateLabel}) — повторный переход по ссылке (уже зарегистрирован)\n\n${reg.name} (@${reg.username || '—'}), TG ID: ${userId}`);
     const keyboard = { inline_keyboard: [[{ text: '✏️ Скорректировать анкету', callback_data: 'networking_edit' }]] };
-    await tgSend(env, chatId, `Ты уже зарегистрирован(а) на нетворк 🤝\n\n📅 ${NETWORKING_EVENT.dateLabel}\n${networkingZoomLine('\n')}\n\nТвои ответы:\n\n${networkingFormatAnswers(reg)}`, { inline_keyboard: [[{ text: '✏️ Скорректировать анкету', callback_data: 'networking_edit' }], [{ text: '📅 Добавить в Google Календарь', url: networkingGcalUrl() }]] });
+    await tgSend(env, chatId, `Ты уже зарегистрирован(а) на нетворк 🤝\n\n📅 ${NETWORKING_EVENT.dateLabel}\n${networkingZoomLine('\n')}\n\nТвои ответы:\n\n${networkingFormatAnswers(reg)}`, { inline_keyboard: [[{ text: '✏️ Скорректировать анкету', callback_data: 'networking_edit' }], ...networkingCalButtons()] });
     return;
   }
 
