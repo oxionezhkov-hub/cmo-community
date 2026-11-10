@@ -41,6 +41,51 @@ function networkingFormatAnswers(reg) {
     .join('\n\n');
 }
 
+// Анкеты нетворка — в ту же Google Таблицу, что и анкеты клубов (Apps Script, секрет MOD_SHEET_WEBHOOK),
+// на отдельную вкладку «Нетворкинг <дата>». Флаг networking:sheet:<event>:<user> = записано;
+// крон раз в 5 минут дописывает тех, кто ещё не записан (старые анкеты и неудачные попытки).
+async function networkingSendToSheet(env, reg, updated) {
+  if (!env.MOD_SHEET_WEBHOOK) return false;
+  const ans = i => (reg.answers && reg.answers[i] && reg.answers[i].answer) || '';
+  const payload = {
+    secret: env.MOD_SHEET_SECRET || '',
+    sheet: 'Нетворкинг ' + NETWORKING_EVENT.id.replace('networking-', ''),
+    headers: ['Дата', 'TG ID', 'Username', 'Имя в Telegram', 'Имя, фамилия', 'Кто ты и чем занимаешься', 'Ожидания и польза', 'Статус'],
+    row: [
+      new Date(reg.answeredAt || Date.now()).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }),
+      String(reg.tgId), reg.username ? '@' + reg.username : '',
+      [reg.name, reg.lastName].filter(Boolean).join(' '),
+      ans(0), ans(1), ans(2),
+      updated ? 'обновлена' : 'новая'
+    ]
+  };
+  try {
+    const res = await fetch(env.MOD_SHEET_WEBHOOK, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), redirect: 'follow'
+    });
+    const ok = res.ok && (await res.text()).includes('"ok":true');
+    if (ok) await env.KV.put(`networking:sheet:${reg.eventId}:${reg.tgId}`, String(reg.answeredAt || Date.now()), { expirationTtl: 60 * 24 * 3600 });
+    return ok;
+  } catch (e) { return false; }
+}
+
+async function networkingSyncSheet(env) {
+  if (!env.MOD_SHEET_WEBHOOK) return;
+  const eventId = NETWORKING_EVENT.id;
+  const registrants = await env.KV.get(`networking:registrants:${eventId}`, 'json') || [];
+  let failed = 0;
+  for (const tgId of registrants) {
+    const reg = await env.KV.get(`networking:reg:${eventId}:${tgId}`, 'json');
+    if (!reg || !reg.answeredAt) continue;
+    if (await env.KV.get(`networking:sheet:${eventId}:${tgId}`)) continue;
+    if (!(await networkingSendToSheet(env, reg, false))) failed++;
+  }
+  if (failed && !(await env.KV.get('networking:sheetwarn'))) {
+    await env.KV.put('networking:sheetwarn', '1', { expirationTtl: 6 * 3600 });
+    await notifyAdmin(env, `⚠️ Нетворк: ${failed} анкет(ы) не записались в Google Таблицу — повторю через 5 минут`);
+  }
+}
+
 // Ссылка «Добавить в Google Календарь» (шаблон события, без API)
 function networkingGcalUrl() {
   const start = new Date(NETWORKING_EVENT.startAtUTC);
@@ -225,6 +270,7 @@ if (url.pathname === '/api/admin/coffee/send-now') {
     // Частый крон (каждые 5 минут) — только напоминания о нетворке, остальное не трогаем
     if (event && event.cron === '*/5 * * * *') {
       await networkingSendReminders(env);
+      try { await networkingSyncSheet(env); } catch (e) {}
       await modCleanupNotices(env);
       return;
     }
@@ -910,7 +956,6 @@ async function handleNetworkingStart(msg, env) {
 
   if (reg && reg.answeredAt) {
     // Уже зарегистрирован и прошёл анкету — сообщаем об этом и даём скорректировать ответы
-    await notifyAdmin(env, `🔁 *${NETWORKING_EVENT.title}* (${NETWORKING_EVENT.dateLabel}) — повторный переход по ссылке (уже зарегистрирован)\n\n${reg.name} (@${reg.username || '—'}), TG ID: ${userId}`);
     const keyboard = { inline_keyboard: [[{ text: '✏️ Скорректировать анкету', callback_data: 'networking_edit' }]] };
     await tgSend(env, chatId, `Ты уже зарегистрирован(а) на нетворк 🤝\n\n📅 ${NETWORKING_EVENT.dateLabel}\n${networkingZoomLine('\n')}\n\nТвои ответы:\n\n${networkingFormatAnswers(reg)}`, { inline_keyboard: [[{ text: '✏️ Скорректировать анкету', callback_data: 'networking_edit' }], ...networkingCalButtons()] });
     return;
@@ -935,7 +980,6 @@ async function handleNetworkingStart(msg, env) {
       await env.KV.put(`networking:registrants:${eventId}`, JSON.stringify(registrants));
     }
 
-    await notifyAdmin(env, `🔔 *${NETWORKING_EVENT.title}* (${NETWORKING_EVENT.dateLabel}) — переход по ссылке регистрации\n\n${name} (@${username || '—'}), TG ID: ${userId}`);
   }
 
   // Запускаем анкету заново (даже если начинал раньше и не закончил)
@@ -997,6 +1041,7 @@ async function handleNetworkingAnswer(msg, env, state) {
     await tgSend(env, chatId, `Спасибо! Ты зарегистрирован(а) на нетворк 🤝\n\n📅 ${NETWORKING_EVENT.dateLabel}\n⏱ 1–1,5 часа, модерируемый формат\n${networkingZoomLine('\n')}`, networkingCalKeyboard());
   }
 
+  await networkingSendToSheet(env, reg, wasEditing);
   const qaText = networkingFormatAnswers(reg);
   await notifyAdmin(env, `${wasEditing ? '✏️ *Анкета обновлена*' : '✅ *Анкета заполнена*'} — ${NETWORKING_EVENT.title} (${NETWORKING_EVENT.dateLabel})\n\n${reg.name} (@${reg.username || '—'}), TG ID: ${userId}\n\n${qaText}`);
 }
