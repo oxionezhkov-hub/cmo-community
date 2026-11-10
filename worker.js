@@ -910,7 +910,6 @@ async function handleNetworkingStart(msg, env) {
 
   if (reg && reg.answeredAt) {
     // Уже зарегистрирован и прошёл анкету — сообщаем об этом и даём скорректировать ответы
-    await notifyAdmin(env, `🔁 *${NETWORKING_EVENT.title}* (${NETWORKING_EVENT.dateLabel}) — повторный переход по ссылке (уже зарегистрирован)\n\n${reg.name} (@${reg.username || '—'}), TG ID: ${userId}`);
     const keyboard = { inline_keyboard: [[{ text: '✏️ Скорректировать анкету', callback_data: 'networking_edit' }]] };
     await tgSend(env, chatId, `Ты уже зарегистрирован(а) на нетворк 🤝\n\n📅 ${NETWORKING_EVENT.dateLabel}\n${networkingZoomLine('\n')}\n\nТвои ответы:\n\n${networkingFormatAnswers(reg)}`, { inline_keyboard: [[{ text: '✏️ Скорректировать анкету', callback_data: 'networking_edit' }], ...networkingCalButtons()] });
     return;
@@ -935,7 +934,6 @@ async function handleNetworkingStart(msg, env) {
       await env.KV.put(`networking:registrants:${eventId}`, JSON.stringify(registrants));
     }
 
-    await notifyAdmin(env, `🔔 *${NETWORKING_EVENT.title}* (${NETWORKING_EVENT.dateLabel}) — переход по ссылке регистрации\n\n${name} (@${username || '—'}), TG ID: ${userId}`);
   }
 
   // Запускаем анкету заново (даже если начинал раньше и не закончил)
