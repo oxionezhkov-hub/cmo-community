@@ -241,7 +241,7 @@ async function markNewcomer(env, chatId, user, clubKey) {
 // Эфемерное сообщение в группе: видит только receiver. Бот должен быть админом чата.
 async function sendEphemeral(env, chatId, userId, text, clubKey) {
   const res = await tg(env, 'sendMessage', {
-    chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true,
+    chat_id: chatId, text: `${text}\n\nАнкета: ${startLink(clubKey)}`, parse_mode: 'HTML', disable_web_page_preview: true,
     ephemeral_message_parameters: { receiver_user_id: userId },
     reply_markup: { inline_keyboard: [[{ text: '📝 Заполнить анкету', url: startLink(clubKey) }]] }
   });
@@ -373,7 +373,7 @@ async function sendInviteDm(env, userId, clubKey, force, joinRequest = false) {
     (joinRequest
       ? `👋 Привет! Заявка в <b>${esc(club.title)}</b> принята — чат уже открыт, его можно читать.\n\n${esc(club.about)}\n\n`
       : `👋 Привет! Это бот сообщества CMO.\n\n<b>${esc(club.title)}</b> — ${esc(club.about)}\n\n`) +
-    `Чтобы писать в чат, заполни короткую анкету — это пара минут.`,
+    `Чтобы писать в чат, заполни короткую анкету — это пара минут.\n\nАнкета: ${startLink(clubKey)}`,
     // Ссылка, а не callback-кнопка: если человек ни разу не нажимал «Старт», после приёма заявки бот
     // уже не может ему писать — callback «молчал». Ссылка открывает бота со «Стартом», и анкета идёт.
     { inline_keyboard: [[{ text: '📝 Заполнить анкету', url: startLink(clubKey) }]] });
@@ -389,7 +389,7 @@ async function groupNotice(env, chatId, from, clubKey, ctx) {
   await env.KV.put(throttleKey, '1', { expirationTtl: GROUP_NOTICE_THROTTLE_SEC });
   const res = await tg(env, 'sendMessage', {
     chat_id: chatId, parse_mode: 'HTML', disable_notification: true,
-    text: `<a href="tg://user?id=${from.id}">${esc(fullName(from))}</a>, чтобы писать в чат, заполни короткую анкету у бота 👇`,
+    text: `<a href="tg://user?id=${from.id}">${esc(fullName(from))}</a>, чтобы писать в чат, заполни короткую анкету у бота:\n${startLink(clubKey)}`,
     reply_markup: { inline_keyboard: [[{ text: '📝 Заполнить анкету', url: startLink(clubKey) }]] }
   });
   if (!res.ok) return;
