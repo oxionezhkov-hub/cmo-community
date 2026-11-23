@@ -16,13 +16,26 @@ export const MOD_BOT_USERNAME = 'cmo_razbory_bot';
 
 // Вопросы анкеты. key — колонка в таблице,
 // required — нельзя пропустить, auto: 'username' — берём @username из Telegram и не спрашиваем, если он есть.
-// Сейчас у всех клубов вопросы из их Google Форм; у каждого клуба список свой — меняется здесь.
+// Клубы могут использовать общую анкету или задавать свой список вопросов.
 const FORM_QUESTIONS = [
   { key: 'name', label: 'Имя', text: 'Как тебя зовут?', required: true },
   { key: 'telegram', label: 'Telegram', text: 'Контакт в Telegram (личный, без анонимов)', required: true, auto: 'username' },
   { key: 'background', label: 'Бэкграунд', text: 'Расскажи про свой бэкграунд: какие проекты были в прошлом? Текущая компания и должность. Твоя экспертиза и польза для других участников сообщества', required: true },
   { key: 'pain', label: 'Что болит', text: 'Что сейчас болит больше всего?', required: false },
   { key: 'email', label: 'Email', text: 'Электронная почта (если нужен доступ к базе знаний)', required: false },
+  { key: 'questions', label: 'Вопросы на старте', text: 'Какие есть вопросы к нам на старте?', required: false }
+];
+
+const SEO_QUESTIONS = [
+  { key: 'name', label: 'Имя', text: 'Как вас зовут?', required: true },
+  { key: 'telegram', label: 'Telegram', text: 'Контакт в Telegram (личный, без анонимов), с которого будете подавать заявку в канал', required: true, auto: 'username' },
+  { key: 'site', label: 'Адрес сайта', text: 'Адрес вашего сайта', required: true },
+  { key: 'average_check', label: 'Валовый средний чек', text: 'Валовый средний чек (все продукты)', required: false },
+  { key: 'competitors', label: 'Конкуренты', text: '3 ваших основных конкурента', required: false },
+  { key: 'product', label: 'Основной продукт или услуга', text: 'Основной продукт/услуга, который Вы хотите продвигать', required: true },
+  { key: 'visitor_to_lead', label: 'Конверсия из посетителя в заявку', text: 'Какой процент конверсии сейчас из общего потока посетителей сайта в заявку?', required: false },
+  { key: 'lead_to_payment', label: 'Конверсия из заявки в оплату', text: 'Какой процент конверсии из заявки в оплату (сколько процентов из тех, кто обратился, реально оплачивают)?', required: false },
+  { key: 'background', label: 'Бэкграунд', text: 'Расскажите про свой бэкграунд. Какие проекты были в прошлом? Какая есть экспертиза?', required: true },
   { key: 'questions', label: 'Вопросы на старте', text: 'Какие есть вопросы к нам на старте?', required: false }
 ];
 
@@ -51,6 +64,12 @@ export const MOD_CLUBS = {
     chatIds: ['2239422398'],
     about: 'Вместе осваиваем навыки AI и зарабатываем удалённо, даже если ещё не пробовали ИИ.',
     questions: FORM_QUESTIONS
+  },
+  seo: {
+    title: '@CMO SEO',
+    chatIds: ['4474439000'],
+    about: 'В закрытом канале выходят обучающие материалы, видео и статьи. Здесь можно получить обратную связь по привлечению аудитории и развитию бизнеса в GEO / AISEO / AEO.',
+    questions: SEO_QUESTIONS
   }
 };
 
