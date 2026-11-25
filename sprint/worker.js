@@ -1,5 +1,6 @@
 import roadmap from "./public/index.html";
 import allaRoadmap from "./public/alla-soldatova.html";
+import mariaRoadmap from "./public/maria-surovtseva.html";
 import groupOffer from "./public/gruppa.html";
 import individualOffer from "./public/soprovozhdenie.html";
 import stylesheet from "./public/styles.css";
@@ -26,6 +27,7 @@ const font = "font/woff2";
 const assets = new Map([
   ["/", [roadmap, html]],
   ["/alla-soldatova", [allaRoadmap, html]],
+  ["/maria-surovtseva", [mariaRoadmap, html]],
   ["/gruppa", [groupOffer, html]],
   ["/soprovozhdenie", [individualOffer, html]],
   ["/styles.css", [stylesheet, css]],

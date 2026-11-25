@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="description" content="Четырёхнедельная дорожная карта Марии Суровцевой по мониторингу цен и автоматизации отчётности.">
+  <title>Мария Суровцева · CMO Спринт</title>
+  <link rel="stylesheet" href="styles.css?v=roadmap-weeks">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+</head>
+<body>
+  <header class="site-header">
+    <div class="shell header-inner">
+      <span class="wordmark">CMO Спринт</span>
+      <p class="sprint-date">Дорожная карта</p>
+    </div>
+  </header>
+  <main class="shell">
+    <section class="hero roadmap-hero" aria-labelledby="roadmap-title">
+      <div class="hero-copy">
+        <h1 id="roadmap-title">Мария Суровцева</h1>
+        <p class="lead">Мониторинг цен конкурентов и ежедневная сводка для собственников</p>
+      </div>
+    </section>
+
+    <section class="section card roadmap-card" aria-labelledby="request-title">
+      <h2 id="request-title">Твой запрос</h2>
+      <p><strong>Цены конкурентов.</strong> Сделать текущий парсер точнее, снизить расход токенов и надёжно различать цену и статус наличия товара.</p>
+      <p><strong>Отчёт для собственников.</strong> Собирать нужные показатели из Mindbox и LiveDune в одном месте, учесть данные Roistat по мере его настройки и раз в сутки автоматически обновлять цифры и текстовую сводку.</p>
+    </section>
+
+    <section class="section" aria-labelledby="plan-title">
+      <h2 id="plan-title">План на четыре недели</h2>
+      <ol class="plan participant-plan">
+        <li>
+          <div>
+            <p class="card-label">1 неделя</p>
+            <h3>Определить метрики и проверить ошибки</h3>
+          </div>
+          <p>Согласуем с собственниками, какие цифры и сравнения они хотят видеть ежедневно. Зафиксируем источник каждого показателя, чтобы не задваивать данные Roistat и Mindbox. Для парсера соберём примеры неверных цен и статусов и замерим текущую точность и расход токенов.</p>
+        </li>
+        <li>
+          <div>
+            <p class="card-label">2 неделя</p>
+            <h3>Собрать отчёт и текстовую сводку</h3>
+          </div>
+          <p>Подключим Mindbox и LiveDune через доступные MCP или API и сведём данные в один отчёт. Цифры и сравнения рассчитаем по фиксированным правилам, а текстовая сводка покажет подтверждённые изменения и пропуски в данных. Причины изменений и рекомендации сможет дописать аналитик.</p>
+        </li>
+        <li>
+          <div>
+            <p class="card-label">3 неделя</p>
+            <h3>Доработать парсер цен</h3>
+          </div>
+          <p>Для выбранных магазинов настроим извлечение цены и наличия из структурированных данных или по правилам карточки товара. Отдельно проверим скидки, варианты товара и случаи, когда наличие определить нельзя. Спорные строки отправим на проверку и сравним точность и расход токенов с исходным парсером.</p>
+        </li>
+        <li>
+          <div>
+            <p class="card-label">4 неделя</p>
+            <h3>Запустить на сервере</h3>
+          </div>
+          <p>Перенесём сбор данных и отчёт на отдельный сервер. Настроим ежедневный запуск, повтор при сбое и уведомление, если источник недоступен. Проверим расписание и доставку сводки на нескольких запусках, включая запуск с выключенным рабочим компьютером.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section class="section card roadmap-card result-card" aria-labelledby="result-title">
+      <h2 id="result-title">Что ты получишь</h2>
+      <p>Проверенный мониторинг цен и наличия по выбранным магазинам с замером точности и расхода токенов. Собственники получают один ежедневный отчёт с цифрами и текстовой сводкой, а сбор и обновление выполняются на сервере по расписанию.</p>
+    </section>
+  </main>
+</body>
+</html>
