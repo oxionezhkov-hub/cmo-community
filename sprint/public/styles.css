@@ -1,0 +1,284 @@
+@import url("fonts/fonts.css");
+
+:root {
+  color-scheme: light;
+  --bg: #f7f8fa;
+  --fg: #16181d;
+  --muted: #5d6472;
+  --line: #dde1e8;
+  --card: #fff;
+  --accent: #ff5a36;
+  --accent-text: #c23f20;
+  --soft: #fff0ea;
+  --accent-line: #f6c3b2;
+  --display: "Unbounded", "Golos Text", system-ui, sans-serif;
+  --body: "Golos Text", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 1rem/1.55 var(--body);
+}
+
+.shell {
+  width: min(68rem, calc(100% - 4rem));
+  margin-inline: auto;
+}
+
+.site-header { border-bottom: 1px solid var(--line); }
+
+.header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 4.5rem;
+}
+
+.wordmark {
+  color: var(--fg);
+  font: 700 clamp(.9375rem, 3vw, 1.25rem)/1.15 var(--display);
+  letter-spacing: -.05em;
+}
+
+.sprint-date { font-size: .9375rem; font-weight: 500; }
+
+main.shell { padding-block: 3rem 4rem; }
+
+h1, h2, h3, p, ol { margin: 0; }
+
+h1, h2 {
+  font-family: var(--display);
+  line-height: 1.23;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-size: clamp(1.625rem, 3.65vw, 2.875rem);
+  font-weight: 700;
+  letter-spacing: -.045em;
+}
+
+h2 {
+  font-size: clamp(1.125rem, 2.2vw, 1.5rem);
+  font-weight: 500;
+  letter-spacing: -.025em;
+}
+
+h3 { font-size: 1.125rem; line-height: 1.3; font-weight: 600; }
+
+.hero { padding-block-end: clamp(2rem, 5vw, 3.25rem); }
+
+.hero-copy {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: .875rem;
+}
+
+.card-label {
+  color: var(--accent-text);
+  font-size: .875rem;
+  font-weight: 600;
+}
+
+.lead {
+  max-width: 55ch;
+  color: var(--muted);
+  font-size: clamp(1rem, 2.2vw, 1.25rem);
+}
+
+.offer-section {
+  display: grid;
+  grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
+  align-items: baseline;
+  gap: .75rem clamp(1.5rem, 5vw, 4rem);
+  padding-block: clamp(1.375rem, 3.5vw, 2.25rem);
+  border-top: 1px solid var(--line);
+}
+
+.offer-section p {
+  max-width: 55ch;
+  color: var(--muted);
+  font-size: clamp(1rem, 1.7vw, 1.125rem);
+}
+
+.offer-section strong { color: var(--fg); }
+
+.offer-price {
+  display: grid;
+  justify-items: start;
+  gap: .75rem;
+  margin-block-start: 1rem;
+  padding: clamp(1.25rem, 4vw, 2.25rem);
+  border: 1px solid var(--accent-line);
+  border-radius: .75rem;
+  background: var(--soft);
+}
+
+.offer-price > h2 {
+  color: var(--muted);
+  font: 600 1rem/1.4 var(--body);
+}
+
+.price-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: .25rem .875rem;
+}
+
+.price {
+  color: var(--accent-text);
+  font: 700 clamp(1.75rem, 5vw, 3.25rem)/1.15 var(--display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.045em;
+}
+
+.price-duration { color: var(--muted); }
+
+.price-details { width: 100%; }
+
+.price-details summary {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  border: 1px solid var(--accent-line);
+  border-radius: 50%;
+  color: var(--accent-text);
+  font: 600 1rem/1 var(--body);
+  cursor: pointer;
+  list-style: none;
+}
+
+.price-details summary::-webkit-details-marker { display: none; }
+
+.price-details summary:hover { border-color: var(--accent-text); }
+
+.price-details summary:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 3px;
+}
+
+.price-toggle-icon::before { content: "+"; }
+
+.price-details[open] .price-toggle-icon::before { content: "−"; }
+
+.price-breakdown {
+  margin-block-start: 1rem;
+  padding-block-start: 1rem;
+  border-block-start: 1px solid var(--accent-line);
+}
+
+.price-breakdown ul {
+  margin-block: .625rem 0;
+  padding-inline-start: 1.25rem;
+}
+
+.price-breakdown li + li { margin-block-start: .25rem; }
+
+.section { margin-block-start: 1.5rem; }
+
+.section > h2 { margin-block-end: .875rem; }
+
+.grid { display: grid; gap: .75rem; }
+.grid-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.card, .plan {
+  border: 1px solid var(--line);
+  border-radius: .75rem;
+  background: var(--card);
+}
+
+.card { display: grid; align-content: start; gap: .5rem; padding: 1.125rem; }
+
+.card p, .plan li > p, .support-panel p { color: var(--muted); }
+
+.support-panel {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: .5rem 1.25rem;
+  padding-block: 1.125rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.support-panel > h2 {
+  margin: 0;
+  font: 600 1rem/1.4 var(--body);
+}
+
+.support-panel p { max-width: 70ch; }
+
+.roadmap-hero { padding-block-end: .5rem; }
+
+.participant-hero {
+  display: flex;
+  align-items: center;
+  gap: clamp(1rem, 3vw, 1.75rem);
+}
+
+.participant-avatar {
+  flex: none;
+  width: clamp(3.75rem, 12vw, 7rem);
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 50%;
+}
+
+
+.roadmap-card { gap: .625rem; }
+
+.result-card { border-color: var(--accent-line); background: var(--soft); }
+
+.plan { list-style: none; padding: 0; }
+
+.plan li {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(10rem, .6fr) minmax(0, 1fr);
+  align-items: baseline;
+  gap: .375rem 1rem;
+  padding: 1rem 1.125rem 1rem 2.25rem;
+}
+
+.plan li + li { border-top: 1px solid var(--line); }
+
+.participant-plan li { padding-inline-start: 1.125rem; }
+
+.plan:not(.participant-plan) li::before {
+  position: absolute;
+  top: 1.55rem;
+  left: 1.125rem;
+  width: .5rem;
+  height: .5rem;
+  border-radius: 50%;
+  background: var(--accent);
+  content: "";
+}
+
+@media (max-width: 42rem) {
+  .offer-section { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 34rem) {
+  .shell { width: calc(100% - 2rem); }
+  .header-inner { min-height: 3.5rem; }
+  main.shell { padding-block: 1.75rem 2.5rem; }
+  h1 { font-size: clamp(1.375rem, 6vw, 1.875rem); }
+  .grid-two, .plan li { grid-template-columns: minmax(0, 1fr); }
+  .support-panel { display: grid; }
+}
+
+@media print {
+  body { background: #fff; }
+  .shell { width: 100%; }
+  main.shell { padding-block: 1.5rem; }
+  .card, .offer-section, .offer-price, .plan li { break-inside: avoid; }
+}

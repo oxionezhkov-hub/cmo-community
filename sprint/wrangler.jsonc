@@ -1,0 +1,19 @@
+{
+  "name": "cmo-sprint",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-25",
+  "workers_dev": true,
+  "rules": [
+    {
+      "type": "Data",
+      "globs": ["**/*.html", "**/*.css", "**/*.ico", "**/*.webp", "**/*.woff2", "**/*.txt"],
+      "fallthrough": true
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "traces": {
+      "enabled": true
+    }
+  }
+}
