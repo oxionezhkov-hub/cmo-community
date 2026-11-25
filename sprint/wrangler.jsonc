@@ -1,0 +1,16 @@
+{
+  "name": "cmo-sprint",
+  "compatibility_date": "2026-11-25",
+  "workers_dev": true,
+  "assets": {
+    "directory": "./public",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "none"
+  },
+  "observability": {
+    "enabled": true,
+    "traces": {
+      "enabled": true
+    }
+  }
+}
