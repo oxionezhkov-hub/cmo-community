@@ -1,12 +1,15 @@
 {
   "name": "cmo-sprint",
+  "main": "worker.js",
   "compatibility_date": "2026-11-25",
   "workers_dev": true,
-  "assets": {
-    "directory": "./public",
-    "html_handling": "auto-trailing-slash",
-    "not_found_handling": "none"
-  },
+  "rules": [
+    {
+      "type": "Data",
+      "globs": ["**/*.html", "**/*.css", "**/*.ico", "**/*.webp", "**/*.woff2", "**/*.txt"],
+      "fallthrough": true
+    }
+  ],
   "observability": {
     "enabled": true,
     "traces": {
