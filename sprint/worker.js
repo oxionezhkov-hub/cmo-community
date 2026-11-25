@@ -6,6 +6,7 @@ import individualOffer from "./public/soprovozhdenie.html";
 import stylesheet from "./public/styles.css";
 import favicon from "./public/favicon.ico";
 import allaPhoto from "./public/alla-soldatova.webp";
+import mariaPhoto from "./public/maria-surovtseva.webp";
 import fontStylesheet from "./public/fonts/fonts.css";
 import golosLicense from "./public/fonts/golos-text-OFL.txt";
 import golosCyrillicExtended from "./public/fonts/golos-text-cyrillic-ext-wght-normal.woff2";
@@ -33,6 +34,7 @@ const assets = new Map([
   ["/styles.css", [stylesheet, css]],
   ["/favicon.ico", [favicon, "image/x-icon"]],
   ["/alla-soldatova.webp", [allaPhoto, "image/webp"]],
+  ["/maria-surovtseva.webp", [mariaPhoto, "image/webp"]],
   ["/fonts/fonts.css", [fontStylesheet, css]],
   ["/fonts/golos-text-OFL.txt", [golosLicense, text]],
   ["/fonts/golos-text-cyrillic-ext-wght-normal.woff2", [golosCyrillicExtended, font]],
