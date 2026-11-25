@@ -4,6 +4,8 @@ import mariaRoadmap from "./public/maria-surovtseva.html";
 import groupOffer from "./public/gruppa.html";
 import individualOffer from "./public/soprovozhdenie.html";
 import stylesheet from "./public/styles.css";
+import roiStylesheet from "./public/sprint-roi.css";
+import roiScript from "./public/sprint-roi.mjs";
 import favicon from "./public/favicon.ico";
 import allaPhoto from "./public/alla-soldatova.webp";
 import mariaPhoto from "./public/maria-surovtseva.webp";
@@ -32,6 +34,8 @@ const assets = new Map([
   ["/gruppa", [groupOffer, html]],
   ["/soprovozhdenie", [individualOffer, html]],
   ["/styles.css", [stylesheet, css]],
+  ["/sprint-roi.css", [roiStylesheet, css]],
+  ["/sprint-roi.mjs", [roiScript, "text/javascript; charset=utf-8"]],
   ["/favicon.ico", [favicon, "image/x-icon"]],
   ["/alla-soldatova.webp", [allaPhoto, "image/webp"]],
   ["/maria-surovtseva.webp", [mariaPhoto, "image/webp"]],

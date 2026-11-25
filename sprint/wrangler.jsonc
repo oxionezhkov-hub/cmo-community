@@ -6,7 +6,7 @@
   "rules": [
     {
       "type": "Data",
-      "globs": ["**/*.html", "**/*.css", "**/*.ico", "**/*.webp", "**/*.woff2", "**/*.txt"],
+      "globs": ["**/*.html", "**/*.css", "**/*.ico", "**/*.webp", "**/*.woff2", "**/*.txt", "**/sprint-roi.mjs"],
       "fallthrough": true
     }
   ],
