@@ -64,6 +64,8 @@
 .roi-inputs input::-webkit-outer-spin-button { appearance: none; margin: 0; }
 
 .roi-field-note { margin-block-end: .5rem; color: var(--muted); font-size: .875rem; }
+.roi-sources { margin-block-start: .625rem; }
+.roi-sources a { color: var(--accent-text); }
 
 .roi :is(input, button, summary, canvas):focus-visible {
   outline: 2px solid var(--accent-text);

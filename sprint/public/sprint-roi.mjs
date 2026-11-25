@@ -32,11 +32,7 @@ const signedCurrency = new Intl.NumberFormat("ru-RU", {
 });
 const decimal = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 });
 const percent = new Intl.NumberFormat("ru-RU", { style: "percent", maximumFractionDigits: 1 });
-const axisNumber = new Intl.NumberFormat("ru-RU", {
-  notation: "compact", maximumFractionDigits: 1,
-});
-
-const chartPadding = { left: 55, right: 14, top: 14, bottom: 30 };
+const chartPadding = { left: 14, right: 14, top: 14, bottom: 30 };
 
 function drawChart(canvas, model, selected) {
   const width = canvas.clientWidth;
@@ -84,7 +80,6 @@ function drawChart(canvas, model, selected) {
   context.font = '12px "Golos Text", system-ui, sans-serif';
   context.textBaseline = "middle";
   context.fillStyle = "#5d6472";
-  context.textAlign = "right";
   const guides = [0];
   if (high > 0) guides.push(high);
   if (low < 0) guides.push(low);
@@ -96,7 +91,6 @@ function drawChart(canvas, model, selected) {
     context.moveTo(left, coord);
     context.lineTo(right, coord);
     context.stroke();
-    context.fillText(axisNumber.format(value), left - 8, coord, left - 10);
   }
 
   context.setLineDash([]);

@@ -7,8 +7,8 @@
   <meta name="description" content="Четырёхнедельная дорожная карта Марии Суровцевой по мониторингу цен и автоматизации отчётности.">
   <title>Мария Суровцева · CMO Спринт</title>
   <link rel="stylesheet" href="styles.css?v=roadmap-weeks">
-  <link rel="stylesheet" href="/sprint-roi.css?v=2">
-  <script type="module" src="/sprint-roi.mjs?v=2"></script>
+  <link rel="stylesheet" href="/sprint-roi.css?v=3">
+  <script type="module" src="/sprint-roi.mjs?v=3"></script>
   <link rel="icon" href="/favicon.ico" sizes="any">
 </head>
 <body>
@@ -94,17 +94,19 @@
             <div class="roi-inputs">
               <label><span>Время команды до,&nbsp;ч</span><input type="number" name="hoursBefore" min="0" max="10000" step="any" value="20" required></label>
               <label><span>Время команды после,&nbsp;ч</span><input type="number" name="hoursAfter" min="0" max="10000" step="any" value="6" required></label>
-              <label><span>Горизонт расчёта,&nbsp;мес.</span><input type="number" name="months" min="1" max="24" value="6" required></label>
+              <label><span>Горизонт расчёта,&nbsp;мес.</span><input type="number" name="months" min="1" max="24" value="12" required></label>
             </div>
           </fieldset>
 
           <fieldset>
             <legend>Операционные расходы</legend>
-            <p class="roi-field-note" id="roi-operating-note">Токены, сервер и сервисы за месяц</p>
+            <p class="roi-field-note" id="roi-operating-note">До запуска — подписки. После — 5&nbsp;000&nbsp;₽ на токены в месяц.</p>
             <div class="roi-inputs">
-              <label><span>Расходы до,&nbsp;₽</span><input type="number" name="operatingBefore" min="0" max="100000000" value="3500" aria-describedby="roi-operating-note" required></label>
-              <label><span>Расходы после,&nbsp;₽</span><input type="number" name="operatingAfter" min="0" max="100000000" value="2500" aria-describedby="roi-operating-note" required></label>
+              <label><span>Расходы до,&nbsp;₽</span><input type="number" name="operatingBefore" min="0" max="100000000" value="25400" aria-describedby="roi-operating-note" required></label>
+              <label><span>Расходы после,&nbsp;₽</span><input type="number" name="operatingAfter" min="0" max="100000000" value="5000" aria-describedby="roi-operating-note" required></label>
             </div>
+            <p class="roi-field-note roi-sources">В расчёте — цены за месяц по открытым тарифам. Mindbox Light от 15&nbsp;000&nbsp;₽ без НДС, LiveDune «Бизнес» 3&nbsp;900&nbsp;₽, Roistat «Стартовый» 6&nbsp;500&nbsp;₽. <a href="https://mindbox.ru/tariffs/" target="_blank" rel="noopener noreferrer">Mindbox</a> · <a href="https://livedune.com/ru/pricing/" target="_blank" rel="noopener noreferrer">LiveDune</a> · <a href="https://roistat.com/ru/price" target="_blank" rel="noopener noreferrer">Roistat</a></p>
+            <p class="roi-field-note">Это сценарий замены подписок. Если сервисы остаются источниками данных, добавь их стоимость в расходы после запуска.</p>
           </fieldset>
           <button class="roi-reset" type="reset">Сбросить к примеру</button>
         </form>
