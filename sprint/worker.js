@@ -1,10 +1,14 @@
 import roadmap from "./public/index.html";
 import allaRoadmap from "./public/alla-soldatova.html";
+import mariaRoadmap from "./public/maria-surovtseva.html";
 import groupOffer from "./public/gruppa.html";
 import individualOffer from "./public/soprovozhdenie.html";
 import stylesheet from "./public/styles.css";
+import roiStylesheet from "./public/sprint-roi.css";
+import roiScript from "./public/sprint-roi.mjs";
 import favicon from "./public/favicon.ico";
 import allaPhoto from "./public/alla-soldatova.webp";
+import mariaPhoto from "./public/maria-surovtseva.webp";
 import fontStylesheet from "./public/fonts/fonts.css";
 import golosLicense from "./public/fonts/golos-text-OFL.txt";
 import golosCyrillicExtended from "./public/fonts/golos-text-cyrillic-ext-wght-normal.woff2";
@@ -26,11 +30,15 @@ const font = "font/woff2";
 const assets = new Map([
   ["/", [roadmap, html]],
   ["/alla-soldatova", [allaRoadmap, html]],
+  ["/maria-surovtseva", [mariaRoadmap, html]],
   ["/gruppa", [groupOffer, html]],
   ["/soprovozhdenie", [individualOffer, html]],
   ["/styles.css", [stylesheet, css]],
+  ["/sprint-roi.css", [roiStylesheet, css]],
+  ["/sprint-roi.mjs", [roiScript, "text/javascript; charset=utf-8"]],
   ["/favicon.ico", [favicon, "image/x-icon"]],
   ["/alla-soldatova.webp", [allaPhoto, "image/webp"]],
+  ["/maria-surovtseva.webp", [mariaPhoto, "image/webp"]],
   ["/fonts/fonts.css", [fontStylesheet, css]],
   ["/fonts/golos-text-OFL.txt", [golosLicense, text]],
   ["/fonts/golos-text-cyrillic-ext-wght-normal.woff2", [golosCyrillicExtended, font]],

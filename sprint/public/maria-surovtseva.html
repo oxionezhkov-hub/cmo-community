@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="description" content="Четырёхнедельная дорожная карта Марии Суровцевой по мониторингу цен и автоматизации отчётности.">
+  <title>Мария Суровцева · CMO Спринт</title>
+  <link rel="stylesheet" href="styles.css?v=roadmap-weeks">
+  <link rel="stylesheet" href="/sprint-roi.css?v=1">
+  <script type="module" src="/sprint-roi.mjs?v=1"></script>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+</head>
+<body>
+  <header class="site-header">
+    <div class="shell header-inner">
+      <span class="wordmark">CMO Спринт</span>
+      <p class="sprint-date">Дорожная карта</p>
+    </div>
+  </header>
+  <main class="shell">
+    <section class="hero roadmap-hero participant-hero" aria-labelledby="roadmap-title">
+      <img class="participant-avatar" src="maria-surovtseva.webp" alt="" width="240" height="240">
+      <div class="hero-copy">
+        <h1 id="roadmap-title">Мария Суровцева</h1>
+        <p class="lead">Участница Ядра CMO</p>
+      </div>
+    </section>
+
+    <section class="section card roadmap-card" aria-labelledby="request-title">
+      <h2 id="request-title">Твой запрос</h2>
+      <p>Выстроить один процесс сбора данных из карточек конкурентов, Mindbox и LiveDune. Учтём данные Roistat по мере настройки. Система проверяет цены и наличие, сводит бизнес- и маркетинговые показатели и раз в сутки собирает отчёт с текстовой сводкой для собственников.</p>
+    </section>
+
+    <section class="section" aria-labelledby="plan-title">
+      <h2 id="plan-title">План на четыре недели</h2>
+      <ol class="plan participant-plan">
+        <li>
+          <div>
+            <p class="card-label">1 неделя</p>
+            <h3>Выбрать данные и замерить затраты</h3>
+          </div>
+          <p>Составим список источников, товаров и показателей для сводки. У каждого показателя будет свой источник, чтобы цифры из Roistat и Mindbox не дублировались. Замерим время ручной работы, расходы на сбор данных и типовые ошибки в ценах и наличии.</p>
+        </li>
+        <li>
+          <div>
+            <p class="card-label">2 неделя</p>
+            <h3>Собрать данные в одном месте</h3>
+          </div>
+          <p>Подключим Mindbox и LiveDune через доступные MCP или API. Для карточек конкурентов настроим извлечение цены и наличия из структурированных данных или по правилам магазина. Модель подключим только там, где правила не справляются. Все источники будут писать данные в общее хранилище.</p>
+        </li>
+        <li>
+          <div>
+            <p class="card-label">3 неделя</p>
+            <h3>Проверить данные и собрать сводку</h3>
+          </div>
+          <p>Проверим скидки, варианты товаров и пропуски в источниках. Спорные значения отправим на проверку. Из проверенных данных соберём ежедневный отчёт с цифрами и текстом о том, что изменилось. Причины и рекомендации сможет добавить аналитик.</p>
+        </li>
+        <li>
+          <div>
+            <p class="card-label">4 неделя</p>
+            <h3>Запустить процесс на сервере</h3>
+          </div>
+          <p>Настроим ежедневный запуск, повтор при сбое и уведомления о проблемах с источниками. Проверим несколько доставок сводки без рабочего компьютера и сравним точность, время и расходы с замерами первой недели.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section class="section card roadmap-card result-card" aria-labelledby="result-title">
+      <h2 id="result-title">Что ты получишь</h2>
+      <p>Один процесс на сервере собирает цены, наличие и показатели бизнеса и маркетинга. Собственники получают ежедневный отчёт с цифрами и текстовой сводкой. У тебя есть замеры до и после запуска, чтобы оценить экономию времени и расходов.</p>
+    </section>
+
+    <section class="section roi" aria-labelledby="roi-title">
+      <header class="roi-header">
+        <h2 id="roi-title">Когда окупится спринт</h2>
+        <p>Посчитай, сколько стоит запуск и сколько ежемесячно экономит автоматизация сбора данных. В полях — пример. Подставь свои цифры.</p>
+      </header>
+
+      <div class="roi-layout">
+        <form id="roi-form" class="roi-form">
+          <fieldset>
+            <legend>Вложения на старте</legend>
+            <div class="roi-inputs">
+              <label>Стоимость спринта,&nbsp;₽<input type="number" name="fee" min="0" max="100000000" value="50000" required></label>
+              <label>Время команды на запуск,&nbsp;ч<input type="number" name="setupHours" min="0" max="10000" step="any" value="8" required></label>
+              <label>Стоимость часа команды,&nbsp;₽<input type="number" name="hourRate" min="0" max="1000000" value="1500" required></label>
+              <label>Другие затраты на запуск,&nbsp;₽<input type="number" name="setupExtra" min="0" max="100000000" value="0" required></label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Ежемесячные затраты</legend>
+            <div class="roi-inputs">
+              <label>Время команды сейчас,&nbsp;ч<input type="number" name="hoursBefore" min="0" max="10000" step="any" value="20" required></label>
+              <label>Время после запуска,&nbsp;ч<input type="number" name="hoursAfter" min="0" max="10000" step="any" value="6" required></label>
+              <label>Токены и сервисы сейчас,&nbsp;₽<input type="number" name="toolsBefore" min="0" max="100000000" value="3500" required></label>
+              <label>Токены и сервисы после (без сервера),&nbsp;₽<input type="number" name="toolsAfter" min="0" max="100000000" value="1500" required></label>
+              <label>Сервер после запуска,&nbsp;₽<input type="number" name="server" min="0" max="100000000" value="1000" required></label>
+              <label>Горизонт расчёта,&nbsp;мес.<input type="number" name="months" min="1" max="24" value="6" required></label>
+            </div>
+          </fieldset>
+          <button class="roi-reset" type="reset">Сбросить к примеру</button>
+        </form>
+
+        <p id="roi-error" class="roi-error" role="status" hidden>Проверь поля. Суммы и часы должны быть от нуля, горизонт — от 1 до 24 месяцев.</p>
+        <div id="roi-results" class="roi-results">
+          <dl class="roi-kpis">
+            <div><dt>Срок окупаемости</dt><dd id="roi-payback">—</dd></div>
+            <div><dt>Эффект в месяц</dt><dd id="roi-monthly">—</dd></div>
+            <div><dt id="roi-total-label">Итог за период</dt><dd id="roi-total">—</dd></div>
+          </dl>
+
+          <div class="roi-chart-box">
+            <div class="roi-chart-head">
+              <h3>Накопленный эффект</h3>
+              <ul class="roi-legend">
+                <li><span class="roi-legend-total"></span> С учётом времени</li>
+                <li><span class="roi-legend-cash"></span> По прямым расходам</li>
+              </ul>
+            </div>
+            <canvas id="roi-chart" aria-hidden="true"></canvas>
+            <div class="roi-inspect">
+              <label for="roi-month">Месяц на графике</label>
+              <input type="range" id="roi-month" min="0" max="6" value="3">
+              <output id="roi-point" for="roi-month"></output>
+            </div>
+          </div>
+
+          <dl class="roi-breakdown">
+            <div><dt>Вложения с учётом времени на запуск</dt><dd id="roi-investment">—</dd></div>
+            <div><dt>Экономия времени в месяц</dt><dd id="roi-hours">—</dd></div>
+            <div><dt>Экономия прямых расходов в месяц</dt><dd id="roi-cash">—</dd></div>
+            <div><dt>Рентабельность за период</dt><dd id="roi-return">—</dd></div>
+          </dl>
+
+          <details class="roi-table">
+            <summary>Расчёт по месяцам</summary>
+            <div class="roi-table-scroll">
+              <table>
+                <thead><tr><th scope="col">Месяц</th><th scope="col">С учётом времени</th><th scope="col">По прямым расходам</th></tr></thead>
+                <tbody id="roi-months"></tbody>
+              </table>
+            </div>
+          </details>
+
+          <p class="roi-note">Время команды оценено по стоимости часа. В прямые расходы входят спринт, дополнительные затраты на запуск, токены, сервисы и сервер.</p>
+        </div>
+      </div>
+      <noscript><p class="roi-note">Включи JavaScript, чтобы пересчитать финмодель.</p></noscript>
+    </section>
+  </main>
+</body>
+</html>
