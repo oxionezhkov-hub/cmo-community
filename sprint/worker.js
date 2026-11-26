@@ -3,6 +3,7 @@ import allaRoadmap from "./public/alla-soldatova.html";
 import mariaRoadmap from "./public/maria-surovtseva.html";
 import romanRoadmap from "./public/roman-kardapoltsev.html";
 import denisRoadmap from "./public/denis-ruzhin.html";
+import karinaRoadmap from "./public/karina-ololenko.html";
 import groupOffer from "./public/gruppa.html";
 import individualOffer from "./public/soprovozhdenie.html";
 import stylesheet from "./public/styles.css";
@@ -13,6 +14,7 @@ import allaPhoto from "./public/alla-soldatova.webp";
 import mariaPhoto from "./public/maria-surovtseva.webp";
 import romanPhoto from "./public/roman-kardapoltsev.webp";
 import denisPhoto from "./public/denis-ruzhin.webp";
+import karinaPhoto from "./public/karina-ololenko.webp";
 import fontStylesheet from "./public/fonts/fonts.css";
 import golosLicense from "./public/fonts/golos-text-OFL.txt";
 import golosCyrillicExtended from "./public/fonts/golos-text-cyrillic-ext-wght-normal.woff2";
@@ -37,6 +39,7 @@ const assets = new Map([
   ["/maria-surovtseva", [mariaRoadmap, html]],
   ["/roman-kardapoltsev", [romanRoadmap, html]],
   ["/denis-ruzhin", [denisRoadmap, html]],
+  ["/karina-ololenko", [karinaRoadmap, html]],
   ["/gruppa", [groupOffer, html]],
   ["/soprovozhdenie", [individualOffer, html]],
   ["/styles.css", [stylesheet, css]],
@@ -47,6 +50,7 @@ const assets = new Map([
   ["/maria-surovtseva.webp", [mariaPhoto, "image/webp"]],
   ["/roman-kardapoltsev.webp", [romanPhoto, "image/webp"]],
   ["/denis-ruzhin.webp", [denisPhoto, "image/webp"]],
+  ["/karina-ololenko.webp", [karinaPhoto, "image/webp"]],
   ["/fonts/fonts.css", [fontStylesheet, css]],
   ["/fonts/golos-text-OFL.txt", [golosLicense, text]],
   ["/fonts/golos-text-cyrillic-ext-wght-normal.woff2", [golosCyrillicExtended, font]],
