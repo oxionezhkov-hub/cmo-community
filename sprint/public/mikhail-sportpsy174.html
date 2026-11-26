@@ -73,7 +73,7 @@
     <section class="section roi" aria-labelledby="roi-title">
       <header class="roi-header">
         <h2 id="roi-title">Сколько заявок нужно и когда окупится спринт</h2>
-        <p>Поставь цель по клиентам и свою конверсию из заявки в клиента. Для денежного прогноза укажи вклад одного клиента после переменных затрат.</p>
+        <p>Поставь цель по клиентам и свою конверсию из заявки в клиента. Для денежного прогноза укажи вклад одного клиента после переменных затрат. В полях — оптимистичный пример.</p>
       </header>
 
       <div class="roi-layout">
@@ -95,7 +95,7 @@
               <label><span>Цель по клиентам</span><input type="number" name="targetClients" min="0" max="100000" value="70" required></label>
               <label><span>Менеджеров</span><input type="number" name="managers" min="1" max="1000" value="2" required></label>
               <label><span>Конверсия заявки,&nbsp;%</span><input type="number" name="conversion" min="0.01" max="100" step="any" value="25" required></label>
-              <label><span>Вклад клиента,&nbsp;₽</span><input type="number" name="marginPerClient" min="0" max="100000000" value="1500" required></label>
+              <label><span>Вклад клиента,&nbsp;₽</span><input type="number" name="marginPerClient" min="0" max="100000000" value="2000" required></label>
             </div>
           </fieldset>
 
@@ -104,7 +104,7 @@
             <p class="roi-field-note" id="roi-operating-note">Съёмка, монтаж и продвижение за месяц. Суммы в полях — пример.</p>
             <div class="roi-inputs">
               <label><span>Расходы до,&nbsp;₽</span><input type="number" name="operatingBefore" min="0" max="100000000" value="0" aria-describedby="roi-operating-note" required></label>
-              <label><span>Расходы после,&nbsp;₽</span><input type="number" name="operatingAfter" min="0" max="100000000" value="10000" aria-describedby="roi-operating-note" required></label>
+              <label><span>Расходы после,&nbsp;₽</span><input type="number" name="operatingAfter" min="0" max="100000000" value="16000" aria-describedby="roi-operating-note" required></label>
             </div>
           </fieldset>
           <button class="roi-reset" type="reset">Сбросить к примеру</button>
