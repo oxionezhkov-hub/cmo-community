@@ -1,13 +1,20 @@
 export function calculateRoi(values) {
+  const isGrowth = values.targetClients !== undefined;
+  const hourRate = values.hourRate ?? 0;
   const setupCash = values.fee + values.setupExtra;
-  const investment = setupCash + values.setupHours * values.hourRate;
-  const hoursSaved = values.hoursBefore - values.hoursAfter;
+  const investment = setupCash + (values.setupHours ?? 0) * hourRate;
+  const hoursSaved = (values.hoursBefore ?? 0) - (values.hoursAfter ?? 0);
   const cashSaved = values.operatingBefore - values.operatingAfter;
-  const monthlyEffect = cashSaved + hoursSaved * values.hourRate;
+  const addedContribution = isGrowth
+    ? (values.targetClients - values.currentClients) * values.marginPerClient
+    : 0;
+  const cashEffect = cashSaved + addedContribution;
+  const monthlyEffect = cashEffect + hoursSaved * hourRate;
+  const leadsNeeded = isGrowth ? Math.ceil(values.targetClients * 100 / values.conversion) : null;
   const rows = Array.from({ length: values.months + 1 }, (_, month) => ({
     month,
     economic: monthlyEffect * month - investment,
-    cash: cashSaved * month - setupCash,
+    cash: cashEffect * month - setupCash,
   }));
 
   let payback = null;
@@ -15,6 +22,8 @@ export function calculateRoi(values) {
   else if (investment === 0 && monthlyEffect === 0) payback = 0;
 
   return {
+    isGrowth,
+    leadsNeeded,
     investment,
     hoursSaved,
     cashSaved,
@@ -102,12 +111,14 @@ function drawChart(canvas, model, selected) {
     }
   }
 
-  context.lineWidth = 2;
-  context.strokeStyle = grey;
-  context.setLineDash([6, 4]);
-  trace("cash");
-  context.stroke();
-  context.setLineDash([]);
+  if (!model.isGrowth) {
+    context.lineWidth = 2;
+    context.strokeStyle = grey;
+    context.setLineDash([6, 4]);
+    trace("cash");
+    context.stroke();
+    context.setLineDash([]);
+  }
   context.lineWidth = 3;
   context.strokeStyle = orange;
   trace("economic");
@@ -132,7 +143,7 @@ function drawChart(canvas, model, selected) {
   context.moveTo(x(selected), top);
   context.lineTo(x(selected), bottom);
   context.stroke();
-  point(x(selected), y(row.cash), grey, 4);
+  if (!model.isGrowth) point(x(selected), y(row.cash), grey, 4);
   point(x(selected), y(row.economic), orange, 5);
   return { x: x(selected), y: y(row.economic) };
 }
@@ -156,7 +167,7 @@ function mount(form) {
     const row = model.rows[selected];
     byId("roi-point-month").textContent = row.month === 0 ? "Старт" : `Месяц ${row.month}`;
     byId("roi-point-economic").textContent = signedCurrency.format(row.economic);
-    byId("roi-point-cash").textContent = signedCurrency.format(row.cash);
+    if (!model.isGrowth) byId("roi-point-cash").textContent = signedCurrency.format(row.cash);
     const gap = 12;
     const { offsetWidth: width, offsetHeight: height } = tooltip;
     const maxLeft = canvas.clientWidth - width - 4;
@@ -203,8 +214,13 @@ function mount(form) {
     byId("roi-total-label").textContent = `Итог за ${values.months} мес.`;
     byId("roi-total").textContent = signedCurrency.format(total.economic);
     byId("roi-investment").textContent = currency.format(model.investment);
-    byId("roi-hours").textContent = `${decimal.format(model.hoursSaved)} ч`;
-    byId("roi-cash").textContent = signedCurrency.format(model.cashSaved);
+    if (model.isGrowth) {
+      byId("roi-leads").textContent = decimal.format(model.leadsNeeded);
+      byId("roi-leads-manager").textContent = decimal.format(Math.ceil(model.leadsNeeded / values.managers));
+    } else {
+      byId("roi-hours").textContent = `${decimal.format(model.hoursSaved)} ч`;
+      byId("roi-cash").textContent = signedCurrency.format(model.cashSaved);
+    }
     byId("roi-return").textContent = model.investment > 0 ? percent.format(total.economic / model.investment) : "—";
 
     const tableRows = model.rows.map(row => {
@@ -213,7 +229,8 @@ function mount(form) {
       heading.scope = "row";
       heading.textContent = row.month === 0 ? "Старт" : row.month;
       tr.append(heading);
-      for (const value of [row.economic, row.cash]) {
+      const amounts = model.isGrowth ? [row.economic] : [row.economic, row.cash];
+      for (const value of amounts) {
         const cell = document.createElement("td");
         cell.textContent = signedCurrency.format(value);
         tr.append(cell);

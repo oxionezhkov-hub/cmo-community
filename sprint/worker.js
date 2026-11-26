@@ -4,6 +4,7 @@ import mariaRoadmap from "./public/maria-surovtseva.html";
 import romanRoadmap from "./public/roman-kardapoltsev.html";
 import denisRoadmap from "./public/denis-ruzhin.html";
 import karinaRoadmap from "./public/karina-ololenko.html";
+import mikhailRoadmap from "./public/mikhail-sportpsy174.html";
 import groupOffer from "./public/gruppa.html";
 import individualOffer from "./public/soprovozhdenie.html";
 import stylesheet from "./public/styles.css";
@@ -40,6 +41,7 @@ const assets = new Map([
   ["/roman-kardapoltsev", [romanRoadmap, html]],
   ["/denis-ruzhin", [denisRoadmap, html]],
   ["/karina-ololenko", [karinaRoadmap, html]],
+  ["/mikhail-sportpsy174", [mikhailRoadmap, html]],
   ["/gruppa", [groupOffer, html]],
   ["/soprovozhdenie", [individualOffer, html]],
   ["/styles.css", [stylesheet, css]],
