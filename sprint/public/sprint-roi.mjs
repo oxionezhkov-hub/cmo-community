@@ -216,7 +216,9 @@ function mount(form) {
     byId("roi-investment").textContent = currency.format(model.investment);
     if (model.isGrowth) {
       byId("roi-leads").textContent = decimal.format(model.leadsNeeded);
-      byId("roi-leads-manager").textContent = decimal.format(Math.ceil(model.leadsNeeded / values.managers));
+      if (values.managers !== undefined) {
+        byId("roi-leads-manager").textContent = decimal.format(Math.ceil(model.leadsNeeded / values.managers));
+      }
     } else {
       byId("roi-hours").textContent = `${decimal.format(model.hoursSaved)} ч`;
       byId("roi-cash").textContent = signedCurrency.format(model.cashSaved);
