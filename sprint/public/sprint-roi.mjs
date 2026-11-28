@@ -1,16 +1,19 @@
 export function calculateRoi(values) {
-  const isGrowth = values.targetClients !== undefined;
+  const isLessonFunnel = values.lessonBookings !== undefined;
+  const isGrowth = isLessonFunnel || values.targetClients !== undefined;
+  const lessonsCompleted = isLessonFunnel ? values.lessonBookings * values.attendance / 100 : null;
+  const targetClients = isLessonFunnel ? lessonsCompleted * values.lessonConversion / 100 : values.targetClients;
   const hourRate = values.hourRate ?? 0;
   const setupCash = values.fee + values.setupExtra;
   const investment = setupCash + (values.setupHours ?? 0) * hourRate;
   const hoursSaved = (values.hoursBefore ?? 0) - (values.hoursAfter ?? 0);
   const cashSaved = values.operatingBefore - values.operatingAfter;
   const addedContribution = isGrowth
-    ? (values.targetClients - values.currentClients) * values.marginPerClient
+    ? (targetClients - values.currentClients) * values.marginPerClient
     : 0;
   const cashEffect = cashSaved + addedContribution;
   const monthlyEffect = cashEffect + hoursSaved * hourRate;
-  const leadsNeeded = isGrowth ? Math.ceil(values.targetClients * 100 / values.conversion) : null;
+  const leadsNeeded = isGrowth && !isLessonFunnel ? Math.ceil(targetClients * 100 / values.conversion) : null;
   const rows = Array.from({ length: values.months + 1 }, (_, month) => ({
     month,
     economic: monthlyEffect * month - investment,
@@ -23,6 +26,8 @@ export function calculateRoi(values) {
 
   return {
     isGrowth,
+    lessonsCompleted,
+    targetClients,
     leadsNeeded,
     investment,
     hoursSaved,
@@ -214,7 +219,10 @@ function mount(form) {
     byId("roi-total-label").textContent = `Итог за ${values.months} мес.`;
     byId("roi-total").textContent = signedCurrency.format(total.economic);
     byId("roi-investment").textContent = currency.format(model.investment);
-    if (model.isGrowth) {
+    if (model.lessonsCompleted !== null) {
+      byId("roi-lessons").textContent = decimal.format(model.lessonsCompleted);
+      byId("roi-sales").textContent = decimal.format(model.targetClients);
+    } else if (model.isGrowth) {
       byId("roi-leads").textContent = decimal.format(model.leadsNeeded);
       if (values.managers !== undefined) {
         byId("roi-leads-manager").textContent = decimal.format(Math.ceil(model.leadsNeeded / values.managers));
