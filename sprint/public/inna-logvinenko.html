@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="description" content="Дорожная карта Инны Логвиненко на четыре недели. Сборка и автоматизация MVP собственного ИИ-продукта.">
+  <title>Инна Логвиненко · CMO Спринт</title>
+  <link rel="stylesheet" href="styles.css?v=roadmap-weeks">
+  <link rel="stylesheet" href="/sprint-roi.css?v=3">
+  <script type="module" src="/sprint-roi.mjs?v=4"></script>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+</head>
+<body>
+  <header class="site-header">
+    <div class="shell header-inner">
+      <span class="wordmark">CMO Спринт</span>
+      <p class="sprint-date">Дорожная карта</p>
+    </div>
+  </header>
+  <main class="shell">
+    <section class="hero roadmap-hero participant-hero" aria-labelledby="roadmap-title">
+      <img class="participant-avatar" src="inna-logvinenko.webp" alt="" width="240" height="240">
+      <div class="hero-copy">
+        <h1 id="roadmap-title">Инна Логвиненко</h1>
+        <p class="lead">СМО «Логопотам»</p>
+      </div>
+    </section>
+
+    <section class="section card roadmap-card" aria-labelledby="request-title">
+      <h2 id="request-title">Твой запрос</h2>
+      <p>Собрать MVP собственного ИИ-продукта по готовому концепту. Автоматизировать путь от ввода данных до выдачи результата и проверить, как продукт справляется с задачей первых пользователей.</p>
+    </section>
+
+    <section class="section" aria-labelledby="plan-title">
+      <h2 id="plan-title">План на четыре недели</h2>
+      <ol class="plan participant-plan">
+        <li>
+          <div>
+            <p class="card-label">1 неделя</p>
+            <h3>Выбрать первый сценарий</h3>
+          </div>
+          <p>Возьмём из твоего концепта одну задачу для первой версии. Опишем, кто ей пользуется, что вводит и какой результат должен получить. Соберём примеры запросов и критерии, по которым проверим качество ответа.</p>
+        </li>
+        <li>
+          <div>
+            <p class="card-label">2 неделя</p>
+            <h3>Собрать работающий MVP</h3>
+          </div>
+          <p>Сделаем простой интерфейс для первого сценария и подключим ИИ. Пройдём весь путь от ввода до выдачи ответа. Проверим типовые запросы, а также случаи, когда данных не хватает или результат требует ручной проверки.</p>
+        </li>
+        <li>
+          <div>
+            <p class="card-label">3 неделя</p>
+            <h3>Автоматизировать обработку запросов</h3>
+          </div>
+          <p>Свяжем приём запроса, проверку данных, запуск модели, сохранение и выдачу результата. Добавим статусы и обработку сбоев. Замерим время и стоимость одного запуска, чтобы понимать, сколько ресурсов нужно для пилота.</p>
+        </li>
+        <li>
+          <div>
+            <p class="card-label">4 неделя</p>
+            <h3>Проверить на первых пользователях</h3>
+          </div>
+          <p>Дадим MVP небольшой группе и посмотрим, кто смог получить нужный результат. Соберём обратную связь, исправим основные проблемы и зафиксируем, что стоит автоматизировать в следующей версии.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section class="section card roadmap-card result-card" aria-labelledby="result-title">
+      <h2 id="result-title">Что ты получишь</h2>
+      <p>Работающий MVP для одного пользовательского сценария. Он принимает запрос, обрабатывает его и выдаёт результат. По итогам пилота у тебя будут обратная связь, замеры качества и стоимости запуска и план следующей итерации.</p>
+    </section>
+
+    <section class="section roi" aria-labelledby="roi-title">
+      <header class="roi-header">
+        <h2 id="roi-title">Когда окупится спринт</h2>
+        <p>Сравни затраты при ручной обработке и автоматизированном MVP для одинакового объёма запросов. В полях — оптимистичный пример. Подставь свои цифры.</p>
+      </header>
+
+      <div class="roi-layout">
+        <form id="roi-form" class="roi-form">
+          <fieldset>
+            <legend>Вложения на старте</legend>
+            <div class="roi-inputs">
+              <label><span>Стоимость спринта,&nbsp;₽</span><input type="number" name="fee" min="0" max="100000000" value="250000" required></label>
+              <label><span>Время на запуск,&nbsp;ч</span><input type="number" name="setupHours" min="0" max="10000" step="any" value="16" required></label>
+              <label><span>Стоимость часа,&nbsp;₽</span><input type="number" name="hourRate" min="0" max="1000000" value="2000" required></label>
+              <label><span>Прочее на запуск,&nbsp;₽</span><input type="number" name="setupExtra" min="0" max="100000000" value="0" required></label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Ежемесячная работа</legend>
+            <div class="roi-inputs">
+              <label><span>Обработка вручную,&nbsp;ч</span><input type="number" name="hoursBefore" min="0" max="10000" step="any" value="40" required></label>
+              <label><span>Обработка через MVP,&nbsp;ч</span><input type="number" name="hoursAfter" min="0" max="10000" step="any" value="16" required></label>
+              <label><span>Горизонт расчёта,&nbsp;мес.</span><input type="number" name="months" min="1" max="24" value="12" required></label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Операционные расходы</legend>
+            <p class="roi-field-note" id="roi-operating-note">Модель, хостинг и инструменты автоматизации за месяц</p>
+            <div class="roi-inputs">
+              <label><span>Расходы до,&nbsp;₽</span><input type="number" name="operatingBefore" min="0" max="100000000" value="0" aria-describedby="roi-operating-note" required></label>
+              <label><span>Расходы после,&nbsp;₽</span><input type="number" name="operatingAfter" min="0" max="100000000" value="5000" aria-describedby="roi-operating-note" required></label>
+            </div>
+          </fieldset>
+          <button class="roi-reset" type="reset">Сбросить к примеру</button>
+        </form>
+
+        <p id="roi-error" class="roi-error" role="status" hidden>Проверь поля. Суммы и часы должны быть от нуля, горизонт — от 1 до 24 месяцев.</p>
+        <div id="roi-results" class="roi-results">
+          <dl class="roi-kpis">
+            <div><dt>Срок окупаемости</dt><dd id="roi-payback">—</dd></div>
+            <div><dt>Эффект в месяц</dt><dd id="roi-monthly">—</dd></div>
+            <div><dt id="roi-total-label">Итог за период</dt><dd id="roi-total">—</dd></div>
+          </dl>
+
+          <div class="roi-chart-box">
+            <h3 id="roi-chart-title">Накопленный эффект</h3>
+            <div class="roi-plot">
+              <canvas id="roi-chart" role="img" tabindex="0" aria-labelledby="roi-chart-title" aria-describedby="roi-chart-help"></canvas>
+              <span id="roi-chart-help" class="roi-visually-hidden">Стрелки влево и вправо переключают месяц. Ниже есть таблица со всеми значениями.</span>
+              <div id="roi-point" class="roi-tooltip" role="status" hidden>
+                <strong id="roi-point-month"></strong>
+                <span class="roi-tooltip-row roi-tooltip-economic"><span>С учётом времени</span><b id="roi-point-economic"></b></span>
+                <span class="roi-tooltip-row roi-tooltip-cash"><span>По прямым расходам</span><b id="roi-point-cash"></b></span>
+              </div>
+            </div>
+          </div>
+
+          <dl class="roi-breakdown">
+            <div><dt>Вложения с учётом времени на запуск</dt><dd id="roi-investment">—</dd></div>
+            <div><dt>Экономия времени в месяц</dt><dd id="roi-hours">—</dd></div>
+            <div><dt>Экономия прямых расходов в месяц</dt><dd id="roi-cash">—</dd></div>
+            <div><dt>Рентабельность за период</dt><dd id="roi-return">—</dd></div>
+          </dl>
+
+          <details class="roi-table">
+            <summary>Расчёт по месяцам</summary>
+            <div class="roi-table-scroll">
+              <table>
+                <thead><tr><th scope="col">Месяц</th><th scope="col">С учётом времени</th><th scope="col">По прямым расходам</th></tr></thead>
+                <tbody id="roi-months"></tbody>
+              </table>
+            </div>
+          </details>
+
+          <p class="roi-note">Время команды оценено по стоимости часа. В прямые расходы входят спринт, дополнительные затраты на запуск и операционные расходы.</p>
+        </div>
+      </div>
+      <noscript><p class="roi-note">Включи JavaScript, чтобы пересчитать финмодель.</p></noscript>
+    </section>
+  </main>
+</body>
+</html>

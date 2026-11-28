@@ -7,8 +7,8 @@
   <meta name="description" content="Четырёхнедельная дорожная карта Марии Суровцевой по мониторингу цен и автоматизации отчётности.">
   <title>Мария Суровцева · CMO Спринт</title>
   <link rel="stylesheet" href="styles.css?v=roadmap-weeks">
-  <link rel="stylesheet" href="/sprint-roi.css?v=1">
-  <script type="module" src="/sprint-roi.mjs?v=1"></script>
+  <link rel="stylesheet" href="/sprint-roi.css?v=3">
+  <script type="module" src="/sprint-roi.mjs?v=3"></script>
   <link rel="icon" href="/favicon.ico" sizes="any">
 </head>
 <body>
@@ -23,7 +23,7 @@
       <img class="participant-avatar" src="maria-surovtseva.webp" alt="" width="240" height="240">
       <div class="hero-copy">
         <h1 id="roadmap-title">Мария Суровцева</h1>
-        <p class="lead">Участница Ядра CMO</p>
+        <p class="lead">Руководитель интернет-магазина корейской косметики «Пумпуми»</p>
       </div>
     </section>
 
@@ -74,7 +74,7 @@
     <section class="section roi" aria-labelledby="roi-title">
       <header class="roi-header">
         <h2 id="roi-title">Когда окупится спринт</h2>
-        <p>Посчитай, сколько стоит запуск и сколько ежемесячно экономит автоматизация сбора данных. В полях — пример. Подставь свои цифры.</p>
+        <p>Посчитай, сколько стоит запуск и сколько ежемесячно экономит автоматизация сбора данных. В полях — оптимистичный пример. Подставь свои цифры.</p>
       </header>
 
       <div class="roi-layout">
@@ -82,23 +82,31 @@
           <fieldset>
             <legend>Вложения на старте</legend>
             <div class="roi-inputs">
-              <label>Стоимость спринта,&nbsp;₽<input type="number" name="fee" min="0" max="100000000" value="50000" required></label>
-              <label>Время команды на запуск,&nbsp;ч<input type="number" name="setupHours" min="0" max="10000" step="any" value="8" required></label>
-              <label>Стоимость часа команды,&nbsp;₽<input type="number" name="hourRate" min="0" max="1000000" value="1500" required></label>
-              <label>Другие затраты на запуск,&nbsp;₽<input type="number" name="setupExtra" min="0" max="100000000" value="0" required></label>
+              <label><span>Стоимость спринта,&nbsp;₽</span><input type="number" name="fee" min="0" max="100000000" value="250000" required></label>
+              <label><span>Время на запуск,&nbsp;ч</span><input type="number" name="setupHours" min="0" max="10000" step="any" value="12" required></label>
+              <label><span>Стоимость часа,&nbsp;₽</span><input type="number" name="hourRate" min="0" max="1000000" value="1500" required></label>
+              <label><span>Прочее на запуск,&nbsp;₽</span><input type="number" name="setupExtra" min="0" max="100000000" value="0" required></label>
             </div>
           </fieldset>
 
           <fieldset>
-            <legend>Ежемесячные затраты</legend>
+            <legend>Ежемесячная работа</legend>
             <div class="roi-inputs">
-              <label>Время команды сейчас,&nbsp;ч<input type="number" name="hoursBefore" min="0" max="10000" step="any" value="20" required></label>
-              <label>Время после запуска,&nbsp;ч<input type="number" name="hoursAfter" min="0" max="10000" step="any" value="6" required></label>
-              <label>Токены и сервисы сейчас,&nbsp;₽<input type="number" name="toolsBefore" min="0" max="100000000" value="3500" required></label>
-              <label>Токены и сервисы после (без сервера),&nbsp;₽<input type="number" name="toolsAfter" min="0" max="100000000" value="1500" required></label>
-              <label>Сервер после запуска,&nbsp;₽<input type="number" name="server" min="0" max="100000000" value="1000" required></label>
-              <label>Горизонт расчёта,&nbsp;мес.<input type="number" name="months" min="1" max="24" value="6" required></label>
+              <label><span>Время команды до,&nbsp;ч</span><input type="number" name="hoursBefore" min="0" max="10000" step="any" value="32" required></label>
+              <label><span>Время команды после,&nbsp;ч</span><input type="number" name="hoursAfter" min="0" max="10000" step="any" value="8" required></label>
+              <label><span>Горизонт расчёта,&nbsp;мес.</span><input type="number" name="months" min="1" max="24" value="12" required></label>
             </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Операционные расходы</legend>
+            <p class="roi-field-note" id="roi-operating-note">До запуска — подписки. После — 5&nbsp;000&nbsp;₽ на токены в месяц.</p>
+            <div class="roi-inputs">
+              <label><span>Расходы до,&nbsp;₽</span><input type="number" name="operatingBefore" min="0" max="100000000" value="25400" aria-describedby="roi-operating-note" required></label>
+              <label><span>Расходы после,&nbsp;₽</span><input type="number" name="operatingAfter" min="0" max="100000000" value="5000" aria-describedby="roi-operating-note" required></label>
+            </div>
+            <p class="roi-field-note roi-sources">В расчёте — цены за месяц по открытым тарифам. Mindbox Light от 15&nbsp;000&nbsp;₽ без НДС, LiveDune «Бизнес» 3&nbsp;900&nbsp;₽, Roistat «Стартовый» 6&nbsp;500&nbsp;₽. <a href="https://mindbox.ru/tariffs/" target="_blank" rel="noopener noreferrer">Mindbox</a> · <a href="https://livedune.com/ru/pricing/" target="_blank" rel="noopener noreferrer">LiveDune</a> · <a href="https://roistat.com/ru/price" target="_blank" rel="noopener noreferrer">Roistat</a></p>
+            <p class="roi-field-note">Это сценарий замены подписок. Если сервисы остаются источниками данных, добавь их стоимость в расходы после запуска.</p>
           </fieldset>
           <button class="roi-reset" type="reset">Сбросить к примеру</button>
         </form>
@@ -112,18 +120,15 @@
           </dl>
 
           <div class="roi-chart-box">
-            <div class="roi-chart-head">
-              <h3>Накопленный эффект</h3>
-              <ul class="roi-legend">
-                <li><span class="roi-legend-total"></span> С учётом времени</li>
-                <li><span class="roi-legend-cash"></span> По прямым расходам</li>
-              </ul>
-            </div>
-            <canvas id="roi-chart" aria-hidden="true"></canvas>
-            <div class="roi-inspect">
-              <label for="roi-month">Месяц на графике</label>
-              <input type="range" id="roi-month" min="0" max="6" value="3">
-              <output id="roi-point" for="roi-month"></output>
+            <h3 id="roi-chart-title">Накопленный эффект</h3>
+            <div class="roi-plot">
+              <canvas id="roi-chart" role="img" tabindex="0" aria-labelledby="roi-chart-title" aria-describedby="roi-chart-help"></canvas>
+              <span id="roi-chart-help" class="roi-visually-hidden">Стрелки влево и вправо переключают месяц. Ниже есть таблица со всеми значениями.</span>
+              <div id="roi-point" class="roi-tooltip" role="status" hidden>
+                <strong id="roi-point-month"></strong>
+                <span class="roi-tooltip-row roi-tooltip-economic"><span>С учётом времени</span><b id="roi-point-economic"></b></span>
+                <span class="roi-tooltip-row roi-tooltip-cash"><span>По прямым расходам</span><b id="roi-point-cash"></b></span>
+              </div>
             </div>
           </div>
 
@@ -144,7 +149,7 @@
             </div>
           </details>
 
-          <p class="roi-note">Время команды оценено по стоимости часа. В прямые расходы входят спринт, дополнительные затраты на запуск, токены, сервисы и сервер.</p>
+          <p class="roi-note">Время команды оценено по стоимости часа. В прямые расходы входят спринт, дополнительные затраты на запуск и операционные расходы.</p>
         </div>
       </div>
       <noscript><p class="roi-note">Включи JavaScript, чтобы пересчитать финмодель.</p></noscript>

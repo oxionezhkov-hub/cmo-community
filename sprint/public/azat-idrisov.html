@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="description" content="Дорожная карта Азата Идрисова. Доработка действующей воронки от записи на вводный урок до оплаты.">
+  <title>Азат Идрисов · CMO Спринт</title>
+  <link rel="stylesheet" href="styles.css?v=roadmap-weeks">
+  <link rel="stylesheet" href="/sprint-roi.css?v=3">
+  <script type="module" src="/sprint-roi.mjs?v=6"></script>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+</head>
+<body>
+  <header class="site-header">
+    <div class="shell header-inner">
+      <span class="wordmark">CMO Спринт</span>
+      <p class="sprint-date">Дорожная карта</p>
+    </div>
+  </header>
+  <main class="shell">
+    <section class="hero roadmap-hero participant-hero" aria-labelledby="roadmap-title">
+      <img class="participant-avatar" src="azat-idrisov.webp" alt="" width="240" height="240">
+      <div class="hero-copy">
+        <h1 id="roadmap-title">Азат Идрисов</h1>
+        <p class="lead">CEO в Dia Digital</p>
+      </div>
+    </section>
+
+    <section class="section card roadmap-card" aria-labelledby="request-title">
+      <h2 id="request-title">Твой запрос</h2>
+      <p>Докрутить с командой действующую воронку продаж. В текущем срезе 791 лид, 156 записей на вводный урок, 36 проведённых уроков и 2 продажи. Средний чек — 147&nbsp;000&nbsp;₽. По этому срезу доходимость составляет 23%, цель — 50%. Второй приоритет — увеличить долю оплат после урока. Основной поток сейчас дают школы и блогеры, а объём новых заявок нужно соотносить с нагрузкой отдела продаж.</p>
+    </section>
+
+    <section class="section" aria-labelledby="plan-title">
+      <h2 id="plan-title">План на четыре недели</h2>
+      <ol class="plan participant-plan">
+        <li>
+          <div>
+            <p class="card-label">1 неделя</p>
+            <h3>Сверить учёт и зафиксировать точку отсчёта</h3>
+          </div>
+          <p>Сверим записи, проведённые уроки и фактические оплаты с CRM. Доходимость пересчитаем по записям на прошедшие даты, с учётом дублей и переносов. В текущем срезе 2 оплаты дают 1,3% от записей и 5,6% от проведённых уроков. Для сравнения с ориентиром 13–15% уточним, от какого этапа и за какой срок его считают.</p>
+        </li>
+        <li>
+          <div>
+            <p class="card-label">2 неделя</p>
+            <h3>Повысить доходимость на вводный урок</h3>
+          </div>
+          <p>Разберём, почему записавшиеся не приходят. Протестируем с менеджерами подтверждение записи, напоминания со ссылкой и простой перенос времени. Для пропустивших урок добавим повторное приглашение. Сравним долю пришедших на сопоставимых записях.</p>
+        </li>
+        <li>
+          <div>
+            <p class="card-label">3 неделя</p>
+            <h3>Улучшить продажи после урока</h3>
+          </div>
+          <p>Разберём записи уроков и причины отказов. Проверим, насколько ясно менеджер объясняет следующий шаг, когда делает предложение и как связывается повторно. Договоримся о сроках обработки и распределении заявок между менеджерами, пока отдел расширяется. Проверим эффект первой итерации и внесём следующую правку.</p>
+        </li>
+        <li>
+          <div>
+            <p class="card-label">4 неделя</p>
+            <h3>Сравнить конверсии и закрепить рабочие изменения</h3>
+          </div>
+          <p>Сравним доходимость и оплаты до и после изменений по одному правилу учёта. Отдельно посмотрим поток от школ и блогеров. Зафиксируем, какие действия менеджеры продолжают, и посчитаем, сколько заявок команда успевает обработать перед увеличением трафика.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section class="section card roadmap-card result-card" aria-labelledby="result-title">
+      <h2 id="result-title">Что ты получишь</h2>
+      <p>Понятный учёт от записи до оплаты и проверенные сценарии напоминаний, переноса урока и работы с клиентом после урока. Ты увидишь, приблизилась ли доходимость к 50%, как изменилась доля оплат и какой объём заявок отдел продаж может обработать в срок.</p>
+    </section>
+
+    <section class="section roi" aria-labelledby="roi-title">
+      <header class="roi-header">
+        <h2 id="roi-title">Как доходимость влияет на продажи</h2>
+        <p>Меняй доходимость и долю оплат после урока, чтобы оценить продажи и окупаемость. Начальные значения задают оптимистичный сценарий.</p>
+      </header>
+
+      <div class="roi-layout">
+        <form id="roi-form" class="roi-form">
+          <fieldset>
+            <legend>Вложения на старте</legend>
+            <div class="roi-inputs">
+              <label><span>Стоимость спринта,&nbsp;₽</span><input type="number" name="fee" min="0" max="100000000" value="250000" required></label>
+              <label><span>Прочее на запуск,&nbsp;₽</span><input type="number" name="setupExtra" min="0" max="100000000" value="25000" required></label>
+              <label><span>Горизонт расчёта,&nbsp;мес.</span><input type="number" name="months" min="1" max="24" value="12" required></label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Записи и продажи за месяц</legend>
+            <p class="roi-field-note">156 записей и 2 продажи взяты из текущего среза для примера. Укажи свой месячный объём. При среднем чеке 147&nbsp;000&nbsp;₽ в расчёт подставь остаток после расходов на одну продажу.</p>
+            <div class="roi-inputs">
+              <label><span>Записей на урок</span><input type="number" name="lessonBookings" min="0" max="100000" value="156" required></label>
+              <label><span>Доходимость,&nbsp;%</span><input type="number" name="attendance" min="0" max="100" step="any" value="50" required></label>
+              <label><span>Оплата после урока,&nbsp;%</span><input type="number" name="lessonConversion" min="0" max="100" step="any" value="10" required></label>
+              <label><span>Продаж сейчас</span><input type="number" name="currentClients" min="0" max="100000" value="2" required></label>
+              <label><span>Остаток с продажи,&nbsp;₽</span><input type="number" name="marginPerClient" min="0" max="100000000" value="35000" required></label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Операционные расходы</legend>
+            <p class="roi-field-note" id="roi-operating-note">Фиксированные расходы на менеджеров, сервисы и продвижение за месяц. Расходы на одну продажу учти в поле «Остаток с продажи».</p>
+            <div class="roi-inputs">
+              <label><span>Расходы до,&nbsp;₽</span><input type="number" name="operatingBefore" min="0" max="100000000" value="0" aria-describedby="roi-operating-note" required></label>
+              <label><span>Расходы после,&nbsp;₽</span><input type="number" name="operatingAfter" min="0" max="100000000" value="60000" aria-describedby="roi-operating-note" required></label>
+            </div>
+          </fieldset>
+          <button class="roi-reset" type="reset">Сбросить к примеру</button>
+        </form>
+
+        <p id="roi-error" class="roi-error" role="status" hidden>Проверь поля. Проценты должны быть от 0 до 100, горизонт — от 1 до 24 месяцев.</p>
+        <div id="roi-results" class="roi-results">
+          <dl class="roi-kpis">
+            <div><dt>Срок окупаемости</dt><dd id="roi-payback">—</dd></div>
+            <div><dt>Продаж в месяц</dt><dd id="roi-sales">—</dd></div>
+            <div><dt id="roi-total-label">Итог за период</dt><dd id="roi-total">—</dd></div>
+          </dl>
+
+          <div class="roi-chart-box">
+            <h3 id="roi-chart-title">Накопленный эффект</h3>
+            <div class="roi-plot">
+              <canvas id="roi-chart" role="img" tabindex="0" aria-labelledby="roi-chart-title" aria-describedby="roi-chart-help"></canvas>
+              <span id="roi-chart-help" class="roi-visually-hidden">Стрелки влево и вправо переключают месяц. Ниже есть таблица со всеми значениями.</span>
+              <div id="roi-point" class="roi-tooltip" role="status" hidden>
+                <strong id="roi-point-month"></strong>
+                <span class="roi-tooltip-row roi-tooltip-economic"><span>Итог</span><b id="roi-point-economic"></b></span>
+              </div>
+            </div>
+          </div>
+
+          <dl class="roi-breakdown">
+            <div><dt>Проведённых уроков в месяц</dt><dd id="roi-lessons">—</dd></div>
+            <div><dt>Вложения на старте</dt><dd id="roi-investment">—</dd></div>
+            <div><dt>Эффект в месяц</dt><dd id="roi-monthly">—</dd></div>
+            <div><dt>Рентабельность за период</dt><dd id="roi-return">—</dd></div>
+          </dl>
+
+          <details class="roi-table">
+            <summary>Расчёт по месяцам</summary>
+            <div class="roi-table-scroll">
+              <table>
+                <thead><tr><th scope="col">Месяц</th><th scope="col">Итог, ₽</th></tr></thead>
+                <tbody id="roi-months"></tbody>
+              </table>
+            </div>
+          </details>
+
+          <p class="roi-note">Прогноз показывает средние значения за месяц. Из вклада дополнительных продаж вычитаем прирост ежемесячных расходов.</p>
+        </div>
+      </div>
+      <noscript><p class="roi-note">Включи JavaScript, чтобы пересчитать финмодель.</p></noscript>
+    </section>
+  </main>
+</body>
+</html>

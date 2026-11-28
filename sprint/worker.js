@@ -1,6 +1,15 @@
 import roadmap from "./public/index.html";
 import allaRoadmap from "./public/alla-soldatova.html";
 import mariaRoadmap from "./public/maria-surovtseva.html";
+import romanRoadmap from "./public/roman-kardapoltsev.html";
+import denisRoadmap from "./public/denis-ruzhin.html";
+import innaRoadmap from "./public/inna-logvinenko.html";
+import elyaRoadmap from "./public/elya-dautova.html";
+import anastasiaRoadmap from "./public/anastasia-tkacheva.html";
+import radislavRoadmap from "./public/radislav-maryukhin.html";
+import azatRoadmap from "./public/azat-idrisov.html";
+import karinaRoadmap from "./public/karina-ololenko.html";
+import mikhailRoadmap from "./public/mikhail-sportpsy174.html";
 import groupOffer from "./public/gruppa.html";
 import individualOffer from "./public/soprovozhdenie.html";
 import stylesheet from "./public/styles.css";
@@ -9,6 +18,14 @@ import roiScript from "./public/sprint-roi.mjs";
 import favicon from "./public/favicon.ico";
 import allaPhoto from "./public/alla-soldatova.webp";
 import mariaPhoto from "./public/maria-surovtseva.webp";
+import romanPhoto from "./public/roman-kardapoltsev.webp";
+import denisPhoto from "./public/denis-ruzhin.webp";
+import innaPhoto from "./public/inna-logvinenko.webp";
+import elyaPhoto from "./public/elya-dautova.webp";
+import anastasiaPhoto from "./public/anastasia-tkacheva.webp";
+import radislavPhoto from "./public/radislav-maryukhin.webp";
+import azatPhoto from "./public/azat-idrisov.webp";
+import karinaPhoto from "./public/karina-ololenko.webp";
 import fontStylesheet from "./public/fonts/fonts.css";
 import golosLicense from "./public/fonts/golos-text-OFL.txt";
 import golosCyrillicExtended from "./public/fonts/golos-text-cyrillic-ext-wght-normal.woff2";
@@ -31,6 +48,15 @@ const assets = new Map([
   ["/", [roadmap, html]],
   ["/alla-soldatova", [allaRoadmap, html]],
   ["/maria-surovtseva", [mariaRoadmap, html]],
+  ["/roman-kardapoltsev", [romanRoadmap, html]],
+  ["/denis-ruzhin", [denisRoadmap, html]],
+  ["/inna-logvinenko", [innaRoadmap, html]],
+  ["/elya-dautova", [elyaRoadmap, html]],
+  ["/anastasia-tkacheva", [anastasiaRoadmap, html]],
+  ["/radislav-maryukhin", [radislavRoadmap, html]],
+  ["/azat-idrisov", [azatRoadmap, html]],
+  ["/karina-ololenko", [karinaRoadmap, html]],
+  ["/mikhail-sportpsy174", [mikhailRoadmap, html]],
   ["/gruppa", [groupOffer, html]],
   ["/soprovozhdenie", [individualOffer, html]],
   ["/styles.css", [stylesheet, css]],
@@ -39,6 +65,14 @@ const assets = new Map([
   ["/favicon.ico", [favicon, "image/x-icon"]],
   ["/alla-soldatova.webp", [allaPhoto, "image/webp"]],
   ["/maria-surovtseva.webp", [mariaPhoto, "image/webp"]],
+  ["/roman-kardapoltsev.webp", [romanPhoto, "image/webp"]],
+  ["/denis-ruzhin.webp", [denisPhoto, "image/webp"]],
+  ["/inna-logvinenko.webp", [innaPhoto, "image/webp"]],
+  ["/elya-dautova.webp", [elyaPhoto, "image/webp"]],
+  ["/anastasia-tkacheva.webp", [anastasiaPhoto, "image/webp"]],
+  ["/radislav-maryukhin.webp", [radislavPhoto, "image/webp"]],
+  ["/azat-idrisov.webp", [azatPhoto, "image/webp"]],
+  ["/karina-ololenko.webp", [karinaPhoto, "image/webp"]],
   ["/fonts/fonts.css", [fontStylesheet, css]],
   ["/fonts/golos-text-OFL.txt", [golosLicense, text]],
   ["/fonts/golos-text-cyrillic-ext-wght-normal.woff2", [golosCyrillicExtended, font]],
