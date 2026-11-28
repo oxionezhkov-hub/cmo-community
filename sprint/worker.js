@@ -5,6 +5,7 @@ import romanRoadmap from "./public/roman-kardapoltsev.html";
 import denisRoadmap from "./public/denis-ruzhin.html";
 import innaRoadmap from "./public/inna-logvinenko.html";
 import elyaRoadmap from "./public/elya-dautova.html";
+import anastasiaRoadmap from "./public/anastasia-tkacheva.html";
 import karinaRoadmap from "./public/karina-ololenko.html";
 import mikhailRoadmap from "./public/mikhail-sportpsy174.html";
 import groupOffer from "./public/gruppa.html";
@@ -19,6 +20,7 @@ import romanPhoto from "./public/roman-kardapoltsev.webp";
 import denisPhoto from "./public/denis-ruzhin.webp";
 import innaPhoto from "./public/inna-logvinenko.webp";
 import elyaPhoto from "./public/elya-dautova.webp";
+import anastasiaPhoto from "./public/anastasia-tkacheva.webp";
 import karinaPhoto from "./public/karina-ololenko.webp";
 import fontStylesheet from "./public/fonts/fonts.css";
 import golosLicense from "./public/fonts/golos-text-OFL.txt";
@@ -46,6 +48,7 @@ const assets = new Map([
   ["/denis-ruzhin", [denisRoadmap, html]],
   ["/inna-logvinenko", [innaRoadmap, html]],
   ["/elya-dautova", [elyaRoadmap, html]],
+  ["/anastasia-tkacheva", [anastasiaRoadmap, html]],
   ["/karina-ololenko", [karinaRoadmap, html]],
   ["/mikhail-sportpsy174", [mikhailRoadmap, html]],
   ["/gruppa", [groupOffer, html]],
@@ -60,6 +63,7 @@ const assets = new Map([
   ["/denis-ruzhin.webp", [denisPhoto, "image/webp"]],
   ["/inna-logvinenko.webp", [innaPhoto, "image/webp"]],
   ["/elya-dautova.webp", [elyaPhoto, "image/webp"]],
+  ["/anastasia-tkacheva.webp", [anastasiaPhoto, "image/webp"]],
   ["/karina-ololenko.webp", [karinaPhoto, "image/webp"]],
   ["/fonts/fonts.css", [fontStylesheet, css]],
   ["/fonts/golos-text-OFL.txt", [golosLicense, text]],
